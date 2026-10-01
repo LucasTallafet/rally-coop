@@ -48,6 +48,10 @@ constexpr int kCountedSteps = 1000;
 // efecto en la reproducibilidad; aceptado (docs/progreso.md, hallazgos). Si un cambio
 // intencionado lo altera, se actualiza como la huella.
 constexpr int kJoltAllocationsPerStep = 2;
+// Total de reservas de Jolt en los kCountedSteps pasos medidos con las entradas del test
+// (753 pasos con reservas y 247 sin ellas). Si un cambio intencionado lo altera, se
+// actualiza como la huella y se dice en el mensaje del commit.
+constexpr int kExpectedJoltAllocations = 1506;
 
 // Suelo de 20 × 20 m con cuatro muros de 3 m, la caja controlada apoyada en el centro y
 // otra caja suelta para que haya contactos entre cuerpos dinámicos.
@@ -357,12 +361,14 @@ TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blo
     // Nuestro código no reserva nada en el paso. Jolt tampoco pasa por el operator new
     // global: si lo hiciera, sus reservas aparecerían aquí también.
     CHECK(ours == 0);
-    INFO("Si un cambio intencionado altera las reservas de Jolt por paso, actualiza "
-         "kJoltAllocationsPerStep (tests/test_sim_world.cpp) y dilo en el mensaje del commit.");
+    INFO("Si un cambio intencionado altera las reservas de Jolt, actualiza "
+         "kJoltAllocationsPerStep o kExpectedJoltAllocations (tests/test_sim_world.cpp) y "
+         "dilo en el mensaje del commit.");
     MESSAGE("pasos con ", kJoltAllocationsPerStep, " reservas de Jolt: ", steps_with_blocks,
             "; sin reservas: ", steps_without);
     CHECK(steps_other == 0);
     // Las entradas mueven la caja en la mayoría de los pasos: si no hubiera ninguno con
     // reservas, el contador de Jolt no estaría probando nada.
     CHECK(steps_with_blocks > kCountedSteps / 2);
+    CHECK(jolt.count() == kExpectedJoltAllocations);
 }
