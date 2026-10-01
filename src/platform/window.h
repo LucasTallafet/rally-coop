@@ -12,9 +12,6 @@ public:
     Window& operator=(const Window&) = delete;
 
     bool should_close() const;
-
-    // Dibuja un fotograma vacío.
-    void draw_empty_frame();
 };
 
 } // namespace rally::platform

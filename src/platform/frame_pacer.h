@@ -1,0 +1,69 @@
+#pragma once
+
+#include <cstdint>
+
+namespace rally::platform {
+
+enum class FrameTarget {
+    MonitorRate, // un fotograma por refresco del monitor (por defecto)
+    Fps30,       // modo de 30 fps para equipos justos
+};
+
+// Ritmo de fotogramas sin espera activa. Necesita la ventana de raylib ya abierta.
+//
+// - MonitorRate con sincronización vertical: intervalo de presentación 1.
+// - Fps30 con sincronización vertical, si la frecuencia es múltiplo de 30 (60, 120, 240 Hz):
+//   intervalo frecuencia / 30, y el ritmo lo marca la gráfica. Si no lo es (144, 165 Hz), o
+//   el controlador no respeta el intervalo: intervalo 1 y un temporizador de Windows que
+//   duerme hasta el plazo de cada fotograma; en 144 Hz los fotogramas duran 4 y 5 refrescos.
+// - Sin sincronización vertical: intervalo 0; Fps30 sigue durmiendo con el temporizador.
+class FramePacer {
+public:
+    FramePacer();
+    ~FramePacer();
+    FramePacer(const FramePacer&) = delete;
+    FramePacer& operator=(const FramePacer&) = delete;
+
+    // Al principio de cada fotograma: revisa la frecuencia del monitor, duerme si toca y
+    // devuelve la duración real del fotograma anterior en nanosegundos (0 la primera vez).
+    std::int64_t begin_frame();
+
+    void set_target(FrameTarget target);
+    FrameTarget target() const { return target_; }
+    void set_vsync(bool vsync);
+    bool vsync() const { return vsync_; }
+
+    // Para el contador en pantalla.
+    float refresh_rate() const { return refresh_rate_; }
+    int swap_interval() const { return swap_interval_; }
+    bool uses_timer() const { return use_timer_; }
+    bool high_resolution_timer() const { return high_resolution_timer_; }
+
+private:
+    void apply();
+    void sleep_until(std::int64_t deadline_ns);
+    void check_swap_interval(std::int64_t frame_ns);
+
+    FrameTarget target_ = FrameTarget::MonitorRate;
+    bool vsync_ = true;
+    float refresh_rate_ = 0.0f;
+
+    int swap_interval_ = 1;
+    bool use_timer_ = false;
+    std::int64_t deadline_ns_ = 0; // plazo del próximo fotograma con temporizador
+
+    // Comprobación de que el controlador respeta un intervalo > 1: si los fotogramas
+    // salen más cortos de lo esperado, se pasa al temporizador hasta el próximo cambio.
+    bool interval_ignored_ = false;
+    bool interval_checked_ = false;
+    int interval_frames_ = 0;
+    std::int64_t interval_ns_ = 0;
+
+    void* timer_ = nullptr; // HANDLE del temporizador de Windows
+    bool high_resolution_timer_ = false;
+    bool raised_timer_resolution_ = false; // timeBeginPeriod(1) activo
+
+    std::int64_t last_frame_start_ns_ = -1;
+};
+
+} // namespace rally::platform

@@ -1,11 +1,13 @@
-# Los tests enlazan solo la simulación: corren sin ventana ni mando.
+# Los tests enlazan solo la simulación y el bucle sin dependencias: corren sin ventana ni mando.
 add_executable(rally_tests
     test_main.cpp
+    test_fixed_step_clock.cpp
+    test_interpolation.cpp
     test_jolt.cpp
     test_pcg32.cpp
     test_rmath.cpp
 )
-target_link_libraries(rally_tests PRIVATE rally_sim doctest::doctest rally_warnings)
+target_link_libraries(rally_tests PRIVATE rally_sim rally_loop doctest::doctest rally_warnings)
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(rally_tests)

@@ -4,10 +4,12 @@
 #      /fp:contract.
 #   3. Ningún target ni carpeta, dependencias incluidas, usa /arch:AVX, AVX2 o AVX512
 #      (objetivo SSE4.2).
-#   4. rally_sim y rally_tests no enlazan raylib ni SDL, ni directa ni indirectamente.
+#   4. rally_sim, rally_loop y rally_tests no enlazan raylib ni SDL, ni directa ni
+#      indirectamente.
 # Complementa a src/sim/fp_guard.h, que hace lo mismo con las macros del compilador.
 
-set(_our_targets rally_sim rally_platform rally rally_tests rally_fp_strict rally_warnings)
+set(_our_targets rally_sim rally_loop rally_platform rally rally_tests rally_fp_strict
+    rally_warnings)
 set(_sim_targets rally_sim rally_tests Jolt)
 set(_flag_vars
     CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
@@ -124,7 +126,7 @@ foreach(_dir IN LISTS _all_dirs)
 endforeach()
 
 # 4. La simulación y los tests no tocan raylib ni SDL.
-foreach(_t rally_sim rally_tests)
+foreach(_t rally_sim rally_loop rally_tests)
     _rally_link_closure(${_t} _closure)
     foreach(_lib IN LISTS _closure)
         if(_lib MATCHES "raylib|SDL")

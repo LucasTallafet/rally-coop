@@ -13,10 +13,4 @@ Window::~Window() { CloseWindow(); }
 
 bool Window::should_close() const { return WindowShouldClose(); }
 
-void Window::draw_empty_frame() {
-    BeginDrawing();
-    ClearBackground(Color{40, 44, 52, 255});
-    EndDrawing();
-}
-
 } // namespace rally::platform
