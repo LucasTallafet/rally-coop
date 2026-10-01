@@ -29,4 +29,4 @@ Resultados que confirman o cambian decisiones provisionales. Cada hallazgo que c
 
 | Fecha | Prueba | Resultado | Decisión afectada |
 | --- | --- | --- | --- |
-| | | | |
+| 2026-10-01 | CPU del hilo principal con la demo del bucle (fase 1, tarea 2), 3 s por modo | Intel UHD 630 con sincronización vertical = 99 % de un núcleo en EndDrawing (espera activa del controlador); RX 580 = 3–5 % (3,1, 4,2 y 4,7 % en tres medidas). Modo de 30: 40 % en la Intel y 0,5–1 % en la RX 580; sin sincronización vertical, 0 % en las dos. Los dos controladores ignoran el intervalo 2 en ventana y el modo de 30 pasa al temporizador. Sin pedir la gráfica dedicada desde el exe, OpenGL elige la Intel aunque el monitor esté en la RX 580 | Ninguna; se mide siempre con la gráfica dedicada |

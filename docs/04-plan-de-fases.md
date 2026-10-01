@@ -50,7 +50,7 @@ Estimación gruesa: se corrige con datos reales al terminar las fases 1 y 2.
 
 ## Fase 1 · Base del motor (~60 h)
 
-CMake y presets; raylib con backend SDL; ventana y bucle con paso fijo de 240 Hz, acumulador, interpolación y tope de pasos; 60 fps con sincronización vertical y modo de 30; cámara en primera persona con render relativo a la cámara; entrada por mando y teclado con suavizado de dirección; vibración; contador de rendimiento. Jolt con doble precisión, determinista entre plataformas y en un hilo; flags sin fast-math ni contracción FMA; `rmath` como envoltorio de `std::`; PCG. Banco de tests sin pantalla con CTest.
+CMake y presets; raylib con backend SDL; ventana y bucle con paso fijo de 240 Hz, acumulador, interpolación y tope de pasos; sincronización vertical a la frecuencia del monitor y modo de 30; cámara en primera persona con render relativo a la cámara; entrada por mando y teclado con suavizado de dirección; vibración; contador de rendimiento. Jolt con doble precisión, determinista entre plataformas y en un hilo; flags sin fast-math ni contracción FMA; `rmath` como envoltorio de `std::`; PCG. Banco de tests sin pantalla con CTest.
 
 **Terminado cuando:** un cuerpo de Jolt se mueve a 240 Hz sin tirones a 30 y 60 fps, responde igual con mando y teclado, el mando vibra, el contador muestra ms por fotograma, draw calls y memoria, y los tests corren con un comando.
 
