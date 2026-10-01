@@ -47,7 +47,7 @@ La simulación no depende del render ni del audio. Lo que se dibuja o suena lee 
 
 - Paso fijo de física a **240 Hz** con acumulador y tope de pasos por fotograma (evita la espiral de retraso).
 - El render dibuja el coche interpolado entre los dos últimos pasos de física.
-- **60 fps con sincronización vertical** por defecto; modo de 30 fps para equipos justos. Sin espera activa en el limitador.
+- **Sincronización vertical a la frecuencia del monitor (60 fps en 60 Hz)** por defecto; modo de 30 fps para equipos justos, sin espera activa.
 - La entrada se lee una vez por fotograma y se aplica a todos los pasos de física de ese fotograma.
 
 ## 4. Física

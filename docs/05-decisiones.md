@@ -33,7 +33,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Ceguera y render | Ocluyentes declarados, opacos hasta unos 200 m, calculados con el ajuste gráfico más bajo | Cerrada |
 | Red | Host autoritativo en el PC de quien conduce; interpolación por paso con búfer de 60–150 ms | Cerrada |
 | Cambio de host | Con el coche parado, por `SaveState`; sin física idéntica entre PCs | Cerrada |
-| Fotogramas | 60 fps con sincronización vertical y modo de 30; física a 240 Hz | Cerrada |
+| Fotogramas | Sincronización vertical a la frecuencia del monitor (60 fps en 60 Hz) y modo de 30 sin espera activa; física a 240 Hz | Cerrada |
 | Estilo visual | 3D en primera persona, low-poly con colores planos; ruido procedural solo en el suelo | Cerrada |
 | Render | Sombras en 3 cascadas, vegetación por instancias, partículas, sin texturas fotográficas, sin cambiar el campo de visión | Cerrada |
 | Voz | Discord al principio; llamada integrada con Opus después de la 1.0 | Cerrada |
@@ -80,3 +80,4 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-01 | Alcance 1.0 | Incluía barro y limpiaparabrisas | Después de la 1.0 | Calidad antes que cantidad |
 | 2026-10-01 | Fase 0 | Pruebas del concepto antes de escribir el motor | Omitida; sus mediciones pasan al corte vertical (fase 3) | Se desarrolla el juego en cualquier caso; la idea se comprueba con el juego real en la fase 3 |
 | 2026-10-01 | Conjunto de instrucciones | AVX2 por defecto de Jolt | SSE4.2 | Cubrir los requisitos mínimos (4 núcleos a 3 GHz) sin excluir CPUs anteriores a 2013 |
+| 2026-10-01 | Fotogramas | 60 fps con sincronización vertical | Frecuencia del monitor con sincronización vertical | En 144/165 Hz limitar a 60 no tiene divisor entero y da más tirones; el requisito de 60 fps se mide en 60 Hz |

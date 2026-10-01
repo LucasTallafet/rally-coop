@@ -43,7 +43,7 @@ ctest --preset windows-release
 - Debug: los mismos comandos con `windows-debug`. Salidas en `build/<preset>/`; ejecutable en `build/windows-release/src/Release/rally.exe`.
 - Dependencias en `cmake/Dependencies.cmake`, fijadas por URL y SHA256: Jolt v5.6.0, SDL 3.4.16 (estática), raylib 6.0 (backend SDL), doctest v2.5.3. Runtime estático `/MT`: un solo `.exe` sin DLL.
 - Objetivo SSE4.2: sin AVX, LZCNT, TZCNT, F16C ni FMA en Jolt y sin `/arch` en nuestro código.
-- Targets: `rally_sim` (src/sim, enlaza Jolt y nunca raylib), `rally_platform` (src/platform, raylib), `rally` (ejecutable), `rally_tests` (doctest, solo `rally_sim`).
+- Targets: `rally_sim` (src/sim, enlaza Jolt y nunca raylib), `rally_platform` (src/platform, raylib), `rally` (ejecutable), `rally_loop` (src/platform, reloj de paso fijo e interpolación, sin raylib ni SDL), `rally_tests` (doctest, solo `rally_sim` y `rally_loop`).
 - El configure falla si un target nuestro define `JPH_*` (llegan solo de Jolt), si lo que compila simulación usa `/fp:fast` o `/fp:contract`, si algo usa `/arch:AVX*` o si la simulación o los tests enlazan raylib o SDL (`cmake/CheckBuildRules.cmake`). `src/sim/fp_guard.h` hace lo mismo con `#error`.
 - `cmake/CheckSimRules.cmake` (test `sim_rules.*` en ctest) revisa src/sim, src/gen y src/net: matemática fuera de `rmath`, `<random>`, `rand()`, `unordered_*`, y reloj solo en sim y gen. Excepción por línea: `// rmath-allow: <motivo>`.
 - Nombres de test sin corchetes ni `;`: rompen el descubrimiento de doctest en CMake.

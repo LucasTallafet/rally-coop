@@ -80,7 +80,7 @@ Conexión por Tailscale con medida de la variación de latencia y búfer de inte
 
 ## Fase 6 · Calidad visual y sonora (~80–120 h)
 
-Interior del coche modelado en Blender; sombras en 3 cascadas; vegetación y masas de bosque; shaders de superficie; partículas de polvo y grava; sonido de motor por capas y mezcla por canales; ajustes gráficos; medida en GTX 1060 o RX 580.
+Interior del coche modelado en Blender; sombras en 3 cascadas; vegetación y masas de bosque; shaders de superficie; partículas de polvo y grava; sonido de motor por capas y mezcla por canales; ajustes gráficos; medida en GTX 1060 o RX 580. Ajuste de ritmo de fotogramas: frecuencia del monitor ÷ N (p. ej. 72 fps en 144 Hz) además del modo de 30, para equipos que no sostienen la frecuencia del monitor.
 
 **Terminado cuando:** 1080p a 60 fps estables en el equipo mínimo en el caso más caro, y el juego se ve y suena como queréis enseñarlo. **Aquí termina la 1.0.**
 
