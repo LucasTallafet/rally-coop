@@ -24,6 +24,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Requisitos mínimos | 4 núcleos a 3 GHz, 8 GB, GTX 1060 6 GB o RX 580, 8 GB de disco; 1080p a 60 fps | Cerrada |
 | Física del coche | Controlador propio en `VehicleConstraint` de Jolt con neumático de calidad (opción B reforzada); otro motor de física solo si falla la prueba de derrape | Provisional hasta la fase 2 |
 | Reproducibilidad | Jolt determinista en un hilo, `rmath`, PCG, sin fast-math; nada se añade ni se quita durante una pasada; mismo tiempo en el mismo PC desde la fase 2; idéntica entre PCs en la fase 9 | Cerrada |
+| Conjunto de instrucciones | SSE4.2 como máximo en todo el código (Jolt incluido): sin AVX, AVX2, AVX-512, LZCNT, TZCNT, F16C ni FMA | Cerrada |
 | Precisión | Doble precisión en Jolt, origen en el centro, render relativo a la cámara, posición por red en mm con enteros de 32 bits | Cerrada |
 | Carga del tramo | Generado y validado entero; física entera con franja de terreno de ±60 m; gráficos por ventana; sentido contrario sin recargar | Provisional hasta la fase 3 (medida de memoria) |
 | Seguimiento | `s` incremental con ventana; índice espacial solo para adquirir; atajo si se ganan más de 30 m de trazado | Cerrada (umbral provisional) |
@@ -78,3 +79,4 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-01 | Requisitos | Gráfica integrada, < 100 MB | GTX 1060, ≤ 1 GB | Más vegetación, sombras y distancia de dibujado manteniendo el estilo low-poly |
 | 2026-10-01 | Alcance 1.0 | Incluía barro y limpiaparabrisas | Después de la 1.0 | Calidad antes que cantidad |
 | 2026-10-01 | Fase 0 | Pruebas del concepto antes de escribir el motor | Omitida; sus mediciones pasan al corte vertical (fase 3) | Se desarrolla el juego en cualquier caso; la idea se comprueba con el juego real en la fase 3 |
+| 2026-10-01 | Conjunto de instrucciones | AVX2 por defecto de Jolt | SSE4.2 | Cubrir los requisitos mínimos (4 núcleos a 3 GHz) sin excluir CPUs anteriores a 2013 |

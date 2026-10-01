@@ -1,11 +1,11 @@
+#include "platform/fatal_error.h"
 #include "platform/window.h"
 #include "sim/jolt_runtime.h"
 
-#include <cstdio>
-
 int main() {
     if (!rally::sim::jolt_abi_matches()) {
-        std::fprintf(stderr, "Jolt se compiló con definiciones distintas a las del juego.\n");
+        rally::platform::show_fatal_error(
+            "Jolt se compiló con definiciones distintas a las del juego.");
         return 1;
     }
 

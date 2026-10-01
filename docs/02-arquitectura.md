@@ -10,7 +10,7 @@ Motor propio en C++ sobre librerías pequeñas enlazadas de forma estática. El 
 | --- | --- | --- |
 | Lenguaje y compilación | C++20, CMake, MSVC | Solo Windows 10/11 de 64 bits |
 | Ventana, render, entrada | raylib con backend SDL (OpenGL 3.3) | SDL da vibración, DualSense, mandos genéricos y conexión en caliente |
-| Física | Jolt Physics | `JPH_DOUBLE_PRECISION`, `JPH_CROSS_PLATFORM_DETERMINISTIC`, un hilo (`JobSystemSingleThreaded`) |
+| Física | Jolt Physics | `JPH_DOUBLE_PRECISION`, `JPH_CROSS_PLATFORM_DETERMINISTIC`, un hilo (`JobSystemSingleThreaded`); instrucciones hasta SSE4.2 (sin AVX, AVX2, LZCNT, TZCNT ni F16C) |
 | Red | ENet sobre UDP | Entre casas: Tailscale o puerto abierto |
 | Audio | miniaudio (el que usa raylib) | Mezcla por canales propia |
 | Voz integrada [post-1.0] | Opus + miniaudio | Supresión de ruido ligera (p. ej. RNNoise) |
