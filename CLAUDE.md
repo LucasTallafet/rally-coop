@@ -61,7 +61,7 @@ La simulación tiene que dar exactamente el mismo resultado con las mismas entra
 - `src/gen/`: generador y validador.
 - `src/game/`: sesión, copiloto, conductor, acciones, puntuación.
 - `src/net/`: red y cambio de host.
-- `tests/`, `tools/` (analizador en Python, visor de semillas), `prototypes/` (fase 0), `data/` (perfiles, duraciones de acciones, tramos a mano).
+- `tests/`, `tools/` (analizador en Python, visor de semillas), `data/` (perfiles, duraciones de acciones, tramos a mano).
 
 ## Cosas que no hacer
 
