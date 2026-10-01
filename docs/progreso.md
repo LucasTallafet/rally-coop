@@ -20,7 +20,7 @@ Más reciente arriba.
 
 | Fecha | Fase | Horas | Qué se hizo | Siguiente paso |
 | --- | --- | --- | --- | --- |
-| | | | | |
+| 2026-10-01 | 1 | | Tarea 1, base de compilación: CMake con presets windows-debug/release (VS 2022, `/MT`); Jolt v5.6.0 (doble precisión, determinista, SSE4.2), SDL 3.4.16 y raylib 6.0 (backend SDL), doctest v2.5.3, por FetchContent con SHA256. Targets `rally_sim`/`rally_platform`/`rally`/`rally_tests`; comprobaciones al configurar (JPH_* solo desde Jolt, sin `/fp:fast` ni `/fp:contract`, sin AVX, simulación sin raylib) y `fp_guard.h`. `rmath`, PCG32 con valores de pcg-c, caja de Jolt bit a bit en dos pasadas, test de reglas con `cmake -P`. `.clang-format`. Ventana de 1280×720 que se cierra con Esc. 14/14 tests en Release y Debug | Tarea 2: bucle con paso fijo de 240 Hz, acumulador, interpolación y tope de pasos |
 
 ## Hallazgos de las pruebas
 

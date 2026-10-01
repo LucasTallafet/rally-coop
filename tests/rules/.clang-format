@@ -1,0 +1,3 @@
+# Ejemplos del test de reglas: se dejan tal cual, no se compilan.
+DisableFormat: true
+SortIncludes: Never

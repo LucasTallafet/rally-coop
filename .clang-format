@@ -1,0 +1,28 @@
+# Formato del código C++ de Rally Coop. Versión fijada: clang-format 23.1.2
+# (python -m pip install --user clang-format==23.1.2).
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+IndentWidth: 4
+ColumnLimit: 100
+PointerAlignment: Left
+ReferenceAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Attach
+InsertBraces: true
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # 1: cabecera propia del .cpp (automática). 2: nuestras cabeceras. 3: terceros. 4: estándar.
+  - Regex: '^"'
+    Priority: 2
+  - Regex: '^<(Jolt|raylib|doctest|SDL3)'
+    Priority: 3
+  - Regex: '^<'
+    Priority: 4

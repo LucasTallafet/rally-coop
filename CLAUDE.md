@@ -27,12 +27,12 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 - Documentos, comentarios y mensajes para mí: español.
 - Identificadores, nombres de archivo de código y mensajes de commit: inglés.
 - C++20. Sin excepciones ni reservas de memoria dentro del paso de simulación.
-- Formato con `.clang-format` del repositorio (se crea en la fase 1).
+- Formato con `.clang-format` del repositorio, con clang-format 23.1.2 fijado (`python -m pip install --user clang-format==23.1.2`). Comprobar: `clang-format --dry-run --Werror` sobre `src/` y `tests/`.
 - Unidades SI en toda la simulación: metros, segundos, radianes, kilogramos. Velocidades en m/s internamente; km/h solo en la interfaz.
 
 ## Compilar y probar
 
-Los comandos se fijan en la fase 1. Cuando existan, actualiza esta sección. Previstos:
+Requisitos: Visual Studio 2022 con "Desarrollo para el escritorio con C++" (MSVC ≥ 19.30) y CMake ≥ 3.25 en el PATH. Funciona desde cualquier terminal, sin Developer PowerShell (generador "Visual Studio 17 2022"). El primer configure descarga las dependencias (unos 90 s).
 
 ```
 cmake --preset windows-release
@@ -40,6 +40,13 @@ cmake --build --preset windows-release
 ctest --preset windows-release
 ```
 
+- Debug: los mismos comandos con `windows-debug`. Salidas en `build/<preset>/`; ejecutable en `build/windows-release/src/Release/rally.exe`.
+- Dependencias en `cmake/Dependencies.cmake`, fijadas por URL y SHA256: Jolt v5.6.0, SDL 3.4.16 (estática), raylib 6.0 (backend SDL), doctest v2.5.3. Runtime estático `/MT`: un solo `.exe` sin DLL.
+- Objetivo SSE4.2: sin AVX, LZCNT, TZCNT, F16C ni FMA en Jolt y sin `/arch` en nuestro código.
+- Targets: `rally_sim` (src/sim, enlaza Jolt y nunca raylib), `rally_platform` (src/platform, raylib), `rally` (ejecutable), `rally_tests` (doctest, solo `rally_sim`).
+- El configure falla si un target nuestro define `JPH_*` (llegan solo de Jolt), si lo que compila simulación usa `/fp:fast` o `/fp:contract`, si algo usa `/arch:AVX*` o si la simulación o los tests enlazan raylib o SDL (`cmake/CheckBuildRules.cmake`). `src/sim/fp_guard.h` hace lo mismo con `#error`.
+- `cmake/CheckSimRules.cmake` (test `sim_rules.*` en ctest) revisa src/sim, src/gen y src/net: matemática fuera de `rmath`, `<random>`, `rand()`, `unordered_*`, y reloj solo en sim y gen. Excepción por línea: `// rmath-allow: <motivo>`.
+- Nombres de test sin corchetes ni `;`: rompen el descubrimiento de doctest en CMake.
 - Todo test debe poder correr sin ventana ni mando.
 - Antes de dar una tarea por terminada, compila en Release y pasa todos los tests.
 
