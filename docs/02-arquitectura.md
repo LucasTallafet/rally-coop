@@ -14,7 +14,7 @@ Motor propio en C++ sobre librerías pequeñas enlazadas de forma estática. El 
 | Red | ENet sobre UDP | Entre casas: Tailscale o puerto abierto |
 | Audio | miniaudio (el que usa raylib) | Mezcla por canales propia |
 | Voz integrada [post-1.0] | Opus + miniaudio | Supresión de ruido ligera (p. ej. RNNoise) |
-| Herramientas | Python 3 | Analizador de tramos reales, scripts de la fase 0 |
+| Herramientas | Python 3 | Analizador de tramos reales; pruebas de la fase 0 solo si hacen falta |
 
 ## 2. Módulos
 
@@ -236,6 +236,6 @@ rally-coop/
 │   └── net/         red y cambio de host
 ├── tests/
 ├── tools/           analizador (Python), visor de semillas
-├── prototypes/      fase 0
+├── prototypes/      fase 0 (omitida; solo si hace falta)
 └── data/            perfiles de ritmo, duraciones de acciones, tramos a mano
 ```

@@ -11,7 +11,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Enfoque | Uso personal, no comercial; sin hoja de ruta online | Cerrada |
 | Objetivo | Calidad primero desde el día 1; sin fecha fija, avance medido con el plan | Cerrada |
 | Público | Parejas de amigos que buscan un reto juntos; modo 1 jugador después de la 1.0 | Cerrada |
-| Alcance 1.0 | Fases 0 a 6: cooperativo completo, montaña, un coche, seco de día, generador con validador, dos pasadas, monedas | Cerrada |
+| Alcance 1.0 | Fases 1 a 6 (la 0 se omitió): cooperativo completo, montaña, un coche, seco de día, generador con validador, dos pasadas, monedas | Cerrada |
 | Regla de alcance | Solo se implementa lo que este juego usa; lo demás se aplaza a su fase | Cerrada |
 | Pruebas | Las decisiones de diseño se validan jugando con otra persona; copiloto bot de desarrollo desde la fase 3 | Cerrada |
 
@@ -53,7 +53,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Diales | Principal de 14 (dos gestos con mando), secundario de 8, distancias de 8 en el gatillo izquierdo | Provisional hasta la fase 3 |
 | Panel del conductor | Curva · distancia · curva; solo lo que pone el copiloto | Provisional hasta la fase 3 |
 | Notas | El juego nunca las corrige, filtra ni une; borrar última o vaciar cola | Cerrada |
-| Densidad de curvas | Máximo fijado con las notas por minuto medidas en la fase 0 | Provisional hasta la fase 3 |
+| Densidad de curvas | Máximo fijado con las notas por minuto medidas en la fase 3 | Provisional hasta la fase 3 |
 | Puntuación | Por curva con racha, solo el primer intento, sin puntuar las notas | Provisional hasta la fase 4 |
 | Monedas | Por minuto de tramo, con tiempo de referencia del coche elegido; medallas como rangos | Provisional hasta la fase 4 |
 | Tienda | Abre con la personalización, después de la 1.0; coches nuevos de uno en uno | Cerrada |

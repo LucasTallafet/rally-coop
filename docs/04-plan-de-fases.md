@@ -2,7 +2,7 @@
 
 Versión final de trabajo · 1 de octubre de 2026
 
-La 1.0 son las fases 0 a 6: el juego cooperativo completo para jugar con un amigo, en un entorno, con un coche, seco de día. Sin fecha fija: el avance se mide con las horas reales de cada fase frente a las previstas (`progreso.md`).
+La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo para jugar con un amigo, en un entorno, con un coche, seco de día. Sin fecha fija: el avance se mide con las horas reales de cada fase frente a las previstas (`progreso.md`).
 
 **Reglas del plan**
 - Cada fase termina con algo jugable y medido, y no se pasa a la siguiente hasta cumplir su criterio.

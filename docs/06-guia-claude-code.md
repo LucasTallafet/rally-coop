@@ -6,7 +6,7 @@ Guía para montar el repositorio y trabajar el proyecto con Claude Code en Windo
 
 1. **Git para Windows:** <https://git-scm.com/downloads/win>. Claude Code lo usa para tener una terminal Bash.
 2. **Visual Studio 2022 Community o Build Tools,** con la carga de trabajo "Desarrollo para el escritorio con C++". Incluye el compilador MSVC y CMake.
-3. **Python 3.12 o posterior,** marcando "Add python.exe to PATH". Hace falta para la fase 0 y el analizador.
+3. **Python 3.12 o posterior,** marcando "Add python.exe to PATH". Hace falta para el analizador de la fase 4.
 4. **Claude Code.** En PowerShell, sin permisos de administrador:
 
    ```powershell
@@ -54,7 +54,15 @@ Para mantener el contexto entre sesiones:
 
 ## 5. Primeras tareas
 
-### Fase 0 · Prueba A: mapa en vivo para DiRT Rally 2.0
+### Fase 1 · Arranque del motor
+
+> Empezamos la fase 1. Propón la estructura de CMake con presets para Windows, cómo traer raylib (backend SDL) y Jolt, y los flags de Jolt y del compilador que piden las reglas de simulación. Incluye el primer test de CTest. Plan primero.
+
+### Referencia: pruebas de la fase 0 (omitida)
+
+La fase 0 se omitió (ver `docs/05-decisiones.md`). Estos prompts se conservan por si el corte vertical sale dudoso y hace falta aislar el problema.
+
+#### Fase 0 · Prueba A: mapa en vivo para DiRT Rally 2.0
 
 > Vamos con la prueba A de la fase 0 (ver `docs/04-plan-de-fases.md`). Crea en `prototypes/dirt-map/` un script en Python que:
 > 1. reciba la telemetría UDP de DiRT Rally 2.0 con `extradata="3"` en el puerto 20777 (investiga el formato del paquete);
@@ -64,13 +72,9 @@ Para mantener el contexto entre sesiones:
 >
 > Usa pygame. Propón primero el plan.
 
-### Fase 0 · Prueba B: prototipo 2D a dos jugadores
+#### Fase 0 · Prueba B: prototipo 2D a dos jugadores
 
 > Prueba B de la fase 0. En `prototypes/coop-2d/`, un prototipo en Python con pygame y dos procesos conectados por UDP: conductor con vista cenital girada y un cono de 40 m visible, y copiloto con mapa, cursor libre, dial principal, dial de distancias y borrar, tal como están en `docs/01-diseno-de-juego.md`. La carretera se lee de un archivo de texto de primitivas (recta, clotoide, arco). Panel del conductor curva · distancia · curva. Empieza por un plan dividido en pasos pequeños que pueda probar entre medias.
-
-### Fase 1 · Arranque del motor
-
-> Empezamos la fase 1. Propón la estructura de CMake con presets para Windows, cómo traer raylib (backend SDL) y Jolt, y los flags de Jolt y del compilador que piden las reglas de simulación. Incluye el primer test de CTest. Plan primero.
 
 ## 6. Qué vigilar
 
