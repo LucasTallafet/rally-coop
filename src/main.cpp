@@ -1,8 +1,10 @@
+#include "platform/box_demo.h"
 #include "platform/fatal_error.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_pacer.h"
-#include "platform/loop_demo.h"
+#include "platform/input.h"
 #include "platform/window.h"
+#include "sim/check.h"
 #include "sim/jolt_runtime.h"
 
 #include <cstdint>
@@ -23,18 +25,22 @@ int main() {
             "Jolt se compiló con definiciones distintas a las del juego.");
         return 1;
     }
+    rally::sim::set_check_handler(&rally::platform::show_fatal_error);
 
+    const rally::sim::JoltRuntime jolt;
     rally::platform::Window window(1280, 720, "Rally Coop");
     rally::platform::FramePacer pacer;
     rally::platform::FixedStepClock clock;
-    rally::platform::LoopDemo demo;
+    rally::platform::BoxDemo demo;
+    rally::platform::KeyboardInput keyboard;
 
     while (!window.should_close()) {
         const std::int64_t frame_ns = pacer.begin_frame();
         const rally::platform::FrameSteps steps = clock.advance(frame_ns);
 
         demo.handle_keys(pacer);
-        const rally::platform::DemoInput input = demo.read_input(); // una vez por fotograma
+        // La entrada se lee una vez por fotograma y vale para todos sus pasos.
+        const rally::sim::SimInput input = keyboard.read(steps.count);
         for (int i = 0; i < steps.count; ++i) {
             demo.step(input);
         }

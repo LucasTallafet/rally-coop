@@ -61,6 +61,7 @@ La simulación tiene que dar exactamente el mismo resultado con las mismas entra
 - Nada de la simulación lee el reloj, el número de fotograma ni datos del render o del audio.
 - Sin `/fp:fast` ni contracción FMA.
 - Si un cambio puede alterar el resultado de una simulación, ejecuta el test de reproducibilidad y dilo en el resumen.
+- Si el test de huella falla por un cambio intencionado, actualiza la huella y dilo en el mensaje del commit.
 
 ## Estructura
 

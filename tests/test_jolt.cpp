@@ -1,5 +1,6 @@
 #include "sim/jolt_config.h"
 #include "sim/jolt_runtime.h"
+#include "sim/layers.h"
 
 #include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Core/TempAllocator.h>
@@ -16,35 +17,7 @@
 
 namespace {
 
-// Capas mínimas para el test: una estática y una móvil.
-namespace layers {
-constexpr JPH::ObjectLayer kStatic = 0;
-constexpr JPH::ObjectLayer kMoving = 1;
-constexpr JPH::uint kCount = 2;
-} // namespace layers
-
-class BroadPhaseLayers final : public JPH::BroadPhaseLayerInterface {
-public:
-    JPH::uint GetNumBroadPhaseLayers() const override { return layers::kCount; }
-    JPH::BroadPhaseLayer GetBroadPhaseLayer(JPH::ObjectLayer layer) const override {
-        return JPH::BroadPhaseLayer(static_cast<JPH::BroadPhaseLayer::Type>(layer));
-    }
-};
-
-class ObjectVsBroadPhase final : public JPH::ObjectVsBroadPhaseLayerFilter {
-public:
-    bool ShouldCollide(JPH::ObjectLayer layer, JPH::BroadPhaseLayer bp) const override {
-        return layer == layers::kMoving ||
-               bp.GetValue() == static_cast<JPH::BroadPhaseLayer::Type>(layers::kMoving);
-    }
-};
-
-class ObjectPairs final : public JPH::ObjectLayerPairFilter {
-public:
-    bool ShouldCollide(JPH::ObjectLayer a, JPH::ObjectLayer b) const override {
-        return a == layers::kMoving || b == layers::kMoving;
-    }
-};
+namespace layers = rally::sim::layers;
 
 struct DropResult {
     JPH::RVec3 position;
@@ -64,9 +37,9 @@ DropResult run_box_drop() {
     JPH::TempAllocatorImpl temp_allocator(4 * 1024 * 1024);
     JPH::JobSystemSingleThreaded job_system(JPH::cMaxPhysicsJobs);
 
-    const BroadPhaseLayers broad_phase_layers;
-    const ObjectVsBroadPhase object_vs_broad_phase;
-    const ObjectPairs object_pairs;
+    const layers::BroadPhaseLayers broad_phase_layers;
+    const layers::ObjectVsBroadPhase object_vs_broad_phase;
+    const layers::ObjectPairs object_pairs;
 
     JPH::PhysicsSystem system;
     system.Init(16, 0, 16, 16, broad_phase_layers, object_vs_broad_phase, object_pairs);

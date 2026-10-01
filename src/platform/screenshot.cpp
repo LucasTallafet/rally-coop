@@ -1,7 +1,6 @@
 #include "platform/screenshot.h"
 
 #include <raylib.h>
-
 #include <rlgl.h>
 
 namespace rally::platform {

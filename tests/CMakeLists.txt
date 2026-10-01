@@ -1,16 +1,28 @@
 # Los tests enlazan solo la simulación y el bucle sin dependencias: corren sin ventana ni mando.
 add_executable(rally_tests
     test_main.cpp
+    new_counter.cpp
+    test_button_latch.cpp
     test_fixed_step_clock.cpp
     test_interpolation.cpp
     test_jolt.cpp
     test_pcg32.cpp
     test_rmath.cpp
+    test_sim_world.cpp
 )
 target_link_libraries(rally_tests PRIVATE rally_sim rally_loop doctest::doctest rally_warnings)
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(rally_tests)
+
+# Test de muerte: doctest no los tiene. Un ejecutable propio que tiene que abortar con el
+# mensaje de RALLY_CHECK; si sigue después de la llamada prohibida, escribe NO_ABORT.
+add_executable(rally_check_abort check_abort.cpp)
+target_link_libraries(rally_check_abort PRIVATE rally_sim rally_warnings)
+add_test(NAME sim_world.build_after_seal_aborts COMMAND rally_check_abort)
+set_tests_properties(sim_world.build_after_seal_aborts PROPERTIES
+    PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: .*tras seal"
+    FAIL_REGULAR_EXPRESSION "NO_ABORT")
 
 # Reglas de simulación (cmake -P, sin Python). Se prueba el propio script con dos
 # árboles de ejemplo: uno con un número exacto de infracciones y otro limpio.

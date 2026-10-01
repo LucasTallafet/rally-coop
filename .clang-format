@@ -22,7 +22,7 @@ IncludeCategories:
   # 1: cabecera propia del .cpp (automática). 2: nuestras cabeceras. 3: terceros. 4: estándar.
   - Regex: '^"'
     Priority: 2
-  - Regex: '^<(Jolt|raylib|doctest|SDL3)'
+  - Regex: '^<(Jolt|raylib|raymath|rlgl|doctest|SDL3)'
     Priority: 3
   - Regex: '^<'
     Priority: 4
