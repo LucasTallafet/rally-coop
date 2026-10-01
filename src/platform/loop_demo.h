@@ -3,6 +3,7 @@
 #include "platform/interpolation.h"
 
 #include <cstdint>
+#include <string>
 
 namespace rally::platform {
 
@@ -40,6 +41,7 @@ private:
     Pose previous_;
     Pose current_;
     bool interpolate_ = true;
+    std::string renderer_; // GL_RENDERER; pasará al contador de rendimiento (tarea 6)
 
     // Contador en pantalla: media de fps y ms cada medio segundo.
     std::int64_t stats_ns_ = 0;

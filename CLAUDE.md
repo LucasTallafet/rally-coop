@@ -49,6 +49,7 @@ ctest --preset windows-release
 - Nombres de test sin corchetes ni `;`: rompen el descubrimiento de doctest en CMake.
 - Todo test debe poder correr sin ventana ni mando.
 - Antes de dar una tarea por terminada, compila en Release y pasa todos los tests.
+- El exe pide la gráfica dedicada (AMD/NVIDIA); en PCs con gráfica integrada, comprobar en pantalla qué gráfica se usa.
 
 ## Reglas de la simulación (críticas)
 

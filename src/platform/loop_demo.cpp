@@ -3,10 +3,12 @@
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_pacer.h"
 
+#include <SDL3/SDL_video.h>
 #include <raylib.h>
 
 #include <cmath>
 #include <numbers>
+#include <string>
 
 namespace rally::platform {
 
@@ -29,9 +31,19 @@ Pose pose_at(double orbit, double spin) {
     return pose;
 }
 
+// Nombre de la gráfica (GL_RENDERER). raylib no lo expone; glGetString se pide a SDL.
+std::string query_renderer() {
+    constexpr unsigned int kGlRenderer = 0x1F01;
+    using GetString = const unsigned char*(__stdcall*)(unsigned int);
+    const auto get_string = reinterpret_cast<GetString>(SDL_GL_GetProcAddress("glGetString"));
+    const unsigned char* name = get_string != nullptr ? get_string(kGlRenderer) : nullptr;
+    return name != nullptr ? reinterpret_cast<const char*>(name) : "desconocida";
+}
+
 } // namespace
 
-LoopDemo::LoopDemo() : previous_(pose_at(0.0, 0.0)), current_(previous_) {}
+LoopDemo::LoopDemo()
+    : previous_(pose_at(0.0, 0.0)), current_(previous_), renderer_(query_renderer()) {}
 
 void LoopDemo::handle_keys(FramePacer& pacer) {
     if (IsKeyPressed(KEY_F)) {
@@ -105,6 +117,7 @@ void LoopDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FrameP
                         pacer.swap_interval(), method),
              16, 94, 20, text);
     DrawText(TextFormat("interpolación: %s", interpolate_ ? "sí" : "no"), 16, 120, 20, text);
+    DrawText(TextFormat("gráfica: %s", renderer_.c_str()), 16, 146, 20, text);
     DrawText("F: monitor/30 fps   I: interpolación   V: sincronización vertical   "
              "Espacio: al revés   Esc: salir",
              16, GetScreenHeight() - 36, 20, Color{150, 156, 168, 255});

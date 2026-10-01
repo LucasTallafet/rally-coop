@@ -7,6 +7,16 @@
 
 #include <cstdint>
 
+// Piden la gráfica dedicada en PCs con dos gráficas (AMD PowerXpress y NVIDIA Optimus).
+// Sin ellas, OpenGL puede elegir la integrada aunque el monitor esté en la dedicada.
+// Los controladores solo buscan estos símbolos entre las exportaciones del .exe: en una
+// biblioteca estática el enlazador los descartaría al no usarse, y en una DLL no se miran.
+// El tipo es DWORD (unsigned long) sin incluir <windows.h>.
+extern "C" {
+__declspec(dllexport) unsigned long AmdPowerXpressRequestHighPerformance = 1;
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+}
+
 int main() {
     if (!rally::sim::jolt_abi_matches()) {
         rally::platform::show_fatal_error(
