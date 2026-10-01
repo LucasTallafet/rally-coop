@@ -24,7 +24,8 @@ constexpr JPH::uint kMaxBodyPairs = 1024;
 constexpr JPH::uint kMaxContactConstraints = 1024;
 constexpr std::size_t kTempAllocatorBytes = 4 * 1024 * 1024;
 
-constexpr float kMoveAcceleration = 10.0f; // m/s² con el eje a fondo
+constexpr float kMoveAcceleration = 10.0f; // m/s² con el acelerador a fondo
+constexpr float kTurnRate = 1.5f;          // rad/s alrededor de Y con la dirección a fondo
 constexpr float kJumpSpeed = 5.0f;         // m/s hacia arriba que suma el impulso de salto
 
 enum class State : std::uint8_t { Empty, Built, Sealed };
@@ -76,11 +77,18 @@ void SimWorld::build(const WorldDesc& desc) {
     for (int i = 0; i < count; ++i) {
         const BoxDesc& box = desc.bodies[static_cast<std::size_t>(i)];
         const bool dynamic = box.motion == BodyMotion::Dynamic;
-        const JPH::BodyCreationSettings settings(
+        JPH::BodyCreationSettings settings(
             new JPH::BoxShape(JPH::Vec3(box.half_x, box.half_y, box.half_z)),
             JPH::RVec3(box.x, box.y, box.z), JPH::Quat::sIdentity(),
             dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
             dynamic ? layers::kMoving : layers::kStatic);
+        if (i == desc.controlled) {
+            // Como un coche simplificado: se traslada en los tres ejes y solo gira alrededor
+            // de la vertical. No vuelca ni cabecea.
+            settings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX |
+                                    JPH::EAllowedDOFs::TranslationY |
+                                    JPH::EAllowedDOFs::TranslationZ | JPH::EAllowedDOFs::RotationY;
+        }
         const JPH::Body* body = bodies.CreateBody(settings);
         RALLY_CHECK(body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
         w.bodies.push_back(body->GetID());
@@ -117,18 +125,18 @@ void SimWorld::step(const SimInput& input) {
     if (!w.controlled.IsInvalid()) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
         constexpr float kAxisScale = 1.0f / kAxisMax;
-        float move_x = rmath::clamp(input.move_x * kAxisScale, -1.0f, 1.0f);
-        float move_z = rmath::clamp(input.move_z * kAxisScale, -1.0f, 1.0f);
-        const float length_sq = move_x * move_x + move_z * move_z;
-        if (length_sq > 1.0f) {
-            const float inverse_length = 1.0f / rmath::sqrt(length_sq);
-            move_x *= inverse_length;
-            move_z *= inverse_length;
+        const float throttle = rmath::clamp(input.throttle * kAxisScale, -1.0f, 1.0f);
+        const float steer = rmath::clamp(input.steer * kAxisScale, -1.0f, 1.0f);
+        // Adelante es -z local. Con la rotación limitada a Y, el empuje queda horizontal.
+        if (throttle != 0.0f) {
+            const JPH::Vec3 forward = bodies.GetRotation(w.controlled) * JPH::Vec3(0, 0, -1);
+            bodies.AddForce(w.controlled,
+                            forward * (throttle * w.controlled_mass * kMoveAcceleration));
         }
-        if (length_sq > 0.0f) {
-            const float force = w.controlled_mass * kMoveAcceleration;
-            bodies.AddForce(w.controlled, JPH::Vec3(move_x * force, 0.0f, move_z * force));
-        }
+        // La dirección fija la velocidad de giro en cada paso (también a 0): sin dirección no
+        // gira, aunque un choque lo empuje de lado. Un giro positivo alrededor de +y lleva -z
+        // hacia -x: girar a la derecha es negativo.
+        bodies.SetAngularVelocity(w.controlled, JPH::Vec3(0.0f, -steer * kTurnRate, 0.0f));
         const bool jump_pressed =
             (input.buttons & kButtonJump) != 0 && (w.previous_buttons & kButtonJump) == 0;
         if (jump_pressed) {

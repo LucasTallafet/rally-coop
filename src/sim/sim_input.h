@@ -14,8 +14,8 @@ inline constexpr std::uint16_t kButtonJump = 1u << 0;
 // por paso (fase 2) la guarda byte a byte y la reproduce exacta. La traducción desde el
 // teclado o el mando va en src/platform; aquí nunca entra un float del dispositivo.
 struct SimInput {
-    std::int16_t move_x = 0;   // empuje hacia +x del mundo, en [-kAxisMax, kAxisMax]
-    std::int16_t move_z = 0;   // empuje hacia +z del mundo, en [-kAxisMax, kAxisMax]
+    std::int16_t throttle = 0; // empuje hacia delante (+) o atrás (-), en [-kAxisMax, kAxisMax]
+    std::int16_t steer = 0; // giro a la derecha (+) o a la izquierda (-), en [-kAxisMax, kAxisMax]
     std::uint16_t buttons = 0; // kButton*
 };
 

@@ -20,8 +20,8 @@ std::int16_t keyboard_axis(bool negative, bool positive) {
 
 sim::SimInput KeyboardInput::read(int step_count) {
     sim::SimInput input;
-    input.move_x = keyboard_axis(down(KEY_A, KEY_LEFT), down(KEY_D, KEY_RIGHT));
-    input.move_z = keyboard_axis(down(KEY_W, KEY_UP), down(KEY_S, KEY_DOWN));
+    input.throttle = keyboard_axis(down(KEY_S, KEY_DOWN), down(KEY_W, KEY_UP));
+    input.steer = keyboard_axis(down(KEY_A, KEY_LEFT), down(KEY_D, KEY_RIGHT));
     std::uint16_t buttons = 0;
     // IsKeyPressed recoge también una pulsación que empieza y acaba dentro del fotograma.
     if (IsKeyDown(KEY_SPACE) || IsKeyPressed(KEY_SPACE)) {

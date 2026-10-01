@@ -66,8 +66,10 @@ public:
     void seal();
     bool is_sealed() const;
 
-    // La entrada se aplica antes de integrar: empuje horizontal del cuerpo controlado
-    // (aceleración constante; en diagonal no suma más) e impulso de salto al pulsar.
+    // La entrada se aplica antes de integrar, al cuerpo controlado: empuje en su dirección
+    // adelante (-z local, aceleración constante), velocidad de giro alrededor de Y
+    // proporcional a la dirección e impulso de salto al pulsar. El cuerpo controlado solo
+    // gira alrededor de Y.
     void step(const SimInput& input);
 
     int body_count() const;

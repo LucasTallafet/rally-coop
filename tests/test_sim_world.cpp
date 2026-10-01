@@ -32,7 +32,7 @@ using rally::sim::WorldDesc;
 // Huella del SaveState tras 60 s de entradas pseudoaleatorias (run_random_inputs).
 // Si el test de huella falla por un cambio intencionado, se copia aquí el valor nuevo y se
 // dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedFingerprint = 0xc7a1d7403144e958ull;
+constexpr std::uint64_t kExpectedFingerprint = 0xb9600f45966b5f98ull;
 
 constexpr int kSecondsOfInput = 60;
 constexpr int kStepsPerFrame = 4; // la entrada cambia cada fotograma de 60 fps
@@ -40,9 +40,11 @@ constexpr int kControlled = 5;
 
 constexpr int kWarmupSteps = 10;
 constexpr int kCountedSteps = 1000;
-// Reservas de Jolt 5.6.0 en cada paso con algún cuerpo en movimiento: la broad phase
-// reconstruye el árbol de la capa móvil y QuadTree::UpdatePrepare y QuadTree::BuildTree
-// hacen un new[] cada uno (con su delete[] en la misma llamada). Tamaño constante y sin
+// Reservas de Jolt 5.6.0 en cada paso que deja sucio el árbol de la capa móvil (algún
+// cuerpo cambió de caja envolvente; si no, ninguna): la broad phase lo reconstruye y
+// QuadTree::UpdatePrepare y QuadTree::BuildTree hacen un new[] cada uno (con su delete[]
+// en la misma llamada). Desde que la caja controlada solo gira en Y hay pasos sin
+// reservas (un 25 % con las entradas de este test). Tamaño constante y sin
 // efecto en la reproducibilidad; aceptado (docs/progreso.md, hallazgos). Si un cambio
 // intencionado lo altera, se actualiza como la huella.
 constexpr int kJoltAllocationsPerStep = 2;
@@ -85,8 +87,8 @@ std::vector<SimInput> random_inputs(int seconds) {
     inputs.reserve(static_cast<std::size_t>(seconds * rally::sim::kStepsPerSecond));
     while (inputs.size() < inputs.capacity()) {
         SimInput input;
-        input.move_x = random_axis(rng);
-        input.move_z = random_axis(rng);
+        input.throttle = random_axis(rng);
+        input.steer = random_axis(rng);
         input.buttons = rng.bounded(90) == 0 ? kButtonJump : 0;
         for (int i = 0; i < kStepsPerFrame && inputs.size() < inputs.capacity(); ++i) {
             inputs.push_back(input);
@@ -121,6 +123,12 @@ RunResult run_random_inputs() {
     result.state = world.save_state();
     return result;
 }
+
+// Ángulo de giro alrededor de +y de una orientación que solo gira en Y.
+double yaw(const BodyPose& pose) { return 2.0 * std::atan2(pose.qy, pose.qw); }
+
+// La caja controlada solo gira alrededor de Y: el cuaternión no tiene componente x ni z.
+bool upright(const BodyPose& pose) { return std::abs(pose.qx) < 1e-6 && std::abs(pose.qz) < 1e-6; }
 
 bool same_bits(double a, double b) {
     return std::bit_cast<std::uint64_t>(a) == std::bit_cast<std::uint64_t>(b);
@@ -216,7 +224,7 @@ TEST_CASE("sim_world: only a sealed world can step") {
     world.step(SimInput{});
 }
 
-TEST_CASE("sim_world: input pushes the controlled box and jump lifts it") {
+TEST_CASE("sim_world: steer turns the controlled box, throttle pushes it forward, jump lifts it") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
     world.build(arena());
@@ -231,15 +239,38 @@ TEST_CASE("sim_world: input pushes the controlled box and jump lifts it") {
     CHECK(std::abs(rest.z) < 1e-3);
     CHECK(std::abs(rest.y - 0.5) < 0.02);
 
-    // Un segundo con el eje x a fondo: avanza hacia +x sin desviarse en z.
-    SimInput push;
-    push.move_x = kAxisMax;
+    // Un segundo con la dirección a fondo a la derecha: gira unos 1,5 rad en el sitio (de
+    // mirar hacia -z a mirar casi hacia +x) sin volcar. El rozamiento con el suelo frena un
+    // poco el giro dentro de cada paso (sale -1,465 rad).
+    SimInput turn;
+    turn.steer = kAxisMax;
     for (int i = 0; i < rally::sim::kStepsPerSecond; ++i) {
+        world.step(turn);
+    }
+    const BodyPose turned = world.pose(kControlled);
+    CHECK(yaw(turned) == doctest::Approx(-1.5).epsilon(0.05));
+    CHECK(upright(turned));
+    CHECK(std::abs(turned.x - rest.x) < 1e-3);
+    CHECK(std::abs(turned.z - rest.z) < 1e-3);
+
+    // Medio segundo de acelerador sin dirección: avanza en su dirección adelante (-z local)
+    // y ya no gira.
+    SimInput push;
+    push.throttle = kAxisMax;
+    for (int i = 0; i < rally::sim::kStepsPerSecond / 2; ++i) {
         world.step(push);
     }
     const BodyPose pushed = world.pose(kControlled);
-    CHECK(pushed.x > 2.0);
-    CHECK(std::abs(pushed.z) < 1e-3);
+    const double heading = yaw(turned);
+    const double forward_x = -std::sin(heading);
+    const double forward_z = -std::cos(heading);
+    const double dx = pushed.x - turned.x;
+    const double dz = pushed.z - turned.z;
+    const double distance = std::sqrt(dx * dx + dz * dz);
+    CHECK(distance > 0.5);
+    CHECK((dx * forward_x + dz * forward_z) / distance > 0.999);
+    CHECK(yaw(pushed) == doctest::Approx(heading).epsilon(1e-6));
+    CHECK(upright(pushed));
 
     // El salto actúa al pulsar, no mientras se mantiene: sube y vuelve a caer una vez.
     SimInput jump;
@@ -260,6 +291,7 @@ TEST_CASE("sim_world: 60 s of random inputs are bit-identical across two runs") 
 
     // Las entradas tienen que haber movido la caja; si no, el test pasaría sin probar nada.
     CHECK(first.max_distance > 3.0);
+    CHECK(upright(first.poses[kControlled]));
 
     REQUIRE(first.poses.size() == second.poses.size());
     for (std::size_t i = 0; i < first.poses.size(); ++i) {
@@ -296,13 +328,26 @@ TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blo
         world.step(inputs[next++]);
     }
 
+    // Reservas de Jolt de cada paso: 0 si nada ha cambiado de caja envolvente, o el bloque
+    // conocido. Se cuentan los pasos de cada clase sin reservar nada nosotros.
     const JoltAllocationCounter jolt;
+    int steps_with_blocks = 0;
+    int steps_without = 0;
+    int steps_other = 0;
     const std::uint64_t ours_before = rally::tests::global_new_count();
     for (int i = 0; i < kCountedSteps; ++i) {
+        const int before = jolt.count();
         world.step(inputs[next++]);
+        const int step_count = jolt.count() - before;
+        if (step_count == kJoltAllocationsPerStep) {
+            ++steps_with_blocks;
+        } else if (step_count == 0) {
+            ++steps_without;
+        } else {
+            ++steps_other;
+        }
     }
     const std::uint64_t ours = rally::tests::global_new_count() - ours_before;
-    const int jolt_count = jolt.count();
 
     // El contador global está activo: si no, el 0 de abajo no probaría nada.
     const std::uint64_t probe_before = rally::tests::global_new_count();
@@ -314,5 +359,10 @@ TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blo
     CHECK(ours == 0);
     INFO("Si un cambio intencionado altera las reservas de Jolt por paso, actualiza "
          "kJoltAllocationsPerStep (tests/test_sim_world.cpp) y dilo en el mensaje del commit.");
-    CHECK(jolt_count == kJoltAllocationsPerStep * kCountedSteps);
+    MESSAGE("pasos con ", kJoltAllocationsPerStep, " reservas de Jolt: ", steps_with_blocks,
+            "; sin reservas: ", steps_without);
+    CHECK(steps_other == 0);
+    // Las entradas mueven la caja en la mayoría de los pasos: si no hubiera ninguno con
+    // reservas, el contador de Jolt no estaría probando nada.
+    CHECK(steps_with_blocks > kCountedSteps / 2);
 }

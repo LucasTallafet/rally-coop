@@ -1,8 +1,9 @@
-# Bucle sin dependencias: reloj de paso fijo, interpolación del estado de render y retención
-# de botones en fotogramas sin pasos.
+# Bucle sin dependencias: reloj de paso fijo, interpolación del estado de render, espacio de
+# la cámara (render relativo) y retención de botones en fotogramas sin pasos.
 # No enlaza raylib ni SDL, para que los tests lo usen sin ventana (cmake/CheckBuildRules.cmake).
 add_library(rally_loop STATIC
     button_latch.cpp
+    camera_space.cpp
     fixed_step_clock.cpp
     interpolation.cpp
 )

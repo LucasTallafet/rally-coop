@@ -3,6 +3,7 @@ add_executable(rally_tests
     test_main.cpp
     new_counter.cpp
     test_button_latch.cpp
+    test_camera_space.cpp
     test_fixed_step_clock.cpp
     test_interpolation.cpp
     test_jolt.cpp
