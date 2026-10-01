@@ -44,16 +44,16 @@ Versión final de trabajo · 1 de octubre de 2026
 | --- | --- | --- |
 | Roles | El conductor conduce y ve poco; el copiloto ve la tablet y canta | Cerrada |
 | Sesión | Dos pasadas, la segunda en sentido contrario con roles cambiados | Provisional hasta la fase 4 |
-| Tablet | Geometría sin notas; mapa por la tangente con zoom fijo; 8–10 s de anticipación | Provisional hasta la fase 0 |
-| Giro del mapa en horquillas | Se prueba la tangente frente a un punto 30–50 m por delante | Provisional hasta la fase 0 |
-| Cinta de ruta | Marca cambios de dirección de más de unos 5° con criterio solo geométrico | Provisional hasta la fase 0 |
-| Notas en la tablet | No se dibujan; solo en la pantalla del salpicadero | Provisional hasta la fase 0 |
-| Cursor | Libre sobre todo el trazado; salta entre cambios de dirección o se desliza | Provisional hasta la fase 0 |
-| Escala de notas | De 6 a H por velocidad de paso en grava seca | Provisional hasta la fase 0 |
-| Diales | Principal de 14 (dos gestos con mando), secundario de 8, distancias de 8 en el gatillo izquierdo | Provisional hasta la fase 0 |
-| Panel del conductor | Curva · distancia · curva; solo lo que pone el copiloto | Provisional hasta la fase 0 |
+| Tablet | Geometría sin notas; mapa por la tangente con zoom fijo; 8–10 s de anticipación | Provisional hasta la fase 3 |
+| Giro del mapa en horquillas | Se prueba la tangente frente a un punto 30–50 m por delante | Provisional hasta la fase 3 |
+| Cinta de ruta | Marca cambios de dirección de más de unos 5° con criterio solo geométrico | Provisional hasta la fase 3 |
+| Notas en la tablet | No se dibujan; solo en la pantalla del salpicadero | Provisional hasta la fase 3 |
+| Cursor | Libre sobre todo el trazado; salta entre cambios de dirección o se desliza | Provisional hasta la fase 3 |
+| Escala de notas | De 6 a H por velocidad de paso en grava seca | Provisional hasta la fase 3 |
+| Diales | Principal de 14 (dos gestos con mando), secundario de 8, distancias de 8 en el gatillo izquierdo | Provisional hasta la fase 3 |
+| Panel del conductor | Curva · distancia · curva; solo lo que pone el copiloto | Provisional hasta la fase 3 |
 | Notas | El juego nunca las corrige, filtra ni une; borrar última o vaciar cola | Cerrada |
-| Densidad de curvas | Máximo fijado con las notas por minuto medidas en la fase 0 | Provisional hasta la fase 0 |
+| Densidad de curvas | Máximo fijado con las notas por minuto medidas en la fase 0 | Provisional hasta la fase 3 |
 | Puntuación | Por curva con racha, solo el primer intento, sin puntuar las notas | Provisional hasta la fase 4 |
 | Monedas | Por minuto de tramo, con tiempo de referencia del coche elegido; medallas como rangos | Provisional hasta la fase 4 |
 | Tienda | Abre con la personalización, después de la 1.0; coches nuevos de uno en uno | Cerrada |
@@ -77,3 +77,4 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-01 | Carga del tramo | Por trozos alrededor del coche | Física entera; gráficos por ventana | Validar el tramo entero y simplificar la reproducibilidad |
 | 2026-10-01 | Requisitos | Gráfica integrada, < 100 MB | GTX 1060, ≤ 1 GB | Más vegetación, sombras y distancia de dibujado manteniendo el estilo low-poly |
 | 2026-10-01 | Alcance 1.0 | Incluía barro y limpiaparabrisas | Después de la 1.0 | Calidad antes que cantidad |
+| 2026-10-01 | Fase 0 | Pruebas del concepto antes de escribir el motor | Omitida; sus mediciones pasan al corte vertical (fase 3) | Se desarrolla el juego en cualquier caso; la idea se comprueba con el juego real en la fase 3 |

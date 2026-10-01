@@ -7,25 +7,27 @@ La 1.0 son las fases 0 a 6: el juego cooperativo completo para jugar con un amig
 **Reglas del plan**
 - Cada fase termina con algo jugable y medido, y no se pasa a la siguiente hasta cumplir su criterio.
 - Las decisiones de diseño se validan siempre jugando con otra persona.
-- La fase 0 comprueba la idea antes de escribir el motor; la fase 3 la comprueba con el juego real antes de invertir en el generador.
-- Al terminar las fases 0 y 2 se rehace la estimación con horas reales.
+- La fase 3 comprueba la idea con el juego real antes de invertir en el generador.
+- Al terminar las fases 1 y 2 se rehace la estimación con horas reales.
 
 ## Resumen
 
 | Fase | Contenido | Horas previstas |
 | --- | --- | --- |
-| 0 · Pruebas del concepto | DiRT Rally 2.0 con mapa propio; prototipo 2D a dos jugadores | 30 |
+| 0 · Pruebas del concepto | Omitida (ver `05-decisiones.md`) | 0 |
 | 1 · Base del motor | Bucle, render básico, entrada, Jolt configurado, tests | 60 |
 | 2 · Coche | Controlador con neumático de calidad, ayudas, acciones, sonido básico | 130–160 |
-| 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local | 100–120 |
+| 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 110–130 |
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 120–150 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 60–80 |
 | 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 80–120 |
-| **Total 1.0** | | **580–720** |
+| **Total 1.0** | | **560–700** |
 
-Estimación gruesa: se corrige con datos reales al terminar las fases 0 y 2.
+Estimación gruesa: se corrige con datos reales al terminar las fases 1 y 2.
 
 ## Fase 0 · Pruebas del concepto (~30 h)
+
+**Omitida el 2026-10-01.** Sus preguntas se responden en la fase 3 con el juego real. Se conserva como referencia: si el corte vertical sale dudoso, estas pruebas son la forma barata de aislar el problema.
 
 **Objetivo:** saber si cantar y conducir así es divertido antes de escribir el motor.
 
@@ -58,11 +60,11 @@ CMake y presets; raylib con backend SDL; ventana y bucle con paso fijo de 240 Hz
 
 **Terminado cuando:** pasa la prueba de derrape (círculo de grava de 40 m: derrape sostenido media vuelta, respuesta progresiva al levantar el pie, recogida a 100 km/h con contravolante), una horquilla se toma sin maniobrar, cada ajuste se nota, los baches se notan sin golpes falsos, y la misma secuencia de entradas da el mismo tiempo dos veces.
 
-## Fase 3 · Corte vertical (~100–120 h)
+## Fase 3 · Corte vertical (~110–130 h)
 
-Formato de tramo por primitivas y un tramo de 3–5 km escrito a mano con crestas, curvas tapadas y horquillas; malla de carretera con arcenes cosidos y franja de terreno con colisión; física entera cargada; gráficos por ventana en segundo plano; seguimiento de `s` y `t`, recolocación, atajos y parciales; velocidad de referencia y perfil de velocidad. Tablet (mapa, perfil, cinta, cursor libre), diales principal, secundario y de distancias, borrar; panel del salpicadero con sonido por lado. Segunda instancia conectada por localhost con ENet, host autoritativo, interpolación por número de paso. Copiloto bot de desarrollo.
+Formato de tramo por primitivas y un tramo de 3–5 km escrito a mano con crestas, curvas tapadas y horquillas; malla de carretera con arcenes cosidos y franja de terreno con colisión; física entera cargada; gráficos por ventana en segundo plano; seguimiento de `s` y `t`, recolocación, atajos y parciales; velocidad de referencia y perfil de velocidad. Tablet (mapa, perfil, cinta, cursor libre), diales principal, secundario y de distancias, borrar; panel del salpicadero con sonido por lado. Segunda instancia conectada por localhost con ENet, host autoritativo, interpolación por número de paso. Copiloto bot de desarrollo. Registro de notas (paso, ancla `s`, nota, distancia elegida y distancia real a la curva siguiente) y las dos orientaciones del mapa (tangente y punto 30–50 m por delante) conmutables con una tecla.
 
-**Terminado cuando:** una persona canta mirando solo la tablet, primero por voz y después solo con los diales, y otra termina el tramo; cada nota aparece en su sitio; los tests de `s` en horquillas pasan; y los dos quieren repetir. Si no es divertido, se corrige el diseño antes de construir el generador.
+**Terminado cuando:** una persona canta mirando solo la tablet, primero por voz y después solo con los diales, y otra termina el tramo; cada nota aparece en su sitio; los tests de `s` en horquillas pasan; y los dos quieren repetir. Con el registro de notas se fijan el techo de densidad de curvas, la orientación del mapa en horquillas y las decisiones de tablet, cursor, diales y panel que estaban pendientes de la fase 0. Si no es divertido, se corrige el diseño antes de construir el generador.
 
 ## Fase 4 · Generador (~120–150 h)
 

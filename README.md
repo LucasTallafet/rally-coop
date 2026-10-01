@@ -21,4 +21,4 @@ Juego de rally cooperativo en 3D low-poly para 2 jugadores en 2 PCs: uno conduce
 
 1. Sigue `docs/06-guia-claude-code.md` para instalar y crear el repositorio con este kit.
 2. Monta el proyecto de Claude con `proyecto-claude/LEEME.md`.
-3. Empieza la fase 0: las dos pruebas del concepto.
+3. Empieza la fase 1: base del motor.

@@ -54,11 +54,11 @@ Una sesión son **dos pasadas del mismo tramo**:
 | Perfil de altura (franja inferior) | Corte lateral de la carretera que viene | Crestas, badenes y saltos |
 | Cinta de ruta (franja lateral) | Los próximos 400–600 m en recta, con una marca de sentido en cada cambio de dirección de más de unos 5°, sin su forma | Lo que viene después de lo que cabe en el mapa |
 
-- **Giro del mapa:** sigue la tangente de la carretera en el punto del trazado donde está el coche, suavizada. No depende del morro ni de la velocidad, así que no da bandazos en un derrape ni en un trompo. **A probar en la fase 0:** orientarlo por un punto 30–50 m por delante, para que no dé media vuelta en las horquillas justo cuando el copiloto lee lo que viene.
+- **Giro del mapa:** sigue la tangente de la carretera en el punto del trazado donde está el coche, suavizada. No depende del morro ni de la velocidad, así que no da bandazos en un derrape ni en un trompo. **A probar en la fase 3:** orientarlo por un punto 30–50 m por delante, para que no dé media vuelta en las horquillas justo cuando el copiloto lee lo que viene.
 - **Colores de superficie:** asfalto gris, grava beige, tierra marrón claro, barro marrón, nieve blanca.
 - **La cinta y el mapa no opinan.** Marcan los cambios de dirección con un criterio solo geométrico. No indican cuáles merecen nota.
 - **Las notas cantadas no se dibujan en la tablet.** Solo aparecen en la pantalla del salpicadero. En el mapa solo está el cursor, que marca dónde se anclará la siguiente nota.
-- A medir en la fase 0: si el copiloto pierde la cuenta de lo que ha cantado, se añade una marca neutra de "aquí hay nota", sin decir cuál.
+- A medir en la fase 3: si el copiloto pierde la cuenta de lo que ha cantado, se añade una marca neutra de "aquí hay nota", sin decir cuál.
 
 ## 5. Notas del copiloto
 

@@ -70,7 +70,7 @@ Para mantener el contexto entre sesiones:
 
 ### Fase 1 · Arranque del motor
 
-> Empezamos la fase 1. Propón la estructura de CMake con presets para Windows, cómo traer raylib (backend SDL), Jolt y ENet, y los flags de Jolt y del compilador que piden las reglas de simulación. Incluye el primer test de CTest. Plan primero.
+> Empezamos la fase 1. Propón la estructura de CMake con presets para Windows, cómo traer raylib (backend SDL) y Jolt, y los flags de Jolt y del compilador que piden las reglas de simulación. Incluye el primer test de CTest. Plan primero.
 
 ## 6. Qué vigilar
 

@@ -6,10 +6,10 @@ Se actualiza al cerrar cada sesión de trabajo. Sirve para ver la línea de desa
 
 | Fase | Horas previstas | Horas reales | Estado | Inicio | Fin |
 | --- | --- | --- | --- | --- | --- |
-| 0 · Pruebas del concepto | 30 | 0 | Sin empezar | | |
-| 1 · Base del motor | 60 | 0 | Sin empezar | | |
+| 0 · Pruebas del concepto | 0 | 0 | Omitida | | |
+| 1 · Base del motor | 60 | 0 | En curso | 2026-10-01 | |
 | 2 · Coche | 130–160 | 0 | Sin empezar | | |
-| 3 · Corte vertical | 100–120 | 0 | Sin empezar | | |
+| 3 · Corte vertical | 110–130 | 0 | Sin empezar | | |
 | 4 · Generador | 120–150 | 0 | Sin empezar | | |
 | 5 · Entre casas | 60–80 | 0 | Sin empezar | | |
 | 6 · Calidad visual y sonora | 80–120 | 0 | Sin empezar | | |
