@@ -5,6 +5,7 @@ add_library(rally_loop STATIC
     button_latch.cpp
     camera_space.cpp
     fixed_step_clock.cpp
+    frame_history.cpp
     interpolation.cpp
 )
 target_include_directories(rally_loop PUBLIC ${PROJECT_SOURCE_DIR}/src)
@@ -14,6 +15,7 @@ target_link_libraries(rally_loop PRIVATE rally_warnings)
 # SDL se usa directamente solo para el intervalo de presentación y la frecuencia del monitor.
 add_library(rally_platform STATIC
     box_demo.cpp
+    frame_graph.cpp
     fatal_error.cpp
     frame_pacer.cpp
     input.cpp

@@ -50,6 +50,17 @@ La simulación no depende del render ni del audio. Lo que se dibuja o suena lee 
 - **Sincronización vertical a la frecuencia del monitor (60 fps en 60 Hz)** por defecto; modo de 30 fps para equipos justos, sin espera activa.
 - La entrada se lee una vez por fotograma y se aplica a todos los pasos de física de ese fotograma.
 
+### 3.1 Ajuste del dt al refresco del monitor
+
+Con sincronización vertical, los fotogramas duran un número entero de refrescos, pero el dt se mide al volver de la presentación y no en el refresco: lleva ruido de hasta ~1 ms. Con el acumulador a pelo, un fotograma de 16,2 ms da 3 pasos y el siguiente, de 17,1 ms, da 5. Lo que se ve en pantalla avanza `pasos hechos + alpha`, es decir, el dt usado; si ese dt varía un ±5 %, la velocidad aparente también, y en primera persona se nota como tirones. `FixedStepClock` (en `rally_loop`) lo corrige así:
+
+- **Ajuste.** Con sincronización vertical, `FramePacer` le pasa el periodo de un refresco, con la frecuencia exacta como fracción de SDL (60000/1001 en 59,94 Hz). Si el dt medido está a menos de 1 ms de un múltiplo k ≥ 1 del periodo, se usa k × periodo exacto. Un fotograma perdido (~33 ms a 60 Hz) se ajusta a 2 periodos y da 8 pasos: el ajuste quita el ruido, no esconde los fotogramas perdidos. Fuera de la ventana, el dt pasa tal cual.
+- **Deuda.** La diferencia entre lo medido y lo usado se acumula y se devuelve poco a poco: deuda/16 por fotograma, como mucho 0,1 ms, así que el dt usado varía menos de un 0,6 %. Si pasa de 4 ms, se paga entera en ese fotograma. El tiempo de juego no se separa del real más de eso: `tiempo real − deuda − tiempo de juego` es constante. Si un monitor dice 60 Hz y va a 59,95, la deuda se queda estable en ~0,3 ms y cada ~250 fotogramas sale uno de 5 pasos, sin salto visible.
+- **Fase centrada.** Al empezar a ajustar, la fracción del acumulador se coloca en medio paso. Con fotogramas de un número entero de pasos (60 Hz, 30 fps), alpha se queda cerca de 0,5 y el ruido residual no cruza el borde entre pasos: siempre 4 pasos a 60 Hz. Es un desplazamiento fijo del origen del tiempo de juego (menos de medio paso, 2,1 ms), no deuda: si se devolviera, alpha volvería al borde.
+- El acumulador y la deuda son enteros (ns × 240; un paso son 10⁹ unidades y 1/60 s, 4 × 10⁹ exactos). El tope de pasos por fotograma descarta también la deuda.
+- Es solo del bucle de la plataforma: la simulación sigue viendo solo números de paso.
+- Diagnóstico: `FrameHistory` guarda los últimos 240 fotogramas y la gráfica del contador (`frame_graph`) muestra su duración medida, el tiempo aplicado y los pasos, y separa los fotogramas con pasos distintos de los previstos en perdidos (≥ 1,5 periodos) y ruido de medida.
+
 ## 4. Física
 
 ### 4.1 Configuración de Jolt

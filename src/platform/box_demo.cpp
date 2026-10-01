@@ -2,6 +2,7 @@
 
 #include "platform/camera_space.h"
 #include "platform/fixed_step_clock.h"
+#include "platform/frame_graph.h"
 #include "platform/frame_pacer.h"
 #include "platform/screenshot.h"
 
@@ -230,6 +231,12 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     if (IsKeyPressed(KEY_J)) {
         world_float_ = !world_float_;
     }
+    if (IsKeyPressed(KEY_G)) {
+        graph_visible_ = !graph_visible_;
+    }
+    if (IsKeyPressed(KEY_N)) {
+        snap_ = !snap_;
+    }
     if (IsKeyPressed(KEY_O)) {
         far_from_origin_ = !far_from_origin_;
         desc_ = arena(far_from_origin_ ? kFarOffset : 0.0);
@@ -260,8 +267,10 @@ void BoxDemo::update_stats(std::int64_t frame_ns) {
     }
 }
 
-void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer) {
+void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
+                   const FixedStepClock& clock) {
     update_stats(frame_ns);
+    history_.push(FrameRecord{frame_ns, steps.used, steps.count});
 
     // En pausa se dibuja siempre el mismo estado: todos los fotogramas son idénticos.
     drawn_.resize(current_.size());
@@ -352,14 +361,18 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     DrawText(TextFormat("ojo: %.3f, %.3f, %.3f m   velocidad: %.1f km/h", eye.x, eye.y, eye.z,
                         speed * 3.6),
              16, 198, 20, text);
+    if (graph_visible_) {
+        draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_, 20, 236);
+    }
     const Color help = Color{150, 156, 168, 255};
     DrawText("W/S: acelerar/atrás   A/D: girar   Espacio: saltar   R: reiniciar   "
              "O: origen/20 km",
              16, GetScreenHeight() - 88, 20, help);
     DrawText("Tab: cámara   J: render en float del mundo   F: monitor/30 fps   I: interpolación",
              16, GetScreenHeight() - 62, 20, help);
-    DrawText("V: sincronización vertical   P: pausa   C: captura   Esc: salir", 16,
-             GetScreenHeight() - 36, 20, help);
+    DrawText("V: sincronización vertical   N: ajuste al refresco   G: gráfica   P: pausa   "
+             "C: captura   Esc: salir",
+             16, GetScreenHeight() - 36, 20, help);
 
     if (capture_requested_) {
         save_screenshot();

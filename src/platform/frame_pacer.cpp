@@ -1,5 +1,7 @@
 #include "platform/frame_pacer.h"
 
+#include "platform/fixed_step_clock.h"
+
 #include <SDL3/SDL_video.h>
 
 #include <chrono>
@@ -21,6 +23,7 @@ namespace rally::platform {
 namespace {
 
 constexpr std::int64_t kFps30PeriodNs = 1'000'000'000 / 30;
+constexpr std::int64_t kFps30PeriodUnits = 8 * kStepUnits; // 1/30 s en unidades del reloj
 
 // Comprobación del intervalo de presentación: se ignoran los primeros fotogramas tras
 // el cambio y se mide la media de los siguientes.
@@ -35,15 +38,32 @@ std::int64_t now_ns() {
         .count();
 }
 
+struct RefreshRate {
+    float hz = 60.0f;
+    // Frecuencia exacta como fracción (60000/1001 en 59,94 Hz).
+    int numerator = 60;
+    int denominator = 1;
+};
+
 // Frecuencia del monitor donde está la ventana; 60 si no se conoce.
-float query_refresh_rate() {
+RefreshRate query_refresh_rate() {
     SDL_Window* window = SDL_GL_GetCurrentWindow();
     const SDL_DisplayID display = window != nullptr ? SDL_GetDisplayForWindow(window) : 0;
     const SDL_DisplayMode* mode = display != 0 ? SDL_GetCurrentDisplayMode(display) : nullptr;
+    RefreshRate rate;
     if (mode == nullptr || mode->refresh_rate <= 0.0f) {
-        return 60.0f;
+        return rate;
     }
-    return mode->refresh_rate;
+    rate.hz = mode->refresh_rate;
+    if (mode->refresh_rate_numerator > 0 && mode->refresh_rate_denominator > 0) {
+        rate.numerator = mode->refresh_rate_numerator;
+        rate.denominator = mode->refresh_rate_denominator;
+    } else {
+        // Sin fracción exacta: la frecuencia en milésimas de Hz.
+        rate.numerator = static_cast<int>(std::lround(mode->refresh_rate * 1000.0f));
+        rate.denominator = 1000;
+    }
+    return rate;
 }
 
 } // namespace
@@ -57,7 +77,9 @@ FramePacer::FramePacer() {
         raised_timer_resolution_ = timeBeginPeriod(1) == TIMERR_NOERROR;
         timer_ = CreateWaitableTimerExW(nullptr, nullptr, 0, TIMER_ALL_ACCESS);
     }
-    refresh_rate_ = query_refresh_rate();
+    const RefreshRate rate = query_refresh_rate();
+    refresh_rate_ = rate.hz;
+    refresh_period_ = refresh_period_units(rate.numerator, rate.denominator);
     apply();
 }
 
@@ -71,10 +93,12 @@ FramePacer::~FramePacer() {
 }
 
 std::int64_t FramePacer::begin_frame() {
-    const float refresh_rate = query_refresh_rate();
-    if (refresh_rate != refresh_rate_) {
+    const RefreshRate rate = query_refresh_rate();
+    const std::int64_t refresh_period = refresh_period_units(rate.numerator, rate.denominator);
+    if (rate.hz != refresh_rate_ || refresh_period != refresh_period_) {
         // Otro monitor u otro modo de pantalla: se vuelve a probar el intervalo.
-        refresh_rate_ = refresh_rate;
+        refresh_rate_ = rate.hz;
+        refresh_period_ = refresh_period;
         interval_ignored_ = false;
         apply();
     }
@@ -93,6 +117,13 @@ std::int64_t FramePacer::begin_frame() {
     last_frame_start_ns_ = start;
     check_swap_interval(frame_ns);
     return frame_ns;
+}
+
+std::int64_t FramePacer::frame_period() const {
+    if (use_timer_) {
+        return kFps30PeriodUnits;
+    }
+    return vsync_ ? swap_interval_ * refresh_period_ : 0;
 }
 
 void FramePacer::set_target(FrameTarget target) {

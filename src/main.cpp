@@ -36,6 +36,8 @@ int main() {
 
     while (!window.should_close()) {
         const std::int64_t frame_ns = pacer.begin_frame();
+        // Ajuste del dt al refresco del monitor (N lo desactiva en la demo, para comparar).
+        clock.set_snap_period(demo.snap_enabled() ? pacer.snap_period() : 0);
         const rally::platform::FrameSteps steps = clock.advance(frame_ns);
 
         demo.handle_keys(pacer);
@@ -44,7 +46,8 @@ int main() {
         for (int i = 0; i < steps.count; ++i) {
             demo.step(input);
         }
-        demo.draw(steps, frame_ns, pacer); // presenta y recoge los eventos del próximo fotograma
+        // Presenta y recoge los eventos del próximo fotograma.
+        demo.draw(steps, frame_ns, pacer, clock);
     }
     return 0;
 }

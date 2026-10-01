@@ -39,6 +39,16 @@ public:
     bool uses_timer() const { return use_timer_; }
     bool high_resolution_timer() const { return high_resolution_timer_; }
 
+    // Periodo de un refresco del monitor, en unidades de FixedStepClock (ns × 240).
+    std::int64_t refresh_period() const { return refresh_period_; }
+    // Periodo al que se ajusta el dt (FixedStepClock::set_snap_period): el de un refresco
+    // si hay sincronización vertical (también en el modo de 30: sus fotogramas duran un
+    // número entero de refrescos); 0 sin ella.
+    std::int64_t snap_period() const { return vsync_ ? refresh_period_ : 0; }
+    // Duración prevista de un fotograma, en unidades del reloj: refresco × intervalo, o
+    // 1/30 s con el temporizador; 0 si no se conoce (sin sincronización ni temporizador).
+    std::int64_t frame_period() const;
+
 private:
     void apply();
     void sleep_until(std::int64_t deadline_ns);
@@ -47,6 +57,7 @@ private:
     FrameTarget target_ = FrameTarget::MonitorRate;
     bool vsync_ = true;
     float refresh_rate_ = 0.0f;
+    std::int64_t refresh_period_ = 0; // en unidades del reloj
 
     int swap_interval_ = 1;
     bool use_timer_ = false;
