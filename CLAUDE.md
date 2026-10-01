@@ -16,7 +16,7 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 ## Cómo trabajamos
 
 - Antes de escribir código en una tarea nueva, lee la fase actual en `docs/progreso.md` y su criterio en `docs/04-plan-de-fases.md`. Propón un plan corto y espera mi visto bueno si la tarea toca más de un módulo.
-- Una tarea por sesión. Termina con: tests pasando, resumen de lo hecho y la fila nueva en el registro de `docs/progreso.md` (las horas las pongo yo).
+- Una tarea por sesión. Termina con: tests pasando, resumen de lo hecho y la fila nueva en el registro de `docs/progreso.md` (las horas las pongo yo). Tras el commit, git push a origin.
 - Si algo choca con una decisión cerrada de `docs/05-decisiones.md`, para y avísame; no la cambies por tu cuenta.
 - Si una prueba cambia una decisión provisional, propón la edición de `docs/05-decisiones.md` con fecha y motivo.
 - Regla de alcance: implementa solo lo que pide la fase actual. Nada genérico "por si acaso". Lo marcado [post-1.0] no se toca hasta su fase.
