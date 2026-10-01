@@ -20,7 +20,7 @@ struct DemoInput {
 // interpolación. Se quita cuando haya un cuerpo de Jolt (tarea 4).
 //
 // Teclas: F alterna frecuencia del monitor / 30 fps, I la interpolación, V la sincronización
-// vertical.
+// vertical, P la pausa y C guarda una captura (captura_NNN.png junto al exe).
 class LoopDemo {
 public:
     LoopDemo();
@@ -41,7 +41,9 @@ private:
     Pose previous_;
     Pose current_;
     bool interpolate_ = true;
-    std::string renderer_; // GL_RENDERER; pasará al contador de rendimiento (tarea 6)
+    bool paused_ = false;            // P: congela la simulación
+    bool capture_requested_ = false; // C: captura del búfer al final del fotograma
+    std::string renderer_;           // GL_RENDERER; pasará al contador de rendimiento (tarea 6)
 
     // Contador en pantalla: media de fps y ms cada medio segundo.
     std::int64_t stats_ns_ = 0;

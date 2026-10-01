@@ -2,6 +2,7 @@
 
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_pacer.h"
+#include "platform/screenshot.h"
 
 #include <SDL3/SDL_video.h>
 #include <raylib.h>
@@ -56,6 +57,12 @@ void LoopDemo::handle_keys(FramePacer& pacer) {
     if (IsKeyPressed(KEY_V)) {
         pacer.set_vsync(!pacer.vsync());
     }
+    if (IsKeyPressed(KEY_P)) {
+        paused_ = !paused_;
+    }
+    if (IsKeyPressed(KEY_C)) {
+        capture_requested_ = true;
+    }
 }
 
 DemoInput LoopDemo::read_input() const {
@@ -65,6 +72,9 @@ DemoInput LoopDemo::read_input() const {
 }
 
 void LoopDemo::step(const DemoInput& input) {
+    if (paused_) {
+        return;
+    }
     const double direction = input.reverse ? -1.0 : 1.0;
     orbit_ = std::fmod(orbit_ + direction * kOrbitSpeed * kStepSeconds, 2.0 * std::numbers::pi);
     spin_ = std::fmod(spin_ + direction * kSpinSpeed * kStepSeconds, 2.0 * std::numbers::pi);
@@ -85,7 +95,9 @@ void LoopDemo::update_stats(std::int64_t frame_ns) {
 
 void LoopDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer) {
     update_stats(frame_ns);
-    const Pose pose = interpolate_ ? interpolate(previous_, current_, steps.alpha) : current_;
+    // En pausa se dibuja siempre el mismo estado: todos los fotogramas son idénticos.
+    const Pose pose =
+        interpolate_ && !paused_ ? interpolate(previous_, current_, steps.alpha) : current_;
     const double angle = 2.0 * std::atan2(pose.rotation.z, pose.rotation.w);
 
     BeginDrawing();
@@ -113,15 +125,24 @@ void LoopDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FrameP
     DrawText(
         TextFormat("ritmo: %s   sincronización vertical: %s", target, pacer.vsync() ? "sí" : "no"),
         16, 68, 20, text);
-    DrawText(TextFormat("monitor: %.2f Hz   intervalo: %d%s", pacer.refresh_rate(),
-                        pacer.swap_interval(), method),
+    int actual_interval = 0;
+    const bool interval_known = SDL_GL_GetSwapInterval(&actual_interval);
+    DrawText(TextFormat("monitor: %.2f Hz   intervalo pedido: %d%s   real (SDL): %s",
+                        pacer.refresh_rate(), pacer.swap_interval(), method,
+                        interval_known ? TextFormat("%d", actual_interval) : "desconocido"),
              16, 94, 20, text);
-    DrawText(TextFormat("interpolación: %s", interpolate_ ? "sí" : "no"), 16, 120, 20, text);
+    DrawText(
+        TextFormat("interpolación: %s   %s", interpolate_ ? "sí" : "no", paused_ ? "PAUSA" : ""),
+        16, 120, 20, text);
     DrawText(TextFormat("gráfica: %s", renderer_.c_str()), 16, 146, 20, text);
-    DrawText("F: monitor/30 fps   I: interpolación   V: sincronización vertical   "
-             "Espacio: al revés   Esc: salir",
+    DrawText("F: monitor/30 fps   I: interpolación   V: sincronización vertical   P: pausa   "
+             "C: captura   Espacio: al revés   Esc: salir",
              16, GetScreenHeight() - 36, 20, Color{150, 156, 168, 255});
 
+    if (capture_requested_) {
+        save_screenshot();
+        capture_requested_ = false;
+    }
     EndDrawing();
 }
 

@@ -13,6 +13,7 @@ add_library(rally_platform STATIC
     fatal_error.cpp
     frame_pacer.cpp
     loop_demo.cpp
+    screenshot.cpp
     window.cpp
 )
 target_include_directories(rally_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)
