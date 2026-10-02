@@ -21,6 +21,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Fotogramas | 1080p a 60 fps estables, calidad media-alta, en el caso más caro (bosque denso; en post-1.0, de noche con lluvia y niebla) |
 | Física | 240 Hz fijos en un hilo |
 | Memoria del juego | ≤ 3 GB, para dejar sitio al sistema y a Discord |
+| Draw calls | ≤ 2 000 por fotograma (medido: ~0,58 µs de CPU cada una con raylib) |
 | Disco | ≤ 1 GB instalado; el estilo low-poly apenas ocupa y el grueso es el audio |
 | Física del tramo cargada entera | Del orden de decenas de MB en tramos largos; se mide en la fase 3 |
 | Espera de validación antes de una pasada | Que no se note: se valida mientras se eligen coche y ajustes. Objetivo a fijar con la medida de la fase 4 |
@@ -36,7 +37,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Validación con piloto IA | Segundos de espera en CPU lenta | Zonas de riesgo, 2 hilos, durante la selección, caché |
 | Física entera en doble precisión | Memoria y 5–10 % más de física | Franja de colisión de ±60 m; medir en la fase 3 |
 | Neumático de calidad a 240 Hz | Más cálculo por rueda y paso | Un solo coche; medir en la fase 2 |
-| Bosque denso opaco | Lo más caro para la gráfica | Caso de medida desde la fase 1 |
+| Bosque denso opaco | Lo más caro para la gráfica | Fase 1, RX 580 a 1080p: 20 000 árboles (1 M triángulos) con instancias persistentes = 0,50 ms de CPU y 1,65 ms de GPU, sin descarte por cámara y sin sombras. Fase 6: descarte por celdas, LOD/impostores en lo lejano y solo las cascadas cercanas dibujan vegetación |
 | Carga de gráficos en segundo plano | Necesita un núcleo libre | Ventana configurable |
 | Interior con objetos sueltos [post-1.0] | Segundo mundo físico | < 10 objetos, dormidos |
 

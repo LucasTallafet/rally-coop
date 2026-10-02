@@ -13,6 +13,8 @@ Juego de rally cooperativo en 3D low-poly para 2 jugadores en 2 PCs: uno conduce
 | `docs/05-decisiones.md` | Registro de decisiones cerradas y provisionales, con historial de cambios |
 | `docs/progreso.md` | Horas reales por fase, registro de sesiones y hallazgos |
 | `docs/06-guia-claude-code.md` | Instalar, montar el repositorio y primeras tareas con Claude Code |
+| `docs/07-entorno-y-portabilidad.md` | Montar el entorno de desarrollo en otro PC y comprobar que da los mismos resultados |
+| `docs/08-bitacora-de-desarrollo.md` | Por qué se decidió cada cosa, problemas encontrados y esperados, ideas de futuro |
 | `CLAUDE.md` | Instrucciones que Claude Code lee en cada sesión |
 | `.claude/rules/simulacion.md` | Reglas de reproducibilidad que se cargan al tocar la simulación |
 | `proyecto-claude/` | Instrucciones y pasos para montar el proyecto de Claude |

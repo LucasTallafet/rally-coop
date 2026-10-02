@@ -2,10 +2,11 @@
 
 #include "platform/camera_space.h"
 #include "platform/fixed_step_clock.h"
-#include "platform/frame_graph.h"
+#include "platform/forest_layout.h"
 #include "platform/frame_pacer.h"
 #include "platform/input.h"
 #include "platform/input_shaping.h"
+#include "platform/perf_counter.h"
 #include "platform/screenshot.h"
 
 #include <SDL3/SDL_video.h>
@@ -23,7 +24,6 @@ namespace {
 
 static_assert(sim::kStepsPerSecond == kStepsPerSecond, "la simulación y el bucle usan otro paso");
 
-constexpr std::int64_t kStatsPeriodNs = 500'000'000;
 constexpr int kControlled = 5;
 
 // Cámara en primera persona. El campo de visión es fijo: el diseño prohíbe que cambie con
@@ -197,20 +197,33 @@ Pose to_pose(const sim::BodyPose& body) {
     return pose;
 }
 
-// Nombre de la gráfica (GL_RENDERER). raylib no lo expone; glGetString se pide a SDL.
-std::string query_renderer() {
-    constexpr unsigned int kGlRenderer = 0x1F01;
-    using GetString = const unsigned char*(__stdcall*)(unsigned int);
-    const auto get_string = reinterpret_cast<GetString>(SDL_GL_GetProcAddress("glGetString"));
-    const unsigned char* name = get_string != nullptr ? get_string(kGlRenderer) : nullptr;
-    return name != nullptr ? reinterpret_cast<const char*>(name) : "desconocida";
-}
-
 } // namespace
 
-BoxDemo::BoxDemo() : desc_(arena(0.0)), renderer_(query_renderer()) {
+BoxDemo::BoxDemo() : desc_(arena(0.0)) {
     rlSetClipPlanes(kNearPlane, kFarPlane);
     reset();
+}
+
+BoxDemo::~BoxDemo() {
+    if (target_.id != 0) {
+        UnloadRenderTexture(target_);
+    }
+}
+
+void BoxDemo::set_render_size(int width, int height) {
+    if (target_.id != 0) {
+        UnloadRenderTexture(target_);
+    }
+    target_ = LoadRenderTexture(width, height);
+    SetTextureFilter(target_.texture, TEXTURE_FILTER_BILINEAR);
+}
+
+int BoxDemo::render_width() const {
+    return target_.id != 0 ? target_.texture.width : GetScreenWidth();
+}
+
+int BoxDemo::render_height() const {
+    return target_.id != 0 ? target_.texture.height : GetScreenHeight();
 }
 
 void BoxDemo::reset() {
@@ -251,8 +264,8 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     if (IsKeyPressed(KEY_J)) {
         world_float_ = !world_float_;
     }
-    if (IsKeyPressed(KEY_G)) {
-        graph_visible_ = !graph_visible_;
+    if (IsKeyPressed(KEY_B)) {
+        forest_mode_ = next_forest_mode(forest_mode_);
     }
     if (IsKeyPressed(KEY_N)) {
         snap_ = !snap_;
@@ -284,25 +297,12 @@ float BoxDemo::step(const sim::SimInput& input) {
     return world_->last_impact();
 }
 
-void BoxDemo::update_stats(std::int64_t frame_ns) {
-    stats_ns_ += frame_ns;
-    ++stats_frames_;
-    if (stats_ns_ >= kStatsPeriodNs) {
-        fps_ = stats_frames_ * 1e9 / static_cast<double>(stats_ns_);
-        average_ms_ = static_cast<double>(stats_ns_) / stats_frames_ / 1e6;
-        stats_ns_ = 0;
-        stats_frames_ = 0;
-    }
-}
-
 void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
                    const FixedStepClock& clock, const DriverInput& driver,
-                   const sim::SimInput& input, float frame_impact) {
-    update_stats(frame_ns);
+                   const sim::SimInput& input, float frame_impact, PerfCounter& perf) {
     if (frame_impact > kImpactThreshold) {
         last_rumble_impact_ = frame_impact;
     }
-    history_.push(FrameRecord{frame_ns, steps.used, steps.count, steps.snapped});
     frame_log_.write(frame_ns, steps, clock.debt(), clock.snap_period(), pacer.frame_period());
 
     // En pausa se dibuja siempre el mismo estado: todos los fotogramas son idénticos.
@@ -343,8 +343,13 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     camera.fovy = first_person_ ? kFovYDegrees : kFixedFovYDegrees;
     camera.projection = CAMERA_PERSPECTIVE;
 
+    constexpr Color kSky{40, 44, 52, 255};
     BeginDrawing();
-    ClearBackground(Color{40, 44, 52, 255});
+    perf.begin_render();
+    if (target_.id != 0) {
+        BeginTextureMode(target_);
+    }
+    ClearBackground(kSky);
     BeginMode3D(camera);
     for (std::size_t i = 0; i < drawn_.size(); ++i) {
         draw_box(drawn_[i], desc_.bodies[i], body_color(desc_, i), origin);
@@ -353,7 +358,20 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
         }
     }
     draw_posts(desc_.bodies[0], origin);
+    // El bosque rodea el recinto: su centro es el del suelo.
+    forest_.draw(forest_mode_,
+                 relative_to_camera(Vec3d{desc_.bodies[0].x, 0.0, desc_.bodies[0].z}, origin));
     EndMode3D();
+    if (target_.id != 0) {
+        EndTextureMode();
+        // Las RenderTexture de OpenGL quedan invertidas en y: el rectángulo de origen, también.
+        const auto width = static_cast<float>(target_.texture.width);
+        const auto height = static_cast<float>(target_.texture.height);
+        DrawTexturePro(target_.texture, Rectangle{0.0f, 0.0f, width, -height},
+                       Rectangle{0.0f, 0.0f, static_cast<float>(GetScreenWidth()),
+                                 static_cast<float>(GetScreenHeight())},
+                       Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+    }
 
     // Velocidad horizontal de la caja controlada en el último paso.
     const Vec3d& now = current_[kControlled].position;
@@ -368,9 +386,13 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                          : pacer.high_resolution_timer() ? " + temporizador de alta resolución"
                                                          : " + temporizador de 1 ms";
     const Color text = Color{220, 223, 228, 255};
-    DrawText(TextFormat("%.1f fps   %.2f ms por fotograma (último %.2f)", fps_, average_ms_,
-                        static_cast<double>(frame_ns) / 1e6),
-             16, 16, 20, text);
+    DrawText(
+        TextFormat("último fotograma: %.2f ms   bosque (B): %s%s",
+                   static_cast<double>(frame_ns) / 1e6, forest_mode_name(forest_mode_),
+                   forest_mode_ == ForestMode::Off
+                       ? ""
+                       : TextFormat(", %d árboles de %d triángulos", kForestTrees, kTreeTriangles)),
+        16, 16, 20, text);
     DrawText(TextFormat("pasos en el último fotograma: %d   alpha: %.2f", steps.count, steps.alpha),
              16, 42, 20, text);
     DrawText(
@@ -387,7 +409,9 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                  IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes" : "ventana",
                  frame_log_.active() ? frame_log_.name() : "no", paused_ ? "PAUSA" : ""),
              16, 120, 20, text);
-    DrawText(TextFormat("gráfica: %s", renderer_.c_str()), 16, 146, 20, text);
+    DrawText(TextFormat("render: %d×%d%s", render_width(), render_height(),
+                        target_.id != 0 ? " en RenderTexture, escalado a la ventana" : ""),
+             16, 146, 20, text);
     DrawText(TextFormat("cámara: %s   mundo: %s   render: %s",
                         first_person_ ? "primera persona" : "fija",
                         far_from_origin_ ? "a 20 km del origen" : "en el origen",
@@ -420,25 +444,26 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     DrawText(TextFormat("impacto: %.2f m/s   último que vibró: %.2f m/s (umbral %.1f)",
                         frame_impact, last_rumble_impact_, kImpactThreshold),
              16, 282, 20, text);
-    if (graph_visible_) {
-        draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_, 20, 318);
-    }
     const Color help = Color{150, 156, 168, 255};
     DrawText("W/S o gatillos: acelerar/atrás   A/D o stick: girar   Espacio o botón de abajo: "
              "saltar   R: reiniciar   O: origen/20 km",
              16, GetScreenHeight() - 114, 20, help);
     DrawText("Tab: cámara   J: render en float del mundo   F: monitor/30 fps   I: interpolación",
              16, GetScreenHeight() - 88, 20, help);
-    DrawText("V: sincronización vertical   N: ajuste al refresco   G: gráfica   L: registro", 16,
+    DrawText("V: sincronización vertical   N: ajuste al refresco   L: registro   B: bosque", 16,
              GetScreenHeight() - 62, 20, help);
-    DrawText("F11 o Alt+Intro: pantalla completa   P: pausa   C: captura   Esc: salir", 16,
-             GetScreenHeight() - 36, 20, help);
+    DrawText("F1: rendimiento   F11 o Alt+Intro: pantalla completa   P: pausa   C: captura   "
+             "Esc: salir",
+             16, GetScreenHeight() - 36, 20, help);
 
+    perf.draw(pacer, clock, snap_, render_width(), render_height());
     if (capture_requested_) {
         save_screenshot();
         capture_requested_ = false;
     }
+    perf.end_render();
     EndDrawing();
+    perf.end_present();
 }
 
 } // namespace rally::platform

@@ -12,6 +12,8 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 - `docs/04-plan-de-fases.md`: fases, contenido y criterio de terminado de cada una.
 - `docs/05-decisiones.md`: decisiones cerradas y provisionales. Manda sobre cualquier otro documento si hay contradicción.
 - `docs/progreso.md`: fase actual, horas y hallazgos.
+- `docs/07-entorno-y-portabilidad.md`: montar el entorno en otro PC y comprobar que da los mismos resultados.
+- `docs/08-bitacora-de-desarrollo.md`: el porqué de las decisiones, problemas encontrados y esperados, ideas de futuro.
 
 ## Cómo trabajamos
 
@@ -81,3 +83,4 @@ La simulación tiene que dar exactamente el mismo resultado con las mismas entra
 - No hacer que el juego corrija, filtre o una las notas del copiloto.
 - No añadir texturas fotográficas: el estilo es low-poly con colores planos y ruido procedural solo en el suelo.
 - No reabrir el motor de física ni el motor gráfico: son decisiones cerradas.
+- No borrar archivos de la carpeta del exe (capturas, registros, informes) sin listarla antes; borrar solo lo creado en la sesión.

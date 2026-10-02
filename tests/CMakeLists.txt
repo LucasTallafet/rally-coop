@@ -5,12 +5,14 @@ add_executable(rally_tests
     test_button_latch.cpp
     test_camera_space.cpp
     test_fixed_step_clock.cpp
+    test_forest_layout.cpp
     test_frame_history.cpp
     test_input_shaping.cpp
     test_input_smoothing.cpp
     test_interpolation.cpp
     test_jolt.cpp
     test_pcg32.cpp
+    test_perf_stats.cpp
     test_rmath.cpp
     test_sim_world.cpp
 )

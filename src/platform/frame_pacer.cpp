@@ -103,10 +103,12 @@ std::int64_t FramePacer::begin_frame() {
         apply();
     }
 
+    const std::int64_t before_wait = now_ns();
     if (use_timer_) {
         sleep_until(deadline_ns_);
     }
     const std::int64_t start = now_ns();
+    last_wait_ns_ = start - before_wait;
     if (use_timer_) {
         // Plazos fijos cada 1/30 s; si se ha perdido uno entero, se empieza de nuevo.
         deadline_ns_ = start - deadline_ns_ >= kFps30PeriodNs ? start + kFps30PeriodNs

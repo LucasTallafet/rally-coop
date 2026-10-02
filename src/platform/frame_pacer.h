@@ -27,6 +27,9 @@ public:
     // Al principio de cada fotograma: revisa la frecuencia del monitor, duerme si toca y
     // devuelve la duración real del fotograma anterior en nanosegundos (0 la primera vez).
     std::int64_t begin_frame();
+    // Lo que ha durado la espera del temporizador en el último begin_frame (0 sin él), en ns.
+    // Para el contador de rendimiento: cuenta como espera de presentación.
+    std::int64_t last_wait_ns() const { return last_wait_ns_; }
 
     void set_target(FrameTarget target);
     FrameTarget target() const { return target_; }
@@ -75,6 +78,7 @@ private:
     bool raised_timer_resolution_ = false; // timeBeginPeriod(1) activo
 
     std::int64_t last_frame_start_ns_ = -1;
+    std::int64_t last_wait_ns_ = 0;
 };
 
 } // namespace rally::platform

@@ -203,10 +203,10 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 
 ### 7.1 Cambio de host
 
-No necesita física idéntica entre PCs: tras el cambio, el PC nuevo es la autoridad.
+No necesita física idéntica entre PCs: tras el cambio, el PC nuevo es la autoridad. Es un relevo, no una simulación en paralelo: en cada momento solo un PC simula el coche y nadie compara resultados. La física idéntica entre PCs solo hace falta para verificar clasificatorias (fase 9).
 
 1. Coche parado (entre pasadas en la 1.0; a mitad de tramo [post-1.0], con los dos jugadores fuera).
-2. El host congela la simulación en el paso `N` y envía por canal fiable el `SaveState` de Jolt y el estado del juego (daños, notas, puntuación, acciones, inventario).
+2. El host congela la simulación en el paso `N` y envía por canal fiable el `SaveState` de Jolt y el estado del juego (daños, notas, puntuación, acciones, inventario) y el estado de la simulación que Jolt no guarda (botones del paso anterior, dirección y acelerador aplicados).
 3. El otro PC restaura (su mundo es el mismo porque nada se añade ni se quita) y responde que está listo.
 4. Se intercambian los papeles y la simulación sigue desde el paso `N + 1`. El registro de entradas marca el cambio.
 
@@ -217,7 +217,7 @@ No necesita física idéntica entre PCs: tras el cambio, el PC nuevo es la autor
 - **Estilo low-poly con colores planos:** color por vértice y paletas, casi sin texturas. Excepción: el suelo lleva ruido procedural en el shader para que se note la velocidad y se distinga cada superficie (triplanar completo solo cerca de la cámara).
 - **Dónde va el margen de la GTX 1060:** iluminación y sombras, densidad de vegetación y distancia de dibujado, partículas de polvo y grava, niebla atmosférica y el interior del coche. No en texturas fotográficas.
 - **Origen de los modelos:** interior del coche en Blender; exterior a partir de assets CC0 (Kenney, Quaternius) adaptados; árboles, rocas, postes y vallas generados por código con variación por semilla; objetos sueltos con herramientas de IA de imagen a 3D, limpiados y reducidos en Blender.
-- Vegetación por instancias, con ocluyentes declarados.
+- Vegetación por instancias, con ocluyentes declarados y con VBO de transformaciones persistente (`DrawMeshInstanced` de raylib reserva memoria y crea un VBO en cada llamada: descartado).
 - Interior del coche modelado en Blender, low-poly pero detallado: es lo que más se ve en primera persona.
 - Niebla y lluvia por shader [post-1.0]; de noche solo los faros proyectan sombra [post-1.0].
 - Desenfoque ligero en los bordes, sin cambiar el campo de visión.
