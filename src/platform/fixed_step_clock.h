@@ -14,10 +14,14 @@ inline constexpr int kMaxStepsPerFrame = 24;
 inline constexpr std::int64_t kStepUnits = 1'000'000'000;
 
 // Ajuste del dt a la sincronización vertical (ver FixedStepClock).
-inline constexpr std::int64_t kSnapWindowUnits = 2'000'000 * kStepsPerSecond; // 2 ms
+// Ventana: el menor de 2,5 ms y el 40 % del periodo (2,5 ms a 60 y 144 Hz; 1,67 ms a 240 Hz).
+inline constexpr std::int64_t kMaxSnapWindowUnits = 2'500'000 * kStepsPerSecond; // 2,5 ms
 inline constexpr std::int64_t kRepayDivisor = 16;
 inline constexpr std::int64_t kMaxRepayUnits = 100'000 * kStepsPerSecond;  // 0,1 ms
 inline constexpr std::int64_t kMaxDebtUnits = 4'000'000 * kStepsPerSecond; // 4 ms
+
+// Ventana del ajuste para un periodo dado, en unidades del reloj.
+std::int64_t snap_window_units(std::int64_t period_units);
 
 // Periodo de un refresco de numerator/denominator Hz, en unidades del reloj (redondeado a la
 // unidad: el error de redondeo va a la deuda y se devuelve). 0 si numerator <= 0.
@@ -39,9 +43,10 @@ struct FrameSteps {
 // fotogramas que no toque el tope se han dado exactamente floor(tiempo total / paso) pasos.
 //
 // Ajuste a la sincronización vertical (set_snap_period): la medida del dt tiene ruido
-// (se toma al volver de la presentación, no en el refresco). Si el dt medido está a menos
-// de 2 ms de un múltiplo k ≥ 1 del periodo, se usa k × periodo exacto. 2 ms es menos de
-// medio periodo hasta 240 Hz, así que el múltiplo nunca es ambiguo. La diferencia va a
+// (se toma al volver de la presentación, no en el refresco). Si el dt medido está dentro de
+// la ventana alrededor de un múltiplo k ≥ 1 del periodo, se usa k × periodo exacto. La
+// ventana es el menor de 2,5 ms y el 40 % del periodo: siempre menos de medio periodo, así
+// que el múltiplo nunca es ambiguo, y queda margen entre ventanas vecinas. La diferencia va a
 // una deuda que se devuelve poco a poco (deuda/16, como mucho 0,1 ms por fotograma); si
 // pasa de 4 ms, se paga entera en ese fotograma. Así el tiempo de juego no se separa del
 // real más de 4 ms más un desplazamiento fijo de origen:

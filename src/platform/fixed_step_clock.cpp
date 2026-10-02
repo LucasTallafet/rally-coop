@@ -15,6 +15,10 @@ std::int64_t abs_units(std::int64_t value) { return value < 0 ? -value : value; 
 
 } // namespace
 
+std::int64_t snap_window_units(std::int64_t period_units) {
+    return std::min(kMaxSnapWindowUnits, period_units * 2 / 5);
+}
+
 std::int64_t refresh_period_units(std::int64_t numerator, std::int64_t denominator) {
     if (numerator <= 0 || denominator <= 0) {
         return 0;
@@ -41,7 +45,7 @@ FrameSteps FixedStepClock::advance(std::int64_t frame_ns) {
     if (snap_period_ > 0) {
         const std::int64_t multiple = (measured + snap_period_ / 2) / snap_period_;
         const std::int64_t target = multiple * snap_period_;
-        if (multiple >= 1 && abs_units(measured - target) < kSnapWindowUnits) {
+        if (multiple >= 1 && abs_units(measured - target) < snap_window_units(snap_period_)) {
             used = target;
             snapped = true;
         }
