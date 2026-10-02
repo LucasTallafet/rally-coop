@@ -109,6 +109,12 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 
 ### Fase 2 · Coche
 
+Diseño cerrado el 2026-10-02 (ver `04-plan-de-fases.md`, fase 2).
+
+- **Estabilidad de la rueda a baja velocidad.** Con un neumático explícito, la rigidez efectiva de la rueda crece como 1/v: a 2 m/s oscila incluso a 960 Hz. Solución estándar: denominador mínimo en el deslizamiento y freno que no invierte el giro. Test de barrido de velocidades.
+- **Freno de mano en un 4×4.** Si el diferencial central sigue acoplado, las delanteras arrastran a las traseras y la horquilla no sale. Se desacopla mientras se tira.
+- **Grava frente a tierra a ciegas** es la pareja más difícil de distinguir. Personalidades distintas desde los valores de partida: la grava, flotante y progresiva; la tierra, con más agarre y caída más brusca.
+- **El ajuste mueve la huella** si el test usa el coche del juego: por eso el test usa un coche congelado.
 - **Ajustar el manejo es el gran coste en horas.** Claude Code escribe el neumático rápido, pero la sensación se ajusta jugando. Es la fase que dirá si la nueva estimación se sostiene.
 - **`SimInput` crecerá** (freno separado del acelerador, freno de mano, marchas, recolocar). Cada cambio mueve la huella y el total de reservas: se actualizan a propósito, como hasta ahora.
 - **Mandos sin validar.** Solo se ha probado el de PS4. El de **Switch Pro** es el único con gatillos digitales, y ese camino solo se ha probado con un mando simulado: hay que probarlo antes de la fase 2. También faltan Xbox y PS5.
@@ -185,9 +191,9 @@ La fase 1 costó ~6 h frente a 60. Claude Code comprime mucho el código de infr
 | Fase | Antes | Propuesta | Motivo |
 | --- | --- | --- | --- |
 | 1 · Base del motor | 60 | ~6 (real) | |
-| 2 · Coche | 130–160 | 50–90 | El ajuste del neumático jugando no se comprime |
+| 2 · Coche | 130–160 | 61–109 | El ajuste del neumático jugando no se comprime. Ampliada el 2026-10-02: arena, turbo y configuraciones de prueba; y en la revisión del diseño: zona de pruebas, `rally_replay` y chasis completo |
 | 3 · Corte vertical | 110–130 | 45–75 | Las pruebas con el compañero no se comprimen |
 | 4 · Generador | 120–150 | 50–90 | Datos reales y validación de semillas jugando |
 | 5 · Entre casas | 60–80 | 20–40 | Casi todo es infraestructura |
 | 6 · Calidad visual y sonora | 80–120 | 50–90 | Blender y sonido son trabajo manual |
-| **Total 1.0** | **560–700** | **~220–390** | Se revisa de nuevo al cerrar la fase 2 |
+| **Total 1.0** | **560–700** | **~230–405** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |

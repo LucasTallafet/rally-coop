@@ -22,7 +22,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Motor | Propio en C++: raylib (backend SDL) + Jolt + ENet; se descartan Godot y otros motores | Cerrada |
 | Plataforma | Windows 10/11 de 64 bits | Cerrada |
 | Requisitos mínimos | 4 núcleos a 3 GHz, 8 GB, GTX 1060 6 GB o RX 580, 8 GB de disco; 1080p a 60 fps | Cerrada |
-| Física del coche | Controlador propio en `VehicleConstraint` de Jolt con neumático de calidad (opción B reforzada); otro motor de física solo si falla la prueba de derrape | Provisional hasta la fase 2 |
+| Física del coche | Controlador propio en `VehicleConstraint` de Jolt con fuerzas explícitas del neumático (Pacejka simplificada, fricción combinada, relajación, sensibilidad a la carga, rodadura), subpasos de rueda y tratamiento de baja velocidad; coche definido en datos; otro motor de física solo si falla la prueba de derrape medida | Provisional hasta la fase 2 |
 | Reproducibilidad | Jolt determinista en un hilo, `rmath`, PCG, sin fast-math; nada se añade ni se quita durante una pasada; mismo tiempo en el mismo PC desde la fase 2; idéntica entre PCs en la fase 9 | Cerrada |
 | Conjunto de instrucciones | SSE4.2 como máximo en todo el código (Jolt incluido): sin AVX, AVX2, AVX-512, LZCNT, TZCNT, F16C ni FMA | Cerrada |
 | Precisión | Doble precisión en Jolt, origen en el centro, render relativo a la cámara, posición por red en mm con enteros de 32 bits | Cerrada |
@@ -35,11 +35,13 @@ Versión final de trabajo · 1 de octubre de 2026
 | Cambio de host | Con el coche parado, por `SaveState`; sin física idéntica entre PCs | Cerrada |
 | Fotogramas | Sincronización vertical a la frecuencia del monitor (60 fps en 60 Hz) y modo de 30 sin espera activa; física a 240 Hz | Cerrada |
 | Modo de pantalla | Pantalla completa sin bordes para jugar y medir; la ventana es solo para desarrollo | Cerrada |
-| Entrada | Zona muerta y curva en la plataforma (sin memoria); suavizado de dirección y acelerador digital en la simulación, por paso de 240 Hz; botones por posición; mando activo = último usado | Provisional hasta la fase 2 (velocidades) |
+| Entrada | Zona muerta y curva en la plataforma (sin memoria); suavizado de dirección y acelerador digital en la simulación, por paso de 240 Hz; botones por posición; mando activo = último usado; acelerador y freno separados (frenada con el pie izquierdo) | Provisional hasta la fase 2 (velocidades) |
 | Estilo visual | 3D en primera persona, low-poly con colores planos; ruido procedural solo en el suelo | Cerrada |
 | Render | Sombras en 3 cascadas, vegetación por instancias, partículas, sin texturas fotográficas, sin cambiar el campo de visión | Cerrada |
 | Voz | Discord al principio; llamada integrada con Opus después de la 1.0 | Cerrada |
 | Implementación | Con Claude Code, guiada por `CLAUDE.md` y tests sin pantalla | Cerrada |
+| Telemetría y grabación | Grabación de entradas por paso (RLE, con el coche y los ajustes completos en la cabecera); `rally_replay` la repite, escribe la telemetría CSV y mide; gráficas en pantalla y scripts de Python; huella con un coche congelado en `tests/data` | Cerrada |
+| Datos del coche | `data/cars/`, texto `clave = valor` con unidades en la clave, lector propio con `std::from_chars`; sin dependencias | Cerrada |
 
 ## Diseño de juego
 
@@ -61,7 +63,8 @@ Versión final de trabajo · 1 de octubre de 2026
 | Monedas | Por minuto de tramo, con tiempo de referencia del coche elegido; medallas como rangos | Provisional hasta la fase 4 |
 | Tienda | Abre con la personalización, después de la 1.0; coches nuevos de uno en uno | Cerrada |
 | Ayudas | Configurables por cada jugador; registradas con cada pasada; bloqueadas en modo difícil | Cerrada |
-| Dirección | Ayuda desde unos 30 km/h, mezcla de 15 a 30, giro completo por debajo y en marcha atrás | Provisional hasta la fase 2 |
+| Dirección | Ayuda ajustable por cada jugador (activada por defecto) y registrada con la pasada: limita el ángulo de las ruedas delanteras al de máximo agarre de la superficie respecto a su velocidad; desde unos 30 km/h, mezcla de 15 a 30, giro completo por debajo y en marcha atrás | Provisional hasta la fase 2 |
+| Freno de mano y marcha atrás | Freno de mano en las traseras; en 4×4 desacopla el diferencial central y el embrague. Caja R – N – 1ª–5ª en los dos modos: bajar de 1ª da punto muerto y bajar de N parado da marcha atrás; se sale en 1ª | Provisional hasta la fase 2 |
 | Cambio automático | Retrasa el cambio en derrape como mucho 0,5–1 s; nunca contra el limitador | Cerrada |
 | Acciones | Todas con fases de duración en datos; la duración es la regla | Cerrada |
 | Salidas de pista | Recolocación en el punto más avanzado en carretera con penalización; sin rebobinado | Cerrada |
@@ -70,6 +73,9 @@ Versión final de trabajo · 1 de octubre de 2026
 | Modo 1 jugador | Después de la 1.0; el único bot es el copiloto; da monedas, menos cuanto más fiable es el bot | Cerrada |
 | Fuera del coche | Salir, intercambio a mitad de tramo, pinchazos, ventanas, viseras, luna, inventario 3D, refrigerante, gasolina en difícil; después de la 1.0 | Provisional hasta su fase |
 | Modo recce | Para el futuro | Cerrada |
+| Coche de la 1.0 | Diseño propio inspirado en el Peugeot 205 T16 Evo 1 (Grupo B, 4×4 con motor central, turbo con retardo real); potencia ajustable hasta ~Evo 2 en el archivo del coche; sin nitro ni ayudas artificiales | Provisional hasta la fase 2 (pruebas de manejo) |
+| Configuraciones de prueba | 205 T16, tipo Quattro S1, tipo Escort Mk2 y tipo Delta Integrale, como archivos de datos del mismo modelo | Provisional hasta la fase 2 |
+| Superficies | Asfalto, grava, tierra, nieve y arena en la 1.0; barro después | Cerrada |
 
 ## Cambios
 
@@ -86,3 +92,14 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-02 | Entrada | Sin definir | Suavizado en la simulación por paso; forma de la entrada en la plataforma | La respuesta tiene que ser igual a 30 y 60 fps y quedar grabada en las repeticiones |
 | 2026-10-02 | Modo de pantalla | Sin definir | Pantalla completa sin bordes | En ventana, con AMD en Windows 10, tearing y ruido de presentación fuera de nuestro control (276 fotogramas desviados frente a 5) |
 | 2026-10-02 | Estimación 1.0 | 560–700 h | ~220–390 h | Fase 1 real ~6 h frente a 60; se comprime el código, no el ajuste ni las pruebas |
+| 2026-10-02 | Coche de la 1.0 | Sin definir | Inspirado en el Peugeot 205 T16 Evo 1 (Grupo B 4×4, motor central, turbo) | Elección de Lucas; manejo de referencia con cifras reales |
+| 2026-10-02 | Superficies | Asfalto, grava, tierra y nieve | Más arena | Variedad de manejo; ~4–6 h más en la fase 2 |
+| 2026-10-02 | Física del coche | Controlador propio con neumático de calidad | Concretado: fuerzas explícitas, Pacejka simplificada, subpasos de rueda, baja velocidad, turbo, diferenciales; prueba de derrape medible | Solución realista y estándar, decidida antes de implementar |
+| 2026-10-02 | Estimación fase 2 | 50–90 h | 60–110 h | Arena, turbo y cuatro configuraciones de prueba |
+| 2026-10-02 | Marcha atrás y punto muerto | Sin definir | Secuencia R – N – 1ª en automático y secuencial; marcha atrás solo parado | Elección de Lucas |
+| 2026-10-02 | Dirección | Ayuda sin ajuste | Ayuda activable por cada jugador, activada por defecto y registrada como ayuda | Elección de Lucas: cada uno decide cómo conduce |
+| 2026-10-02 | Entrada | Acelerador = gatillo derecho − gatillo izquierdo | Acelerador y freno en ejes separados; freno de mano, marchas y recolocar como bits | Frenada con el pie izquierdo y marcha atrás definida |
+| 2026-10-02 | Física del coche (detalle) | Subpasos de rueda | Subpasos más denominador mínimo de deslizamiento y freno que no invierte el giro; barras, frenos, aerodinámica, embrague automático; estado del coche en el SaveState del controlador | Revisión antes de implementar: estabilidad a baja velocidad y elementos que faltaban |
+| 2026-10-02 | Prueba de derrape | Criterio en texto | Definiciones medibles de sostenido, progresivo y recogida; explanada de grava para la recogida a 100 km/h | El círculo de 40 m no permite 100 km/h (límite ~60 km/h); el script tiene que poder decidir solo |
+| 2026-10-02 | Telemetría y grabación | CSV en la partida | La partida graba entradas; rally_replay regenera la telemetría; huella con coche congelado | Guardar en git solo grabaciones; ajustar el coche no mueve la huella |
+| 2026-10-02 | Estimación fase 2 | 60–110 h | 61–109 h | Zona de pruebas ampliada, rally_replay y chasis completo; el mínimo pasa a ser la suma de las tareas (antes, por debajo de ella) |

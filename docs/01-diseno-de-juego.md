@@ -55,7 +55,7 @@ Una sesión son **dos pasadas del mismo tramo**:
 | Cinta de ruta (franja lateral) | Los próximos 400–600 m en recta, con una marca de sentido en cada cambio de dirección de más de unos 5°, sin su forma | Lo que viene después de lo que cabe en el mapa |
 
 - **Giro del mapa:** sigue la tangente de la carretera en el punto del trazado donde está el coche, suavizada. No depende del morro ni de la velocidad, así que no da bandazos en un derrape ni en un trompo. **A probar en la fase 3:** orientarlo por un punto 30–50 m por delante, para que no dé media vuelta en las horquillas justo cuando el copiloto lee lo que viene.
-- **Colores de superficie:** asfalto gris, grava beige, tierra marrón claro, barro marrón, nieve blanca.
+- **Colores de superficie:** asfalto gris, grava beige, tierra marrón claro, arena amarillo pálido, barro marrón [post-1.0], nieve blanca. Como el color nunca va solo, la línea lleva además un trazo distinto por superficie (continuo, discontinuo, punteado).
 - **La cinta y el mapa no opinan.** Marcan los cambios de dirección con un criterio solo geométrico. No indican cuáles merecen nota.
 - **Las notas cantadas no se dibujan en la tablet.** Solo aparecen en la pantalla del salpicadero. En el mapa solo está el cursor, que marca dónde se anclará la siguiente nota.
 - A medir en la fase 3: si el copiloto pierde la cuenta de lo que ha cantado, se añade una marca neutra de "aquí hay nota", sin decir cuál.
@@ -185,12 +185,15 @@ Las monedas se acumulan desde la 1.0. La tienda abre con la personalización [po
 
 ### 7.1 Manejo y ajustes
 
+**Coche de la 1.0.** Diseño propio, sin marcas ni decoraciones reales, inspirado en un Grupo B de 1985: 4×4 con motor central transversal y turbo. Referencia de manejo: Peugeot 205 T16 Evo 1 (~350 CV, ~950 kg, reparto de par 33 % delante y 67 % detrás, autoblocantes en cada eje). La potencia es ajustable hasta valores de Evo 2 (~450 CV) para encontrar la dificultad adecuada (es un parámetro del archivo del coche, no un ajuste del jugador). La conducción es realista: el turbo tiene retardo de verdad (hay que anticipar el acelerador), y no hay nitro ni empujones artificiales.
+
 El manejo es arcade con base de simulación: el coche se lleva con facilidad, pero el peso, la transferencia de carga y el agarre de cada superficie se notan. Se juega con mando o con teclado y ratón; el volante no se soporta de momento. Los ajustes se eligen antes de cada pasada y **cada jugador configura los suyos**.
 
 | Ajuste | Opciones | Efecto |
 | --- | --- | --- |
 | ABS | Activado / desactivado | Evita el bloqueo de ruedas al frenar |
 | Control de tracción | Desactivado / bajo / alto | Limita el patinaje al acelerar |
+| Ayuda de dirección | Activada / desactivada | Limita el ángulo de las ruedas delanteras al de máximo agarre (ver "Dirección") |
 | Cambio | Automático / secuencial manual | Ver 7.2 |
 | Dureza de suspensión | Blanda / media / dura | Blanda absorbe baches y saltos; dura responde mejor en asfalto |
 | Sensibilidad de dirección | Escala continua | Cuánto gira el coche por cada milímetro de stick o tecla |
@@ -198,7 +201,7 @@ El manejo es arcade con base de simulación: el coche se lleva con facilidad, pe
 - Las ayudas usadas se guardan con cada pasada y se muestran en el resumen y en la tabla de tiempos.
 - En el modo difícil [post-1.0], el ABS y el control de tracción quedan bloqueados en desactivado.
 
-**Dirección.** Con mando o teclado no hay fuerza en el volante que avise del límite, así que una ayuda limita el ángulo de las ruedas delanteras respecto a la dirección real de avance del coche. El stick a fondo da el ángulo de máximo agarre y el contravolante está siempre disponible.
+**Dirección.** Con mando o teclado no hay fuerza en el volante que avise del límite, así que una ayuda limita el ángulo de las ruedas delanteras respecto a la dirección real de avance del coche. El stick a fondo da el ángulo de máximo agarre y el contravolante está siempre disponible. La ayuda es un ajuste de cada jugador: activada o desactivada, activada por defecto, y se registra con la pasada como las demás ayudas. Sin ella, la dirección a fondo da el ángulo máximo de las ruedas a cualquier velocidad. El ángulo de máximo agarre depende de la superficie que pisan las ruedas delanteras.
 
 - La ayuda actúa a partir de unos 30 km/h. Entre 15 y 30 km/h se mezcla de forma suave con el giro completo. Por debajo de 15 km/h, parado y marcha atrás, el stick a fondo da el giro completo. Umbrales provisionales hasta la fase 2.
 
@@ -208,9 +211,12 @@ El manejo es arcade con base de simulación: el coche se lleva con facilidad, pe
 
 Automático o secuencial manual, sin embrague ni calado. El automático cambia por umbrales de revoluciones con histéresis; en derrape retrasa el cambio como mucho 0,5–1 s y nunca contra el limitador. La ventaja del manual sale de reducir antes de la curva y sostener la marcha en un derrape, no de empeorar el automático a propósito.
 
+- **Punto muerto y marcha atrás:** la caja va R – N – 1ª – … – 5ª, en automático y en secuencial. Bajar de 1ª pasa a punto muerto (N); bajar de N con el coche parado (menos de 2 km/h) engrana la marcha atrás (R); subir recorre el camino contrario. En N el motor gira libre y no empuja. En R, el acelerador empuja hacia atrás y el freno frena. En automático, los botones de marcha solo sirven para elegir R, N o marcha adelante (desde 1ª, el automático hace el resto), y bajar a N solo se puede parado. Al construir el mundo o recolocar, el coche sale en 1ª.
+- **Freno de mano:** bloquea las ruedas traseras. En los coches 4×4, mientras se tira, se desacoplan el diferencial central y el embrague, como en los coches de rally reales: así las delanteras no luchan contra las traseras bloqueadas.
+
 ### 7.3 Superficies y relieve
 
-- Asfalto, grava, tierra y nieve en la 1.0 (barro [post-1.0]). Cada una con su agarre, su resistencia a la rodadura, su color, su ruido procedural y su sonido. La vibración del mando cambia con la superficie y con el deslizamiento.
+- Asfalto, grava, tierra, nieve y arena en la 1.0 (barro [post-1.0]). Cada una con su agarre, su resistencia a la rodadura, su color, su ruido procedural y su sonido. La arena tiene mucha resistencia a la rodadura y poco agarre lateral: frena el coche y castiga perder las vueltas. En la montaña de la 1.0 aparece en tramos sueltos (lechos de río, zonas arenosas). La vibración del mando cambia con la superficie y con el deslizamiento.
 - **Relieve:** forma de la carretera en la malla (trazado, peralte, crestas, badenes, saltos) más un microrrelieve `h(s, t)` que nota la rueda. En la 1.0, una banda de ruido sencilla; el espectro ISO 8608 en dos bandas (física y fina) llega después.
 - Lo que se ve coincide con lo que se pisa: el render desplaza la carretera cerca de la cámara con la misma función que usa la rueda.
 

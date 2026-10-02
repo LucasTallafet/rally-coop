@@ -16,12 +16,12 @@ La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo
 | --- | --- | --- |
 | 0 · Pruebas del concepto | Omitida (ver `05-decisiones.md`) | 0 |
 | 1 · Base del motor | Bucle, render básico, entrada, Jolt configurado, tests | ~6 (real) |
-| 2 · Coche | Controlador con neumático de calidad, ayudas, acciones, sonido básico | 50–90 |
+| 2 · Coche | Coche inspirado en un Grupo B 4×4, neumático Pacejka con cinco superficies, motor con turbo, transmisión, ayudas, telemetría, cuatro configuraciones de prueba | 61–109 |
 | 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 45–75 |
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 50–90 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 20–40 |
 | 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 50–90 |
-| **Total 1.0** | | **~220–390** |
+| **Total 1.0** | | **~230–405** |
 
 Revisado al cerrar la fase 1 (2026-10-02): el código de infraestructura se comprime mucho con Claude Code; las horas de ajuste jugando, pruebas con otra persona, Blender, sonido y datos reales no. Se revisa de nuevo al cerrar la fase 2.
 
@@ -54,11 +54,40 @@ CMake y presets; raylib con backend SDL; ventana y bucle con paso fijo de 240 Hz
 
 **Terminado cuando:** un cuerpo de Jolt se mueve a 240 Hz sin tirones a 30 y 60 fps, responde igual con mando y teclado, el mando vibra, el contador muestra ms por fotograma, draw calls y memoria, y los tests corren con un comando.
 
-## Fase 2 · Coche (~50–90 h)
+## Fase 2 · Coche (~61–109 h)
 
-`VehicleConstraint` con controlador propio (neumático con elipse de fricción, relajación, sensibilidad a la carga, curvas por superficie); `VehicleCollisionTester` con microrrelieve de una banda filtrado en la huella; motor con curva de par; cambio automático y secuencial; freno de mano; ABS y control de tracción configurables; dureza de suspensión; ayuda de dirección dependiente de la velocidad. Máquina de acciones con duraciones en datos y anillo de progreso. Grabación de entradas por paso de física. Sonido básico de motor y rodadura.
+Coche de la 1.0 inspirado en el Peugeot 205 T16 Evo 1 (ver `01` §7.1), con física realista y estándar: fuerzas explícitas del neumático con Pacejka simplificada, fricción combinada, relajación, sensibilidad a la carga y resistencia a la rodadura; cinco superficies (asfalto, grava, tierra, nieve y arena); subpasos de rueda y tratamiento de baja velocidad; motor con curva de par y turbo con retardo; cambio automático y secuencial; diferencial central con viscoacoplador y autoblocantes; freno de mano; ABS, control de tracción, dureza de suspensión y ayuda de dirección según la velocidad. Coche definido en datos, con cuatro configuraciones de prueba (205 T16, tipo Quattro S1, tipo Escort Mk2 y tipo Delta Integrale). Entrada con acelerador y freno separados. Telemetría y grabación de entradas. Interior provisional con medidas reales, movimiento de cabeza y sonido sintético provisional del motor y de la rodadura. Máquina de acciones con duraciones en datos y anillo de progreso.
 
-**Terminado cuando:** pasa la prueba de derrape (círculo de grava de 40 m: derrape sostenido media vuelta, respuesta progresiva al levantar el pie, recogida a 100 km/h con contravolante), una horquilla se toma sin maniobrar, cada ajuste se nota, los baches se notan sin golpes falsos, y la misma secuencia de entradas da el mismo tiempo dos veces.
+**Tareas**
+
+| # | Tarea | Horas |
+| --- | --- | --- |
+| 2.1 | Entrada del coche (`SimInput` con dirección, acelerador, freno, freno de mano, marchas y recolocar), grabación de entradas y `rally_replay` | 3–4 |
+| 2.2 | Zona de pruebas: círculo de grava de 40 m, explanada de grava de 400 × 80 m (recogida a 100 km/h), eslalon, horquilla, recta con baches y ondulaciones, rampa del 15 %, cresta, parches de asfalto, tierra y nieve, pista ciega con la superficie elegida al construir y recorrido cronometrado; superficie por material; `h(x, z)` | 4–6 |
+| 2.3 | Telemetría: CSV por paso, gráficas en pantalla, script de Python | 4–6 |
+| 2.4 | Vehículo base: `VehicleConstraint` y controlador propio, suspensión y barras, frenos, dirección, resistencia aerodinámica, subpasos de rueda, baja velocidad, coche desde archivo de datos y recarga en caliente | 7–11 |
+| 2.5 | Neumático: Pacejka, fricción combinada, carga, relajación, rodadura, cinco superficies | 8–13 |
+| 2.6 | Motor y transmisión: par, turbo, cambios, diferencial central y autoblocantes | 6–10 |
+| 2.7 | Conductor en el coche: interior provisional, cabeza, vibración por superficie y deslizamiento, sonido sintético, modo a ciegas (sin color, sonido ni vibración de superficie) | 5–8 |
+| 2.8 | Ayudas y ajustes por jugador: dirección, ABS, control de tracción, suspensión, sensibilidad | 4–6 |
+| 2.9 | Máquina de acciones con duraciones en datos y anillo de progreso | 3–4 |
+| 2.10 | Ajuste y pruebas de manejo: prueba de derrape medida, las cinco superficies, las cuatro configuraciones con el compañero | 15–28 |
+| 2.11 | Cierre: rendimiento, reproducibilidad, criterio y nueva estimación | 2–3 |
+
+Las tareas suman 61–99 h; el resto, hasta 109, es margen.
+
+**Antes de empezar:** probar los mandos de Xbox, PS5 y Switch Pro (gatillos digitales).
+
+**Terminado cuando:**
+- pasa la prueba de derrape medida (`02` §4.3: sostenido, progresivo y recogida) con la configuración elegida;
+- una horquilla se toma sin maniobrar;
+- cada ajuste se nota;
+- los baches se notan sin golpes falsos;
+- asfalto, grava, tierra y nieve se distinguen a ciegas por el manejo: cada jugador acierta al menos 10 de 12 pruebas y ninguna superficie se falla más de una vez (la arena, en la fase 4);
+- el turbo obliga a anticipar el acelerador;
+- la misma secuencia de entradas da el mismo tiempo dos veces, también la partida frente a `rally_replay`;
+- la simulación cuesta ≤ 0,5 ms por paso en el equipo de pruebas;
+- las cuatro configuraciones se han probado con el compañero y se ha elegido la del juego.
 
 ## Fase 3 · Corte vertical (~45–75 h)
 

@@ -27,6 +27,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Espera de validación antes de una pasada | Que no se note: se valida mientras se eligen coche y ajustes. Objetivo a fijar con la medida de la fase 4 |
 | Red | Estado del coche a 30 Hz; < 5 KB/s por sentido sin voz |
 | Latencia de nota (de que el copiloto envía a que el conductor la ve) | La de la red más el búfer de interpolación (60–150 ms) |
+| Simulación del coche | ≤ 0,5 ms por paso de 240 Hz (coche y mundo de pruebas) en un i3-8100 |
 
 **Cómo se mide:** contador en pantalla desde la fase 1 (ms por fotograma, draw calls, memoria) y medida en un PC con GTX 1060 o RX 580 (o una gráfica de rendimiento parecido) al final de cada fase.
 
@@ -36,7 +37,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | --- | --- | --- |
 | Validación con piloto IA | Segundos de espera en CPU lenta | Zonas de riesgo, 2 hilos, durante la selección, caché |
 | Física entera en doble precisión | Memoria y 5–10 % más de física | Franja de colisión de ±60 m; medir en la fase 3 |
-| Neumático de calidad a 240 Hz | Más cálculo por rueda y paso | Un solo coche; medir en la fase 2 |
+| Neumático de calidad a 240 Hz | Más cálculo por rueda y paso | Un solo coche; ≤ 0,5 ms por paso con `rally_replay run <grabación> --bench` y el contador (F1). Peor caso: 8 pasos por fotograma en el modo de 30 fps (4 ms). |
 | Bosque denso opaco | Lo más caro para la gráfica | Fase 1, RX 580 a 1080p: 20 000 árboles (1 M triángulos) con instancias persistentes = 0,50 ms de CPU y 1,65 ms de GPU, sin descarte por cámara y sin sombras. Fase 6: descarte por celdas, LOD/impostores en lo lejano y solo las cascadas cercanas dibujan vegetación |
 | Carga de gráficos en segundo plano | Necesita un núcleo libre | Ventana configurable |
 | Interior con objetos sueltos [post-1.0] | Segundo mundo físico | < 10 objetos, dormidos |
@@ -46,7 +47,7 @@ Versión final de trabajo · 1 de octubre de 2026
 ### Juego
 - [ ] Dos jugadores en dos PCs, en tiempo real, entre casas.
 - [ ] Sesión de dos pasadas: la segunda en sentido contrario con roles cambiados.
-- [ ] Tramos generados por semilla, entorno de montaña, superficies asfalto, grava, tierra y nieve, seco de día.
+- [ ] Tramos generados por semilla, entorno de montaña, superficies asfalto, grava, tierra, nieve y arena, seco de día.
 - [ ] Tablet con mapa, perfil de altura, cinta de ruta y cursor libre; sin notas dibujadas.
 - [ ] Dial principal, secundario y de distancias, con mando y con ratón; borrar última y vaciar cola.
 - [ ] Panel del salpicadero curva · distancia · curva con sonido por lado.

@@ -14,6 +14,7 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 - `docs/progreso.md`: fase actual, horas y hallazgos.
 - `docs/07-entorno-y-portabilidad.md`: montar el entorno en otro PC y comprobar que da los mismos resultados.
 - `docs/08-bitacora-de-desarrollo.md`: el porqué de las decisiones, problemas encontrados y esperados, ideas de futuro.
+- `docs/prompts/fase-2/`: un prompt por tarea de la fase 2 y reglas comunes (`comun.md`).
 
 ## Cómo trabajamos
 
