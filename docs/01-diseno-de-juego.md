@@ -2,7 +2,7 @@
 
 Versión final de trabajo · 1 de octubre de 2026 · Lucas
 
-Juego de rally cooperativo en 3D para 2 jugadores, cada uno en su PC y en tiempo real: uno conduce y el otro canta las curvas. Se juega en primera persona, con una conducción del estilo de DiRT Rally y un estilo visual low-poly. Está pensado para parejas de amigos que buscan un reto juntos. El manejo es arcade con base de simulación. Uso personal y no comercial.
+Juego de rally cooperativo en 3D para 2 jugadores, cada uno en su PC y en tiempo real: uno conduce y el otro canta las curvas. Se juega en primera persona, con una conducción del estilo de DiRT Rally y un estilo visual low-poly. Está pensado para parejas de amigos que buscan un reto juntos. El manejo es realista, en la línea de DiRT Rally; las ayudas configurables lo hacen accesible con mando. Uso personal y no comercial.
 
 **Objetivo del proyecto:** la calidad es lo primero, desde el primer día. No hay fecha fija: el ritmo se mide con el plan de fases (ver `04-plan-de-fases.md`).
 
@@ -187,7 +187,7 @@ Las monedas se acumulan desde la 1.0. La tienda abre con la personalización [po
 
 **Coche de la 1.0.** Diseño propio, sin marcas ni decoraciones reales, inspirado en un Grupo B de 1985: 4×4 con motor central transversal y turbo. Referencia de manejo: Peugeot 205 T16 Evo 1 (~350 CV, ~950 kg, reparto de par 33 % delante y 67 % detrás, autoblocantes en cada eje). La potencia es ajustable hasta valores de Evo 2 (~450 CV) para encontrar la dificultad adecuada (es un parámetro del archivo del coche, no un ajuste del jugador). La conducción es realista: el turbo tiene retardo de verdad (hay que anticipar el acelerador), y no hay nitro ni empujones artificiales.
 
-El manejo es arcade con base de simulación: el coche se lleva con facilidad, pero el peso, la transferencia de carga y el agarre de cada superficie se notan. Se juega con mando o con teclado y ratón; el volante no se soporta de momento. Los ajustes se eligen antes de cada pasada y **cada jugador configura los suyos**.
+El manejo es realista: física de simulación estándar, sin atajos arcade. El peso, la transferencia de carga, el agarre de cada superficie y el retardo del turbo se notan. Lo que lo hace accesible con mando son las ayudas, que cada jugador activa o no (tabla de abajo), no una física simplificada. Se juega con mando o con teclado y ratón; el volante no se soporta de momento. Los ajustes se eligen antes de cada pasada y **cada jugador configura los suyos**.
 
 | Ajuste | Opciones | Efecto |
 | --- | --- | --- |
@@ -199,7 +199,7 @@ El manejo es arcade con base de simulación: el coche se lleva con facilidad, pe
 | Sensibilidad de dirección | Escala continua | Cuánto gira el coche por cada milímetro de stick o tecla |
 
 - Las ayudas usadas se guardan con cada pasada y se muestran en el resumen y en la tabla de tiempos.
-- En el modo difícil [post-1.0], el ABS y el control de tracción quedan bloqueados en desactivado.
+- En el modo difícil [post-1.0], el ABS y el control de tracción quedan bloqueados en desactivado. La ayuda de dirección sigue a elección de cada jugador: compensa la falta de fuerza en el volante del mando, no la habilidad.
 
 **Dirección.** Con mando o teclado no hay fuerza en el volante que avise del límite, así que una ayuda limita el ángulo de las ruedas delanteras respecto a la dirección real de avance del coche. El stick a fondo da el ángulo de máximo agarre y el contravolante está siempre disponible. La ayuda es un ajuste de cada jugador: activada o desactivada, activada por defecto, y se registra con la pasada como las demás ayudas. Sin ella, la dirección a fondo da el ángulo máximo de las ruedas a cualquier velocidad. El ángulo de máximo agarre depende de la superficie que pisan las ruedas delanteras.
 
@@ -297,7 +297,7 @@ Quita ayudas a los dos jugadores por igual.
 | Iconos de peligro y colores de superficie | Copiloto | Sí | No |
 | Señales | Conductor | Solo peligros graves | Ninguna |
 | Barro | Los dos | Charcos visibles con tiempo | Más charcos, menos líquido |
-| ABS y control de tracción | Conductor | Configurables | Desactivados |
+| ABS y control de tracción | Conductor | Configurables | Desactivados (la ayuda de dirección no cambia) |
 | Daños | Conductor | Umbral alto | Umbral bajo, acumulativos, dirección desalineada |
 | Recolocación | Los dos | Penalización base | Penalización doble |
 | Láminas de visera | Los dos | 5 | 2 |

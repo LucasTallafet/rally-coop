@@ -62,7 +62,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Puntuación | Por curva con racha, solo el primer intento, sin puntuar las notas | Provisional hasta la fase 4 |
 | Monedas | Por minuto de tramo, con tiempo de referencia del coche elegido; medallas como rangos | Provisional hasta la fase 4 |
 | Tienda | Abre con la personalización, después de la 1.0; coches nuevos de uno en uno | Cerrada |
-| Ayudas | Configurables por cada jugador; registradas con cada pasada; bloqueadas en modo difícil | Cerrada |
+| Ayudas | Configurables por cada jugador; registradas con cada pasada; en modo difícil, ABS y control de tracción bloqueados (la ayuda de dirección no) | Cerrada |
 | Dirección | Ayuda ajustable por cada jugador (activada por defecto) y registrada con la pasada: limita el ángulo de las ruedas delanteras al de máximo agarre de la superficie respecto a su velocidad; desde unos 30 km/h, mezcla de 15 a 30, giro completo por debajo y en marcha atrás | Provisional hasta la fase 2 |
 | Freno de mano y marcha atrás | Freno de mano en las traseras; en 4×4 desacopla el diferencial central y el embrague. Caja R – N – 1ª–5ª en los dos modos: bajar de 1ª da punto muerto y bajar de N parado da marcha atrás; se sale en 1ª | Provisional hasta la fase 2 |
 | Cambio automático | Retrasa el cambio en derrape como mucho 0,5–1 s; nunca contra el limitador | Cerrada |
@@ -103,3 +103,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-02 | Prueba de derrape | Criterio en texto | Definiciones medibles de sostenido, progresivo y recogida; explanada de grava para la recogida a 100 km/h | El círculo de 40 m no permite 100 km/h (límite ~60 km/h); el script tiene que poder decidir solo |
 | 2026-10-02 | Telemetría y grabación | CSV en la partida | La partida graba entradas; rally_replay regenera la telemetría; huella con coche congelado | Guardar en git solo grabaciones; ajustar el coche no mueve la huella |
 | 2026-10-02 | Estimación fase 2 | 60–110 h | 61–109 h | Zona de pruebas ampliada, rally_replay y chasis completo; el mínimo pasa a ser la suma de las tareas (antes, por debajo de ella) |
+| 2026-10-02 | Manejo | Arcade con base de simulación | Realista; accesible gracias a las ayudas configurables | Coherencia con el diseño de la fase 2 (física realista y estándar) |
+| 2026-10-02 | Ayudas (alcance) | Bloqueadas en modo difícil | ABS y control de tracción bloqueados en modo difícil; la ayuda de dirección no | Aclaración tras D1: la decisión se refería al ABS y al control de tracción; la ayuda de dirección compensa el mando, no la habilidad |
+| 2026-10-02 | Prueba a ciegas | 4 superficies, 10 de 12 | 5 superficies, 13 de 15 | La arena se ajusta en la fase 2 (decisión "Superficies") |
+| 2026-10-02 | Estimación 1.0 | ~220–390 h | ~230–410 h | Fase 2 ampliada en su diseño y en la revisión |

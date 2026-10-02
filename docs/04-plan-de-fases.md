@@ -21,7 +21,7 @@ La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 50–90 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 20–40 |
 | 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 50–90 |
-| **Total 1.0** | | **~230–405** |
+| **Total 1.0** | | **~230–410** |
 
 Revisado al cerrar la fase 1 (2026-10-02): el código de infraestructura se comprime mucho con Claude Code; las horas de ajuste jugando, pruebas con otra persona, Blender, sonido y datos reales no. Se revisa de nuevo al cerrar la fase 2.
 
@@ -83,7 +83,7 @@ Las tareas suman 61–99 h; el resto, hasta 109, es margen.
 - una horquilla se toma sin maniobrar;
 - cada ajuste se nota;
 - los baches se notan sin golpes falsos;
-- asfalto, grava, tierra y nieve se distinguen a ciegas por el manejo: cada jugador acierta al menos 10 de 12 pruebas y ninguna superficie se falla más de una vez (la arena, en la fase 4);
+- asfalto, grava, tierra, nieve y arena se distinguen a ciegas por el manejo: cada jugador acierta al menos 13 de 15 pruebas (tres por superficie) y ninguna superficie se falla más de una vez;
 - el turbo obliga a anticipar el acelerador;
 - la misma secuencia de entradas da el mismo tiempo dos veces, también la partida frente a `rally_replay`;
 - la simulación cuesta ≤ 0,5 ms por paso en el equipo de pruebas;
@@ -97,7 +97,7 @@ Formato de tramo por primitivas y un tramo de 3–5 km escrito a mano con cresta
 
 ## Fase 4 · Generador (~50–90 h)
 
-Banco de 20–40 tramos reales de montaña y analizador en Python con perfil de ritmo; generador con terreno primero, trazado por muestreo y ceguera por diseño; ocluyentes declarados; validador en 4 capas con piloto IA en los dos sentidos (zonas de riesgo, 2 hilos, caché); visor de semillas con comprobación por render; señales y parciales en los dos sentidos. Puntuación por curva, racha, monedas y medallas como rangos; sesión de dos pasadas con la segunda en sentido contrario; daños con integridad; sensación de velocidad.
+Banco de 20–40 tramos reales de montaña y analizador en Python con perfil de ritmo; generador con terreno primero, trazado por muestreo y ceguera por diseño; ocluyentes declarados; validador en 4 capas con piloto IA en los dos sentidos (zonas de riesgo, 2 hilos, caché); visor de semillas con comprobación por render; señales y parciales en los dos sentidos. Puntuación por curva, racha, monedas y medallas como rangos; sesión de dos pasadas con la segunda en sentido contrario; daños con integridad; sensación de velocidad. Regla del generador para colocar la arena (lechos de río, zonas arenosas, `01` §7.3).
 
 **Terminado cuando:** de 10 semillas seguidas que pasan el validador, los dos jugadores aceptan al menos 8 como tramos de rally creíbles en los dos sentidos; un tramo de 30 km no tiembla al final; ningún tramo aceptado es imposible; la validación no se nota antes de salir; y la puntuación premia lo que se siente como una buena pasada.
 

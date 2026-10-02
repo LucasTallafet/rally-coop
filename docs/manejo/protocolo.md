@@ -57,11 +57,11 @@ Apuntad en la hoja si el intento fue "limpio" (hicisteis la maniobra como se pid
 
 1. Quien anota arranca con `--blind-seed <número>`, elegido por él y sin decirlo. Apunta la semilla en `notas.md`, sección privada.
 2. Modo a ciegas activado: sin color, sonido ni vibración de superficie y sin nombres en el overlay.
-3. 12 pruebas por conductor. En cada una, quien anota pulsa la tecla de la siguiente prueba ("Prueba k/12"), y el conductor da 2 vueltas a la pista ciega y dice **qué superficie cree que es** (asfalto, grava, tierra o nieve) y **su seguridad** (1 = adivino, 2 = bastante seguro, 3 = seguro).
+3. 15 pruebas por conductor (cada superficie sale 3 veces; unos 30 minutos). En cada una, quien anota pulsa la tecla de la siguiente prueba ("Prueba k/15"), y el conductor da 2 vueltas a la pista ciega y dice **qué superficie cree que es** (asfalto, grava, tierra, nieve o arena) y **su seguridad** (1 = adivino, 2 = bastante seguro, 3 = seguro).
 4. Quien anota no da pistas ni reacciona. La respuesta correcta no se dice hasta el final.
 5. Al terminar, `check_session.py` saca la superficie real de cada grabación y la matriz de aciertos.
 
-**Pasa** (decisión D5): cada conductor acierta al menos 10 de 12 y ninguna superficie se falla más de una vez.
+**Pasa** (decisión D5): cada conductor acierta al menos 13 de 15 (como mucho 2 fallos) y ninguna superficie se falla más de una vez. Al azar se acertarían unas 3.
 
 ### C. Configuraciones (elegir el coche del juego)
 

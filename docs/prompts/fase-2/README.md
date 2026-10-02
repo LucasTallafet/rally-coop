@@ -15,6 +15,7 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | `comun.md` | Reglas comunes a todas las tareas |
 | `adenda-diseno.md` | Revisión del diseño de la fase 2: decisiones D1–D7 que confirma Lucas y cambios exactos para `docs/` |
 | `2.0.md` | Aplicar el diseño y la adenda a los documentos (sin código) |
+| `2.0b.md` | Correcciones tras la 2.0: arena en la fase 2, manejo realista, modo difícil y cifras (sin código) |
 | `2.1.md` … `2.11.md` | Una tarea cada uno |
 | `../../manejo/protocolo.md` | Protocolo de pruebas de manejo para Lucas y su compañero (tarea 2.10) |
 | `../../manejo/plantilla-hoja.csv` | Cabecera de la hoja de cada sesión |
@@ -30,7 +31,8 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | Tarea | Depende de | Módulos | Parada | Horas |
 | --- | --- | --- | --- | --- |
 | 2.0 Documentos | — | `docs` | Solo si D1–D7 no están marcadas | — |
-| 2.1 Entrada, grabación y `rally_replay` | 2.0, paso 0 | sim, platform, io, tools | Sí | 3–4 |
+| 2.0b Correcciones de documentos | 2.0 | `docs` | No | — |
+| 2.1 Entrada, grabación y `rally_replay` | 2.0b, paso 0 | sim, platform, io, tools | Sí | 3–4 |
 | 2.2 Zona de pruebas | 2.1 | sim, platform, tools | Sí | 4–6 |
 | 2.3 Telemetría | 2.1, 2.2 | sim (lectura), io, platform, tools, Python | Sí (corta) | 4–6 |
 | 2.4 Vehículo base | 2.1, 2.2, 2.3 | sim, platform, data, tools | Sí | 7–11 |

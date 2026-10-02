@@ -196,4 +196,4 @@ La fase 1 costó ~6 h frente a 60. Claude Code comprime mucho el código de infr
 | 4 · Generador | 120–150 | 50–90 | Datos reales y validación de semillas jugando |
 | 5 · Entre casas | 60–80 | 20–40 | Casi todo es infraestructura |
 | 6 · Calidad visual y sonora | 80–120 | 50–90 | Blender y sonido son trabajo manual |
-| **Total 1.0** | **560–700** | **~230–405** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |
+| **Total 1.0** | **560–700** | **~230–410** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |
