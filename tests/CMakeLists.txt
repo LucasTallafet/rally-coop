@@ -13,6 +13,9 @@ add_executable(rally_tests
     test_sim_world.cpp
 )
 target_link_libraries(rally_tests PRIVATE rally_sim rally_loop doctest::doctest rally_warnings)
+# Datos medidos para los tests (registros de fotogramas).
+target_compile_definitions(rally_tests PRIVATE
+    RALLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(rally_tests)

@@ -93,8 +93,9 @@ int draw_frame_graph(const FrameHistory& history, std::int64_t frame_period, std
         DrawText(TextFormat("últimos %d: sin pasos previstos por fotograma", counts.frames), x,
                  text_top, kFontSize, kText);
     }
-    DrawText(TextFormat("ajuste al refresco: %s   deuda: %+.3f ms", snap, units_to_ms(debt)), x,
-             text_top + kFontSize + 6, kFontSize, kText);
+    DrawText(TextFormat("ajuste al refresco: %s   sin ajustar: %s   deuda: %+.3f ms", snap,
+                        snap_enabled ? TextFormat("%d", counts.unsnapped) : "-", units_to_ms(debt)),
+             x, text_top + kFontSize + 6, kFontSize, kText);
     return text_top + 2 * kFontSize + 6 - y;
 }
 

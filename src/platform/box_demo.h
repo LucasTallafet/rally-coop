@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/frame_history.h"
+#include "platform/frame_log.h"
 #include "platform/interpolation.h"
 #include "sim/sim_input.h"
 #include "sim/sim_world.h"
@@ -25,7 +26,8 @@ struct FrameSteps;
 // persona y la cámara fija, J dibuja en float del mundo (depuración, para ver el temblor),
 // F alterna frecuencia del monitor / 30 fps, I la interpolación, V la sincronización
 // vertical, P la pausa, C guarda una captura (captura_NNN.png junto al exe), G muestra la
-// gráfica de ritmo de fotogramas y N activa el ajuste del dt al refresco del monitor.
+// gráfica de ritmo de fotogramas, N activa el ajuste del dt al refresco del monitor y L
+// empieza o acaba el registro de fotogramas (fotogramas_NNN.csv junto al exe).
 class BoxDemo {
 public:
     // Necesita la ventana abierta (fija los planos de recorte de raylib).
@@ -35,6 +37,9 @@ public:
 
     // N: ajuste del dt al periodo del monitor en FixedStepClock (activo por defecto).
     bool snap_enabled() const { return snap_; }
+
+    // Empieza el registro de fotogramas (también con L; --frame-log al arrancar).
+    void start_frame_log() { frame_log_.start(); }
 
     // Un paso de 1/240 s.
     void step(const sim::SimInput& input);
@@ -68,6 +73,7 @@ private:
     double fps_ = 0.0;
     double average_ms_ = 0.0;
     FrameHistory history_; // pasará al contador de rendimiento con la gráfica
+    FrameLog frame_log_;   // L: registro de diagnóstico
 };
 
 } // namespace rally::platform

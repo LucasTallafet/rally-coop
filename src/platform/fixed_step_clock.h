@@ -14,7 +14,7 @@ inline constexpr int kMaxStepsPerFrame = 24;
 inline constexpr std::int64_t kStepUnits = 1'000'000'000;
 
 // Ajuste del dt a la sincronización vertical (ver FixedStepClock).
-inline constexpr std::int64_t kSnapWindowUnits = 1'000'000 * kStepsPerSecond; // 1 ms
+inline constexpr std::int64_t kSnapWindowUnits = 2'000'000 * kStepsPerSecond; // 2 ms
 inline constexpr std::int64_t kRepayDivisor = 16;
 inline constexpr std::int64_t kMaxRepayUnits = 100'000 * kStepsPerSecond;  // 0,1 ms
 inline constexpr std::int64_t kMaxDebtUnits = 4'000'000 * kStepsPerSecond; // 4 ms
@@ -40,15 +40,21 @@ struct FrameSteps {
 //
 // Ajuste a la sincronización vertical (set_snap_period): la medida del dt tiene ruido
 // (se toma al volver de la presentación, no en el refresco). Si el dt medido está a menos
-// de 1 ms de un múltiplo k ≥ 1 del periodo, se usa k × periodo exacto. La diferencia va a
+// de 2 ms de un múltiplo k ≥ 1 del periodo, se usa k × periodo exacto. 2 ms es menos de
+// medio periodo hasta 240 Hz, así que el múltiplo nunca es ambiguo. La diferencia va a
 // una deuda que se devuelve poco a poco (deuda/16, como mucho 0,1 ms por fotograma); si
 // pasa de 4 ms, se paga entera en ese fotograma. Así el tiempo de juego no se separa del
 // real más de 4 ms más un desplazamiento fijo de origen:
 //   tiempo real − deuda − tiempo de juego = constante
-// Al empezar a ajustar (primer fotograma ajustado tras uno sin ajustar), la fracción del
-// acumulador se coloca en medio paso: con fotogramas de un número entero de pasos, alpha
-// queda lejos del borde entre pasos y el ruido no da pares de 3 y 5 pasos. Ese cambio de
-// fase es un desplazamiento del origen del tiempo de juego (< medio paso), no deuda.
+// Fase centrada: con fotogramas de un número entero de pasos, la fracción del acumulador se
+// coloca en medio paso para que alpha quede lejos del borde entre pasos y el ruido no dé
+// pares de 3 y 5 pasos. Es un desplazamiento del origen del tiempo de juego (< medio paso),
+// no deuda. Se hace una vez, en el primer fotograma ajustado tras activar el ajuste (o tras
+// el tope de pasos). Un fotograma sin ajustar no vuelve a centrar: suele ser un instante
+// que llega tarde y el siguiente lo compensa; centrar sobre él dejaría alpha cerca del
+// borde (con la RX 580, 39 fotogramas de 3 o 5 pasos en 29 s frente a 19 sin hacerlo).
+// Si el monitor no va a la frecuencia que dice, alpha deriva y cruza el borde de vez en
+// cuando: ahí salen algunos fotogramas de 3 o 5 pasos, con el mismo tiempo de juego.
 //
 // Si un fotograma pide más de kMaxStepsPerFrame pasos (ventana arrastrada, pausa del
 // depurador), se dan kMaxStepsPerFrame y se descartan los pasos enteros sobrantes y la
@@ -77,7 +83,7 @@ private:
     std::int64_t steps_done_ = 0;
     std::int64_t snap_period_ = 0;
     std::int64_t debt_ = 0;
-    bool snapping_ = false; // el último fotograma se ajustó
+    bool centred_ = false; // fase centrada desde que se activó el ajuste
 };
 
 } // namespace rally::platform

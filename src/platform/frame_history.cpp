@@ -26,6 +26,9 @@ bool FrameHistory::is_dropped(const FrameRecord& record, std::int64_t frame_peri
 FrameCounts FrameHistory::count(std::int64_t frame_period) const {
     FrameCounts counts;
     counts.frames = size_;
+    for (int i = 0; i < size_; ++i) {
+        counts.unsnapped += at(i).snapped ? 0 : 1;
+    }
     if (frame_period <= 0 || frame_period % kStepUnits != 0) {
         return counts;
     }

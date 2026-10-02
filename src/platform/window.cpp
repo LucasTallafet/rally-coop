@@ -13,4 +13,13 @@ Window::~Window() { CloseWindow(); }
 
 bool Window::should_close() const { return WindowShouldClose(); }
 
+void Window::handle_keys() {
+    const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+    if (IsKeyPressed(KEY_F11) || (alt && IsKeyPressed(KEY_ENTER))) {
+        toggle_fullscreen();
+    }
+}
+
+void Window::toggle_fullscreen() { ToggleBorderlessWindowed(); }
+
 } // namespace rally::platform

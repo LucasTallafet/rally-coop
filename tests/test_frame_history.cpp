@@ -13,8 +13,8 @@ using rally::platform::refresh_period_units;
 
 namespace {
 
-FrameRecord frame(std::int64_t measured_ns, int steps) {
-    return FrameRecord{measured_ns, measured_ns * 240, steps};
+FrameRecord frame(std::int64_t measured_ns, int steps, bool snapped = true) {
+    return FrameRecord{measured_ns, measured_ns * 240, steps, snapped};
 }
 
 } // namespace
@@ -68,6 +68,18 @@ TEST_CASE("frame history: 30 fps expects 8 steps per frame") {
     CHECK(counts.off_steps == 2);
     CHECK(counts.dropped == 1);
     CHECK(counts.noise == 1);
+}
+
+TEST_CASE("frame history: counts unsnapped frames") {
+    FrameHistory history;
+    history.push(frame(16'666'667, 4));
+    history.push(frame(18'900'000, 5, false));
+    history.push(frame(14'400'000, 3, false));
+    history.push(frame(16'666'667, 4));
+    const FrameCounts counts = history.count(refresh_period_units(60, 1));
+    CHECK(counts.unsnapped == 2);
+    CHECK(counts.noise == 2);
+    CHECK(history.count(0).unsnapped == 2); // también sin pasos previstos
 }
 
 TEST_CASE("frame history: no expected steps without a whole number of steps per frame") {

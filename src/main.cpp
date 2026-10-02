@@ -8,6 +8,7 @@
 #include "sim/jolt_runtime.h"
 
 #include <cstdint>
+#include <cstring>
 
 // Piden la gráfica dedicada en PCs con dos gráficas (AMD PowerXpress y NVIDIA Optimus).
 // Sin ellas, OpenGL puede elegir la integrada aunque el monitor esté en la dedicada.
@@ -19,7 +20,7 @@ __declspec(dllexport) unsigned long AmdPowerXpressRequestHighPerformance = 1;
 __declspec(dllexport) unsigned long NvOptimusEnablement = 1;
 }
 
-int main() {
+int main(int argc, char** argv) {
     if (!rally::sim::jolt_abi_matches()) {
         rally::platform::show_fatal_error(
             "Jolt se compiló con definiciones distintas a las del juego.");
@@ -33,6 +34,14 @@ int main() {
     rally::platform::FixedStepClock clock;
     rally::platform::BoxDemo demo;
     rally::platform::KeyboardInput keyboard;
+    for (int i = 1; i < argc; ++i) {
+        // Diagnóstico: registro de fotogramas y arranque en pantalla completa.
+        if (std::strcmp(argv[i], "--frame-log") == 0) {
+            demo.start_frame_log();
+        } else if (std::strcmp(argv[i], "--fullscreen") == 0) {
+            window.toggle_fullscreen();
+        }
+    }
 
     while (!window.should_close()) {
         const std::int64_t frame_ns = pacer.begin_frame();
@@ -40,6 +49,7 @@ int main() {
         clock.set_snap_period(demo.snap_enabled() ? pacer.snap_period() : 0);
         const rally::platform::FrameSteps steps = clock.advance(frame_ns);
 
+        window.handle_keys();
         demo.handle_keys(pacer);
         // La entrada se lee una vez por fotograma y vale para todos sus pasos.
         const rally::sim::SimInput input = keyboard.read(steps.count);

@@ -11,7 +11,8 @@ class FrameHistory;
 // (0–50 ms) y una marca blanca con el tiempo de juego aplicado; líneas de referencia en 1 y
 // 2 periodos. Debajo, los pasos de física de cada fotograma. Colores: gris verdoso con los
 // pasos previstos, amarillo para ruido de medida (~1 periodo con otros pasos), rojo para
-// fotogramas perdidos (≥ 1,5 periodos), gris si no hay pasos previstos.
+// fotogramas perdidos (≥ 1,5 periodos), gris si no hay pasos previstos. Con el ajuste
+// activo cuenta también los fotogramas sin ajustar: son los que mueven la imagen a saltos.
 //
 // frame_period: duración prevista del fotograma en unidades del reloj (0 si no se conoce).
 // debt: deuda del ajuste de FixedStepClock. Dibuja entre BeginDrawing y EndDrawing.

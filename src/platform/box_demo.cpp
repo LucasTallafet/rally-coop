@@ -237,6 +237,13 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     if (IsKeyPressed(KEY_N)) {
         snap_ = !snap_;
     }
+    if (IsKeyPressed(KEY_L)) {
+        if (frame_log_.active()) {
+            frame_log_.stop();
+        } else {
+            frame_log_.start();
+        }
+    }
     if (IsKeyPressed(KEY_O)) {
         far_from_origin_ = !far_from_origin_;
         desc_ = arena(far_from_origin_ ? kFarOffset : 0.0);
@@ -270,7 +277,8 @@ void BoxDemo::update_stats(std::int64_t frame_ns) {
 void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
                    const FixedStepClock& clock) {
     update_stats(frame_ns);
-    history_.push(FrameRecord{frame_ns, steps.used, steps.count});
+    history_.push(FrameRecord{frame_ns, steps.used, steps.count, steps.snapped});
+    frame_log_.write(frame_ns, steps, clock.debt(), clock.snap_period(), pacer.frame_period());
 
     // En pausa se dibuja siempre el mismo estado: todos los fotogramas son idénticos.
     drawn_.resize(current_.size());
@@ -349,9 +357,11 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                         pacer.refresh_rate(), pacer.swap_interval(), method,
                         interval_known ? TextFormat("%d", actual_interval) : "desconocido"),
              16, 94, 20, text);
-    DrawText(
-        TextFormat("interpolación: %s   %s", interpolate_ ? "sí" : "no", paused_ ? "PAUSA" : ""),
-        16, 120, 20, text);
+    DrawText(TextFormat(
+                 "interpolación: %s   pantalla: %s   registro: %s   %s", interpolate_ ? "sí" : "no",
+                 IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes" : "ventana",
+                 frame_log_.active() ? frame_log_.name() : "no", paused_ ? "PAUSA" : ""),
+             16, 120, 20, text);
     DrawText(TextFormat("gráfica: %s", renderer_.c_str()), 16, 146, 20, text);
     DrawText(TextFormat("cámara: %s   mundo: %s   render: %s",
                         first_person_ ? "primera persona" : "fija",
@@ -367,12 +377,13 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     const Color help = Color{150, 156, 168, 255};
     DrawText("W/S: acelerar/atrás   A/D: girar   Espacio: saltar   R: reiniciar   "
              "O: origen/20 km",
-             16, GetScreenHeight() - 88, 20, help);
+             16, GetScreenHeight() - 114, 20, help);
     DrawText("Tab: cámara   J: render en float del mundo   F: monitor/30 fps   I: interpolación",
-             16, GetScreenHeight() - 62, 20, help);
-    DrawText("V: sincronización vertical   N: ajuste al refresco   G: gráfica   P: pausa   "
-             "C: captura   Esc: salir",
-             16, GetScreenHeight() - 36, 20, help);
+             16, GetScreenHeight() - 88, 20, help);
+    DrawText("V: sincronización vertical   N: ajuste al refresco   G: gráfica   L: registro", 16,
+             GetScreenHeight() - 62, 20, help);
+    DrawText("F11 o Alt+Intro: pantalla completa   P: pausa   C: captura   Esc: salir", 16,
+             GetScreenHeight() - 36, 20, help);
 
     if (capture_requested_) {
         save_screenshot();

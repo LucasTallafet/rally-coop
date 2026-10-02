@@ -10,6 +10,7 @@ struct FrameRecord {
     std::int64_t measured_ns = 0; // duración medida
     std::int64_t used = 0;        // tiempo de juego aplicado, en unidades del reloj (ns × 240)
     int steps = 0;                // pasos de física simulados
+    bool snapped = false;         // dt ajustado al refresco (FixedStepClock)
 };
 
 // Recuentos sobre los fotogramas del historial.
@@ -19,6 +20,9 @@ struct FrameCounts {
     int off_steps = 0;      // fotogramas con un número de pasos distinto del previsto
     int dropped = 0;        // de ellos, fotogramas perdidos: duración ≥ 1,5 periodos
     int noise = 0;          // de ellos, ruido de medida: duración de ~1 periodo
+    // Fotogramas sin ajustar al refresco (con el ajuste activo): aplican el dt medido con su
+    // ruido, que sí se ve. Los de 3 o 5 pasos ajustados avanzan el juego igual de suave.
+    int unsnapped = 0;
 };
 
 // Últimos kCapacity fotogramas, para la gráfica del contador en pantalla. Sin reservas.

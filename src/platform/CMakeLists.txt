@@ -16,6 +16,7 @@ target_link_libraries(rally_loop PRIVATE rally_warnings)
 add_library(rally_platform STATIC
     box_demo.cpp
     frame_graph.cpp
+    frame_log.cpp
     fatal_error.cpp
     frame_pacer.cpp
     input.cpp

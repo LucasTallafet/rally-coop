@@ -5,7 +5,9 @@
 
 #include <array>
 #include <cstdint>
+#include <fstream>
 #include <limits>
+#include <string>
 
 using rally::platform::FixedStepClock;
 using rally::platform::FrameSteps;
@@ -235,6 +237,59 @@ TEST_CASE("fixed step clock snap: 60 Hz with 0.8 ms of noise always gives 4 step
     }
 }
 
+TEST_CASE("fixed step clock snap: 60 Hz with 1.5 ms of noise always gives 4 steps") {
+    // Ruido de ±0,75 ms en cada instante medido: los dt van de 15,17 a 18,17 ms.
+    FixedStepClock clock = snapping_clock();
+    VsyncTimeline vsync(60, 1, 750'000);
+    DriftCheck drift;
+    for (int frame = 0; frame < 20'000; ++frame) {
+        const std::int64_t frame_ns = vsync.next_frame();
+        const FrameSteps steps = clock.advance(frame_ns);
+        REQUIRE(steps.snapped);
+        REQUIRE(steps.count == 4);
+        REQUIRE(steps.alpha > 0.2);
+        REQUIRE(steps.alpha < 0.8);
+        drift.after(clock, steps, frame_ns);
+    }
+}
+
+TEST_CASE("fixed step clock snap: replay of frames measured on an RX 580 at 60 Hz") {
+    // dt reales de la demo en ventana a 60 Hz (fase 1, tarea 4b; 30 s, fotogramas_000.csv).
+    // Ruido de hasta ±2,3 ms en parejas (+x, −x), un fotograma perdido y un monitor que va a
+    // 60,015 Hz. Con la ventana de 1 ms y volviendo a centrar tras cada fotograma sin ajustar
+    // salían 295 sin ajustar y 16 de 3 o 5 pasos; con 2 ms y volviendo a centrar, 39.
+    std::ifstream file(RALLY_TEST_DATA_DIR "/frames_rx580_60hz.txt");
+    REQUIRE(file.good());
+    FixedStepClock clock;
+    clock.set_snap_period(kPeriod60);
+    DriftCheck drift;
+    std::string line;
+    int frame = 0;
+    int unsnapped = 0;
+    int noise = 0;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        const std::int64_t frame_ns = std::stoll(line);
+        const FrameSteps steps = clock.advance(frame_ns);
+        if (frame_ns > 0) {
+            drift.after(clock, steps, frame_ns);
+        }
+        // Como el contador en pantalla: sin el primer segundo.
+        if (frame++ >= 60) {
+            unsnapped += steps.snapped ? 0 : 1;
+            const bool lost = 2 * frame_ns * 240 >= 3 * kPeriod60;
+            noise += steps.count != 4 && !lost ? 1 : 0;
+        }
+    }
+    CHECK(frame == 1'786);
+    // Los 17 dt a más de 2 ms del periodo. Los fotogramas de 3 o 5 pasos que quedan son esos
+    // y los cruces del borde por la deriva del monitor (unos 1,7 en 29 s, con vaivén).
+    CHECK(unsnapped == 17);
+    CHECK(noise == 19);
+}
+
 TEST_CASE("fixed step clock snap: without snapping the same noise gives 3 and 5 steps") {
     // Contraste: el mismo ruido sin ajuste, con alpha cerca del borde entre pasos.
     FixedStepClock clock;
@@ -342,8 +397,24 @@ TEST_CASE("fixed step clock snap: frames outside the window are not snapped") {
     const FrameSteps odd = clock.advance(25'000'000); // a 8,3 ms de 1 y de 2 periodos
     CHECK_FALSE(odd.snapped);
     CHECK(odd.count == 6);
-    CHECK(clock.advance(15'000'000).snapped == false); // a 1,67 ms del periodo
-    CHECK(clock.advance(16'000'000).snapped);          // a 0,67 ms
+    CHECK(clock.advance(14'600'000).snapped == false); // a 2,07 ms del periodo
+    CHECK(clock.advance(14'700'000).snapped);          // a 1,97 ms
+    CHECK(clock.advance(18'600'000).snapped);          // a 1,93 ms
+    CHECK(clock.advance(18'700'000).snapped == false); // a 2,03 ms
+}
+
+TEST_CASE("fixed step clock snap: a frame outside the window does not centre the phase again") {
+    FixedStepClock clock = snapping_clock();
+    REQUIRE(clock.advance(16'666'667).alpha == 0.5);
+    // Un instante que llega 2,25 ms tarde: 4,54 pasos sin ajustar, cruza el borde.
+    const FrameSteps late = clock.advance(18'916'667);
+    CHECK_FALSE(late.snapped);
+    CHECK(late.count == 5);
+    // El siguiente, 1,85 ms más corto, se ajusta sin volver a centrar: la deuda lo compensa
+    // poco a poco en vez de mover el origen sobre un instante tardío.
+    const FrameSteps next = clock.advance(14'816'667);
+    CHECK(next.snapped);
+    CHECK(next.alpha < 0.1);
 }
 
 TEST_CASE("fixed step clock snap: disabling it repays the remaining debt") {

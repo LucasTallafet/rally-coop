@@ -28,7 +28,7 @@ void FixedStepClock::set_snap_period(std::int64_t period_units) {
     period_units = std::max<std::int64_t>(period_units, 0);
     if (period_units != snap_period_) {
         snap_period_ = period_units;
-        snapping_ = false; // al volver a ajustar se centra de nuevo la fase
+        centred_ = false; // al volver a ajustar se centra de nuevo la fase
     }
 }
 
@@ -63,11 +63,12 @@ FrameSteps FixedStepClock::advance(std::int64_t frame_ns) {
     if (count > kMaxStepsPerFrame) {
         count = kMaxStepsPerFrame;
         debt_ = 0; // ese tiempo se descarta igual que los pasos sobrantes
+        centred_ = false;
     }
-    if (snapped && !snapping_) {
+    if (snapped && !centred_) {
         accumulator_ = kStepUnits / 2; // fase centrada: desplazamiento fijo del origen
+        centred_ = true;
     }
-    snapping_ = snapped;
 
     FrameSteps steps;
     steps.count = static_cast<int>(count);
