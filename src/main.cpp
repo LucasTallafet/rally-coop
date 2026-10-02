@@ -3,10 +3,12 @@
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_pacer.h"
 #include "platform/input.h"
+#include "platform/input_shaping.h"
 #include "platform/window.h"
 #include "sim/check.h"
 #include "sim/jolt_runtime.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 
@@ -33,7 +35,7 @@ int main(int argc, char** argv) {
     rally::platform::FramePacer pacer;
     rally::platform::FixedStepClock clock;
     rally::platform::BoxDemo demo;
-    rally::platform::KeyboardInput keyboard;
+    rally::platform::DriverInput driver;
     for (int i = 1; i < argc; ++i) {
         // Diagnóstico: registro de fotogramas y arranque en pantalla completa.
         if (std::strcmp(argv[i], "--frame-log") == 0) {
@@ -52,12 +54,15 @@ int main(int argc, char** argv) {
         window.handle_keys();
         demo.handle_keys(pacer);
         // La entrada se lee una vez por fotograma y vale para todos sus pasos.
-        const rally::sim::SimInput input = keyboard.read(steps.count);
+        const rally::sim::SimInput input = driver.read(steps.count);
+        float frame_impact = 0.0f;
         for (int i = 0; i < steps.count; ++i) {
-            demo.step(input);
+            frame_impact = std::max(frame_impact, demo.step(input));
         }
+        // Vibración por el pico de impacto de los pasos del fotograma.
+        driver.gamepads().rumble(rally::platform::rumble_for_impact(frame_impact));
         // Presenta y recoge los eventos del próximo fotograma.
-        demo.draw(steps, frame_ns, pacer, clock);
+        demo.draw(steps, frame_ns, pacer, clock, driver, input, frame_impact);
     }
     return 0;
 }

@@ -3,6 +3,7 @@
 add_library(rally_sim STATIC
     check.cpp
     fp_guard.cpp
+    input_smoothing.cpp
     jolt_runtime.cpp
     pcg32.cpp
     sim_world.cpp

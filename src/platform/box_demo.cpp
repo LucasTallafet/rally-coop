@@ -4,6 +4,8 @@
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_graph.h"
 #include "platform/frame_pacer.h"
+#include "platform/input.h"
+#include "platform/input_shaping.h"
 #include "platform/screenshot.h"
 
 #include <SDL3/SDL_video.h>
@@ -170,6 +172,24 @@ void draw_posts(const sim::BoxDesc& floor, const Vec3d& origin) {
     }
 }
 
+// Barra de un eje en [-1, 1]: el valor aplicado relleno desde el centro y el objetivo como
+// una marca blanca.
+constexpr int kAxisBarWidth = 200;
+constexpr int kAxisBarHeight = 16;
+
+void draw_axis_bar(int x, int y, float target, float applied) {
+    const int center = x + kAxisBarWidth / 2;
+    const auto offset = [](float value) {
+        return static_cast<int>(std::clamp(value, -1.0f, 1.0f) * (kAxisBarWidth / 2));
+    };
+    DrawRectangle(x, y, kAxisBarWidth, kAxisBarHeight, Color{60, 64, 72, 255});
+    const int fill = offset(applied);
+    DrawRectangle(std::min(center, center + fill), y, std::abs(fill), kAxisBarHeight,
+                  Color{230, 160, 60, 255});
+    DrawRectangle(center + offset(target) - 1, y - 3, 3, kAxisBarHeight + 6, RAYWHITE);
+    DrawRectangle(center, y, 1, kAxisBarHeight, Color{150, 156, 168, 255});
+}
+
 Pose to_pose(const sim::BodyPose& body) {
     Pose pose;
     pose.position = {body.x, body.y, body.z};
@@ -254,13 +274,14 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     }
 }
 
-void BoxDemo::step(const sim::SimInput& input) {
+float BoxDemo::step(const sim::SimInput& input) {
     if (paused_) {
-        return;
+        return 0.0f;
     }
     world_->step(input);
     previous_.swap(current_);
     read_poses(current_);
+    return world_->last_impact();
 }
 
 void BoxDemo::update_stats(std::int64_t frame_ns) {
@@ -275,8 +296,12 @@ void BoxDemo::update_stats(std::int64_t frame_ns) {
 }
 
 void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
-                   const FixedStepClock& clock) {
+                   const FixedStepClock& clock, const DriverInput& driver,
+                   const sim::SimInput& input, float frame_impact) {
     update_stats(frame_ns);
+    if (frame_impact > kImpactThreshold) {
+        last_rumble_impact_ = frame_impact;
+    }
     history_.push(FrameRecord{frame_ns, steps.used, steps.count, steps.snapped});
     frame_log_.write(frame_ns, steps, clock.debt(), clock.snap_period(), pacer.frame_period());
 
@@ -371,12 +396,36 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     DrawText(TextFormat("ojo: %.3f, %.3f, %.3f m   velocidad: %.1f km/h", eye.x, eye.y, eye.z,
                         speed * 3.6),
              16, 198, 20, text);
+    const Gamepads& pads = driver.gamepads();
+    if (pads.active_name() != nullptr) {
+        DrawText(TextFormat("mando: %s (%s)   gatillos: %s   conectados: %d", pads.active_name(),
+                            pads.active_type(),
+                            pads.active_trigger_digital() ? "digitales" : "analógicos",
+                            pads.connected()),
+                 16, 224, 20, text);
+    } else {
+        DrawText(TextFormat("mando: ninguno activo   conectados: %d", pads.connected()), 16, 224,
+                 20, text);
+    }
+    const sim::ControlState& controls = world_->controls();
+    constexpr float kAxisScale = 1.0f / sim::kAxisMax;
+    draw_axis_bar(16, 256, input.steer * kAxisScale, controls.steer.applied * kAxisScale);
+    draw_axis_bar(16 + kAxisBarWidth + 16, 256, input.throttle * kAxisScale,
+                  controls.throttle.applied * kAxisScale);
+    DrawText(
+        TextFormat("dirección %s y acelerador %s (blanco: objetivo; naranja: aplicado)",
+                   (input.buttons & sim::kButtonSteerDigital) != 0 ? "digital" : "analógica",
+                   (input.buttons & sim::kButtonThrottleDigital) != 0 ? "digital" : "analógico"),
+        16 + 2 * (kAxisBarWidth + 16), 252, 20, text);
+    DrawText(TextFormat("impacto: %.2f m/s   último que vibró: %.2f m/s (umbral %.1f)",
+                        frame_impact, last_rumble_impact_, kImpactThreshold),
+             16, 282, 20, text);
     if (graph_visible_) {
-        draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_, 20, 236);
+        draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_, 20, 318);
     }
     const Color help = Color{150, 156, 168, 255};
-    DrawText("W/S: acelerar/atrás   A/D: girar   Espacio: saltar   R: reiniciar   "
-             "O: origen/20 km",
+    DrawText("W/S o gatillos: acelerar/atrás   A/D o stick: girar   Espacio o botón de abajo: "
+             "saltar   R: reiniciar   O: origen/20 km",
              16, GetScreenHeight() - 114, 20, help);
     DrawText("Tab: cámara   J: render en float del mundo   F: monitor/30 fps   I: interpolación",
              16, GetScreenHeight() - 88, 20, help);

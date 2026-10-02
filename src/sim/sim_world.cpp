@@ -49,9 +49,13 @@ struct SimWorld::Impl {
     std::vector<JPH::BodyID> bodies; // en el orden de la descripción
     JPH::BodyID controlled;          // inválido si no hay cuerpo controlado
     float controlled_mass = 0.0f;
-    // Botones del paso anterior, para detectar pulsaciones. Es estado de la simulación que no
-    // está en el SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
+    float controlled_damping = 0.0f; // amortiguamiento lineal, para last_impact
+    // Botones del paso anterior, para detectar pulsaciones, y dirección y acelerador
+    // aplicados. Es estado de la simulación que no está en el SaveState de Jolt: en el
+    // cambio de host (fase 5) viaja con el estado del juego.
     std::uint16_t previous_buttons = 0;
+    ControlState controls;
+    float last_impact = 0.0f; // salida de diagnóstico; no es estado de la simulación
     State state = State::Empty;
 };
 
@@ -95,6 +99,7 @@ void SimWorld::build(const WorldDesc& desc) {
         if (i == desc.controlled) {
             w.controlled = body->GetID();
             w.controlled_mass = settings.GetMassProperties().mMass;
+            w.controlled_damping = settings.mLinearDamping;
         }
     }
 
@@ -122,16 +127,22 @@ void SimWorld::step(const SimInput& input) {
     RALLY_CHECK(w.state == State::Sealed,
                 "SimWorld::step: el mundo no está sellado (falta seal())");
 
+    w.controls.step(input);
+    // Velocidad que tendría el cuerpo controlado tras el paso sin contactos, para el impacto.
+    JPH::Vec3 expected_velocity = JPH::Vec3::sZero();
     if (!w.controlled.IsInvalid()) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
         constexpr float kAxisScale = 1.0f / kAxisMax;
-        const float throttle = rmath::clamp(input.throttle * kAxisScale, -1.0f, 1.0f);
-        const float steer = rmath::clamp(input.steer * kAxisScale, -1.0f, 1.0f);
+        const float throttle =
+            rmath::clamp(static_cast<float>(w.controls.throttle.applied) * kAxisScale, -1.0f, 1.0f);
+        const float steer =
+            rmath::clamp(static_cast<float>(w.controls.steer.applied) * kAxisScale, -1.0f, 1.0f);
         // Adelante es -z local. Con la rotación limitada a Y, el empuje queda horizontal.
+        JPH::Vec3 input_acceleration = JPH::Vec3::sZero();
         if (throttle != 0.0f) {
             const JPH::Vec3 forward = bodies.GetRotation(w.controlled) * JPH::Vec3(0, 0, -1);
-            bodies.AddForce(w.controlled,
-                            forward * (throttle * w.controlled_mass * kMoveAcceleration));
+            input_acceleration = forward * (throttle * kMoveAcceleration);
+            bodies.AddForce(w.controlled, input_acceleration * w.controlled_mass);
         }
         // La dirección fija la velocidad de giro en cada paso (también a 0): sin dirección no
         // gira, aunque un choque lo empuje de lado. Un giro positivo alrededor de +y lleva -z
@@ -142,6 +153,11 @@ void SimWorld::step(const SimInput& input) {
         if (jump_pressed) {
             bodies.AddImpulse(w.controlled, JPH::Vec3(0.0f, w.controlled_mass * kJumpSpeed, 0.0f));
         }
+        // Como integra Jolt (MotionProperties::ApplyForceTorqueAndDragInternal): gravedad y
+        // fuerzas, y después el amortiguamiento. El impulso de salto ya está en la velocidad.
+        expected_velocity = (bodies.GetLinearVelocity(w.controlled) +
+                             (w.system.GetGravity() + input_acceleration) * kStepSeconds) *
+                            rmath::max(0.0f, 1.0f - w.controlled_damping * kStepSeconds);
     }
     w.previous_buttons = input.buttons;
 
@@ -149,7 +165,17 @@ void SimWorld::step(const SimInput& input) {
         w.system.Update(kStepSeconds, 1, &w.temp_allocator, &w.job_system);
     RALLY_CHECK(error == JPH::EPhysicsUpdateError::None,
                 "SimWorld::step: Jolt devolvió un error en Update");
+
+    if (!w.controlled.IsInvalid()) {
+        const JPH::Vec3 velocity =
+            w.system.GetBodyInterfaceNoLock().GetLinearVelocity(w.controlled);
+        w.last_impact = (velocity - expected_velocity).Length();
+    }
 }
+
+const ControlState& SimWorld::controls() const { return impl_->controls; }
+
+float SimWorld::last_impact() const { return impl_->last_impact; }
 
 int SimWorld::body_count() const { return static_cast<int>(impl_->bodies.size()); }
 

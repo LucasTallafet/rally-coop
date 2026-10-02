@@ -1,4 +1,5 @@
 #include "new_counter.h"
+#include "platform/input_shaping.h"
 #include "sim/jolt_config.h"
 #include "sim/jolt_runtime.h"
 #include "sim/pcg32.h"
@@ -25,6 +26,8 @@ using rally::sim::BodyPose;
 using rally::sim::BoxDesc;
 using rally::sim::kAxisMax;
 using rally::sim::kButtonJump;
+using rally::sim::kButtonSteerDigital;
+using rally::sim::kButtonThrottleDigital;
 using rally::sim::SimInput;
 using rally::sim::SimWorld;
 using rally::sim::WorldDesc;
@@ -32,7 +35,7 @@ using rally::sim::WorldDesc;
 // Huella del SaveState tras 60 s de entradas pseudoaleatorias (run_random_inputs).
 // Si el test de huella falla por un cambio intencionado, se copia aquí el valor nuevo y se
 // dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedFingerprint = 0xb9600f45966b5f98ull;
+constexpr std::uint64_t kExpectedFingerprint = 0xfb7852dd64be99e5ull;
 
 constexpr int kSecondsOfInput = 60;
 constexpr int kStepsPerFrame = 4; // la entrada cambia cada fotograma de 60 fps
@@ -44,14 +47,14 @@ constexpr int kCountedSteps = 1000;
 // cuerpo cambió de caja envolvente; si no, ninguna): la broad phase lo reconstruye y
 // QuadTree::UpdatePrepare y QuadTree::BuildTree hacen un new[] cada uno (con su delete[]
 // en la misma llamada). Desde que la caja controlada solo gira en Y hay pasos sin
-// reservas (un 25 % con las entradas de este test). Tamaño constante y sin
+// reservas (un 7 % con las entradas de este test). Tamaño constante y sin
 // efecto en la reproducibilidad; aceptado (docs/progreso.md, hallazgos). Si un cambio
 // intencionado lo altera, se actualiza como la huella.
 constexpr int kJoltAllocationsPerStep = 2;
 // Total de reservas de Jolt en los kCountedSteps pasos medidos con las entradas del test
-// (753 pasos con reservas y 247 sin ellas). Si un cambio intencionado lo altera, se
+// (932 pasos con reservas y 68 sin ellas). Si un cambio intencionado lo altera, se
 // actualiza como la huella y se dice en el mensaje del commit.
-constexpr int kExpectedJoltAllocations = 1506;
+constexpr int kExpectedJoltAllocations = 1864;
 
 // Suelo de 20 × 20 m con cuatro muros de 3 m, la caja controlada apoyada en el centro y
 // otra caja suelta para que haya contactos entre cuerpos dinámicos.
@@ -93,7 +96,16 @@ std::vector<SimInput> random_inputs(int seconds) {
         SimInput input;
         input.throttle = random_axis(rng);
         input.steer = random_axis(rng);
-        input.buttons = rng.bounded(90) == 0 ? kButtonJump : 0;
+        std::uint16_t buttons = rng.bounded(90) == 0 ? kButtonJump : 0;
+        // Mitad de los fotogramas con dirección o acelerador digitales: pasan por los
+        // limitadores del teclado.
+        if (rng.bounded(2) == 0) {
+            buttons |= kButtonSteerDigital;
+        }
+        if (rng.bounded(2) == 0) {
+            buttons |= kButtonThrottleDigital;
+        }
+        input.buttons = buttons;
         for (int i = 0; i < kStepsPerFrame && inputs.size() < inputs.capacity(); ++i) {
             inputs.push_back(input);
         }
@@ -245,12 +257,18 @@ TEST_CASE("sim_world: steer turns the controlled box, throttle pushes it forward
 
     // Un segundo con la dirección a fondo a la derecha: gira unos 1,5 rad en el sitio (de
     // mirar hacia -z a mirar casi hacia +x) sin volcar. El rozamiento con el suelo frena un
-    // poco el giro dentro de cada paso (sale -1,465 rad).
+    // poco el giro dentro de cada paso y la dirección del stick tarda 8 pasos en llegar al
+    // tope (sale -1,44 rad).
     SimInput turn;
     turn.steer = kAxisMax;
     for (int i = 0; i < rally::sim::kStepsPerSecond; ++i) {
         world.step(turn);
     }
+    // La dirección del stick vuelve al centro en 8 pasos: se espera a que llegue.
+    for (int i = 0; i < rally::sim::kSteerAnalogSteps; ++i) {
+        world.step(SimInput{});
+    }
+    CHECK(world.controls().steer.applied == 0);
     const BodyPose turned = world.pose(kControlled);
     CHECK(yaw(turned) == doctest::Approx(-1.5).epsilon(0.05));
     CHECK(upright(turned));
@@ -371,4 +389,94 @@ TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blo
     // reservas, el contador de Jolt no estaría probando nada.
     CHECK(steps_with_blocks > kCountedSteps / 2);
     CHECK(jolt.count() == kExpectedJoltAllocations);
+}
+
+namespace {
+
+using rally::platform::kImpactThreshold;
+
+// Recinto vacío con la caja controlada a `height` m sobre el suelo (centro a height + 0,5).
+WorldDesc drop_arena(double height) {
+    WorldDesc desc = arena();
+    desc.bodies[kControlled].y = 0.5 + height;
+    return desc;
+}
+
+// Mayor impacto de `steps` pasos con la misma entrada.
+float max_impact(SimWorld& world, const SimInput& input, int steps) {
+    float peak = 0.0f;
+    for (int i = 0; i < steps; ++i) {
+        world.step(input);
+        peak = std::max(peak, world.last_impact());
+    }
+    return peak;
+}
+
+} // namespace
+
+TEST_CASE("sim_world impact: falling from a height gives a peak above the rumble threshold") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(drop_arena(3.0));
+    world.seal();
+    // En el aire no hay impacto: solo la gravedad, que está explicada.
+    CHECK(max_impact(world, SimInput{}, 60) < 0.01f);
+    // Cae 3 m (7,7 m/s al llegar al suelo).
+    const float landing = max_impact(world, SimInput{}, 2 * rally::sim::kStepsPerSecond);
+    MESSAGE("impacto al caer desde 3 m: ", landing, " m/s");
+    CHECK(landing > kImpactThreshold);
+    // Apoyada, por debajo del umbral.
+    CHECK(max_impact(world, SimInput{}, rally::sim::kStepsPerSecond) < kImpactThreshold);
+}
+
+TEST_CASE("sim_world impact: landing after a jump is above the threshold") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(arena());
+    world.seal();
+    CHECK(max_impact(world, SimInput{}, rally::sim::kStepsPerSecond) < kImpactThreshold);
+    SimInput jump;
+    jump.buttons = kButtonJump;
+    // El impulso del salto está explicado: el paso del salto no cuenta como impacto.
+    world.step(jump);
+    CHECK(world.last_impact() < kImpactThreshold);
+    const float landing = max_impact(world, jump, 2 * rally::sim::kStepsPerSecond);
+    MESSAGE("impacto al aterrizar del salto: ", landing, " m/s");
+    CHECK(landing > kImpactThreshold);
+}
+
+TEST_CASE("sim_world impact: driving and sliding on the floor stays below the threshold") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(arena());
+    world.seal();
+    max_impact(world, SimInput{}, rally::sim::kStepsPerSecond);
+
+    // Acelerador a fondo 0,5 s hacia -z con el teclado (sube con el limitador): unos 4 m/s.
+    SimInput drive;
+    drive.throttle = kAxisMax;
+    drive.buttons = kButtonThrottleDigital;
+    const float driving = max_impact(world, drive, rally::sim::kStepsPerSecond / 2);
+    // Suelta y desliza girando hasta pararse por el rozamiento (unos 4 m más, sin llegar al
+    // muro a 9,5 m del centro).
+    SimInput coast;
+    coast.steer = kAxisMax;
+    const float sliding = max_impact(world, coast, 3 * rally::sim::kStepsPerSecond);
+    MESSAGE("impacto conduciendo: ", driving, " m/s; deslizando: ", sliding, " m/s");
+    CHECK(std::abs(world.pose(kControlled).z) > 3.0); // se ha movido de verdad
+    CHECK(driving < kImpactThreshold);
+    CHECK(sliding < kImpactThreshold);
+}
+
+TEST_CASE("sim_world impact: hitting a wall is above the threshold") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(arena());
+    world.seal();
+    SimInput drive;
+    drive.throttle = kAxisMax;
+    // Hacia -z hasta el muro (a 9,5 m): llega a unos 13 m/s.
+    const float hit = max_impact(world, drive, 2 * rally::sim::kStepsPerSecond);
+    MESSAGE("impacto contra el muro: ", hit, " m/s");
+    CHECK(hit > kImpactThreshold);
 }

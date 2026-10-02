@@ -6,6 +6,8 @@ add_executable(rally_tests
     test_camera_space.cpp
     test_fixed_step_clock.cpp
     test_frame_history.cpp
+    test_input_shaping.cpp
+    test_input_smoothing.cpp
     test_interpolation.cpp
     test_jolt.cpp
     test_pcg32.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sim/input_smoothing.h"
 #include "sim/sim_input.h"
 
 #include <cstdint>
@@ -53,7 +54,8 @@ struct BodyPose {
 //      su broad phase; ver docs/progreso.md).
 // Saltarse el orden aborta (RALLY_CHECK), también en Release.
 // Además del SaveState de Jolt, la simulación guarda los botones del paso anterior
-// (detección de pulsaciones); en el cambio de host (fase 5) viajan con el estado del juego.
+// (detección de pulsaciones) y la dirección y el acelerador aplicados (ControlState); en el
+// cambio de host (fase 5) viajan con el estado del juego.
 // Necesita un JoltRuntime vivo durante toda su vida.
 class SimWorld {
 public:
@@ -66,11 +68,22 @@ public:
     void seal();
     bool is_sealed() const;
 
-    // La entrada se aplica antes de integrar, al cuerpo controlado: empuje en su dirección
-    // adelante (-z local, aceleración constante), velocidad de giro alrededor de Y
-    // proporcional a la dirección e impulso de salto al pulsar. El cuerpo controlado solo
-    // gira alrededor de Y.
+    // La entrada se aplica antes de integrar, al cuerpo controlado. Primero la dirección y
+    // el acelerador aplicados siguen a sus objetivos con los limitadores (ControlState);
+    // con ellos, empuje en su dirección adelante (-z local, aceleración constante),
+    // velocidad de giro alrededor de Y proporcional a la dirección e impulso de salto al
+    // pulsar. El cuerpo controlado solo gira alrededor de Y.
     void step(const SimInput& input);
+
+    // Dirección y acelerador aplicados tras el último paso.
+    const ControlState& controls() const;
+
+    // Impacto del cuerpo controlado en el último paso, en m/s: el cambio de velocidad lineal
+    // que no explican la gravedad, el amortiguamiento ni la entrada (empuje y salto). Lo
+    // causan los contactos: apoyado son unos 0,04 m/s (la gravedad de un paso que anula el
+    // suelo) y deslizando, menos; al aterrizar o chocar, varios m/s. Solo se lee: no
+    // cambia la simulación. 0 si no hay cuerpo controlado.
+    float last_impact() const;
 
     int body_count() const;
     // Índice y número de secuencia del BodyID de Jolt del cuerpo `index` de la descripción.
