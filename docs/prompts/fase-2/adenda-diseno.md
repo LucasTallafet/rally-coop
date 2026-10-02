@@ -1,5 +1,7 @@
 # Adenda al diseño de la fase 2
 
+Aplicada el 2026-10-02 en el commit `074faeb`. Desde entonces, la fuente de verdad son `docs/01` a `05`.
+
 Revisión del diseño cerrado el 2026-10-02 (`diseno-fase-2.md`), hecha antes de implementar. Corrige contradicciones y rellena huecos sin cambiar las decisiones de Lucas: coche de referencia, cinco superficies, física realista y estándar, tareas 2.1–2.11 y prueba de derrape medida.
 
 Se aplica **junto con `diseno-fase-2.md`, en el mismo commit** (tarea 2.0). Una vez aplicada, la fuente de verdad son `docs/01` a `05`. Este archivo se queda en `docs/prompts/fase-2/` como registro del porqué.
