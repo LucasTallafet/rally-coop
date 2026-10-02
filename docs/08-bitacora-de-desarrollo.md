@@ -178,7 +178,7 @@ Además de lo que ya recoge el plan después de la 1.0 (barro y clima, fuera del
 - [x] `04-plan-de-fases.md`, `progreso.md` y `05-decisiones.md`: nueva estimación de horas (§8)
 - [x] `05-decisiones.md`: decisión "Modo de pantalla: pantalla completa sin bordes; la ventana es solo para desarrollo"
 - [x] `CLAUDE.md`: regla de no borrar archivos de la carpeta del exe sin mirarla antes (hoy solo está en la memoria local de Claude Code)
-- [ ] Probar los mandos de Xbox, PS5 y Switch Pro (este último, antes de la fase 2)
+- [x] Probar los mandos de Xbox, PS5 y Switch Pro (este último, antes de la fase 2): todo funciona, 2026-10-02
 - [x] Añadir `07-entorno-y-portabilidad.md` y esta bitácora a `README.md` y a `CLAUDE.md`
 - [ ] Subir los documentos al proyecto de claude.ai
 
