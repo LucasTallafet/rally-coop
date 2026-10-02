@@ -3,6 +3,7 @@
 #include "platform/forest_scene.h"
 #include "platform/frame_log.h"
 #include "platform/interpolation.h"
+#include "platform/recording_session.h"
 #include "sim/sim_input.h"
 #include "sim/sim_world.h"
 
@@ -22,9 +23,10 @@ struct FrameSteps;
 // mando como un coche simplificado y simulada a 240 Hz en SimWorld. Sirve para ver a ojo el paso
 // fijo, la interpolación y la cámara en primera persona con render relativo a la cámara.
 //
-// Teclas: W/S (o flechas) aceleran adelante y atrás, A/D giran, Espacio salta (con mando:
-// gatillo derecho e izquierdo, stick izquierdo y el botón de abajo de la cara derecha), R reinicia
-// el mundo, O lo reconstruye a 20 km del origen (o lo devuelve), Tab alterna la primera
+// Conducción en platform/input.h (W/S acelerador y freno, A/D, Espacio freno de mano, Q/E
+// marchas, R recolocar, X salto temporal). Retroceso reinicia el mundo, O lo reconstruye a
+// 20 km del origen (o lo devuelve); los dos cierran la grabación de la partida y empiezan
+// otra (grabaciones/AAAAMMDD-HHMMSS.rrec junto al exe). Tab alterna la primera
 // persona y la cámara fija, J dibuja en float del mundo (depuración, para ver el temblor),
 // F alterna frecuencia del monitor / 30 fps, I la interpolación, V la sincronización
 // vertical, P la pausa, C guarda una captura (captura_NNN.png junto al exe), N activa el
@@ -58,8 +60,11 @@ public:
     void set_forest_mode(ForestMode mode) { forest_mode_ = mode; }
     void request_capture() { capture_requested_ = true; }
 
-    // Un paso de 1/240 s. Devuelve el impacto de la caja controlada en ese paso (m/s; 0 en
-    // pausa), para la vibración.
+    // Antes de los pasos del fotograma: deja sitio en la grabación (fuera del paso).
+    void prepare_steps(int count);
+
+    // Un paso de 1/240 s, que queda grabado. Devuelve el impacto de la caja controlada en
+    // ese paso (m/s; 0 en pausa), para la vibración. En pausa no hay paso ni grabación.
     float step(const sim::SimInput& input);
 
     // Dibuja y presenta el fotograma, con el contador encima. input: la entrada aplicada en
@@ -69,6 +74,7 @@ public:
               float frame_impact, PerfCounter& perf);
 
 private:
+    // Termina la grabación del mundo actual y construye uno nuevo con su grabación.
     void reset();
     void read_poses(std::vector<Pose>& poses) const;
 
@@ -90,6 +96,11 @@ private:
     ForestMode forest_mode_ = ForestMode::Off;
     RenderTexture2D target_{}; // id 0 si se dibuja directamente en la ventana
     FrameLog frame_log_;       // L: registro de diagnóstico
+    RecordingSession recording_;
+    // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).
+    int shift_up_presses_ = 0;
+    int shift_down_presses_ = 0;
+    int reset_presses_ = 0;
 };
 
 } // namespace rally::platform

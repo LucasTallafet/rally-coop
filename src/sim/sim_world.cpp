@@ -1,6 +1,7 @@
 #include "sim/sim_world.h"
 
 #include "sim/check.h"
+#include "sim/fnv1a.h"
 #include "sim/jolt_config.h"
 #include "sim/layers.h"
 #include "sim/rmath.h"
@@ -50,10 +51,11 @@ struct SimWorld::Impl {
     JPH::BodyID controlled;          // inválido si no hay cuerpo controlado
     float controlled_mass = 0.0f;
     float controlled_damping = 0.0f; // amortiguamiento lineal, para last_impact
-    // Botones del paso anterior, para detectar pulsaciones, y dirección y acelerador
-    // aplicados. Es estado de la simulación que no está en el SaveState de Jolt: en el
-    // cambio de host (fase 5) viaja con el estado del juego.
-    std::uint16_t previous_buttons = 0;
+    // Salida del cuerpo controlado (recolocar). En doubles y no en RVec3, que está alineado
+    // a 32 bytes y rellenaría Impl.
+    double spawn[3] = {0.0, 0.0, 0.0};
+    // Mandos aplicados y botones del paso anterior. Es estado de la simulación que no está
+    // en el SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
     ControlState controls;
     float last_impact = 0.0f; // salida de diagnóstico; no es estado de la simulación
     State state = State::Empty;
@@ -100,6 +102,9 @@ void SimWorld::build(const WorldDesc& desc) {
             w.controlled = body->GetID();
             w.controlled_mass = settings.GetMassProperties().mMass;
             w.controlled_damping = settings.mLinearDamping;
+            w.spawn[0] = box.x;
+            w.spawn[1] = box.y;
+            w.spawn[2] = box.z;
         }
     }
 
@@ -128,13 +133,18 @@ void SimWorld::step(const SimInput& input) {
                 "SimWorld::step: el mundo no está sellado (falta seal())");
 
     w.controls.step(input);
+    const bool reset_pressed = (w.controls.pressed & kButtonReset) != 0;
+    if (reset_pressed) {
+        w.controls.zero_axes();
+    }
     // Velocidad que tendría el cuerpo controlado tras el paso sin contactos, para el impacto.
     JPH::Vec3 expected_velocity = JPH::Vec3::sZero();
     if (!w.controlled.IsInvalid()) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
         constexpr float kAxisScale = 1.0f / kAxisMax;
-        const float throttle =
-            rmath::clamp(static_cast<float>(w.controls.throttle.applied) * kAxisScale, -1.0f, 1.0f);
+        const float throttle = rmath::clamp(
+            static_cast<float>(w.controls.throttle.applied - w.controls.brake.applied) * kAxisScale,
+            -1.0f, 1.0f);
         const float steer =
             rmath::clamp(static_cast<float>(w.controls.steer.applied) * kAxisScale, -1.0f, 1.0f);
         // Adelante es -z local. Con la rotación limitada a Y, el empuje queda horizontal.
@@ -148,9 +158,7 @@ void SimWorld::step(const SimInput& input) {
         // gira, aunque un choque lo empuje de lado. Un giro positivo alrededor de +y lleva -z
         // hacia -x: girar a la derecha es negativo.
         bodies.SetAngularVelocity(w.controlled, JPH::Vec3(0.0f, -steer * kTurnRate, 0.0f));
-        const bool jump_pressed =
-            (input.buttons & kButtonJump) != 0 && (w.previous_buttons & kButtonJump) == 0;
-        if (jump_pressed) {
+        if ((w.controls.pressed & kButtonJump) != 0) {
             bodies.AddImpulse(w.controlled, JPH::Vec3(0.0f, w.controlled_mass * kJumpSpeed, 0.0f));
         }
         // Como integra Jolt (MotionProperties::ApplyForceTorqueAndDragInternal): gravedad y
@@ -159,7 +167,6 @@ void SimWorld::step(const SimInput& input) {
                              (w.system.GetGravity() + input_acceleration) * kStepSeconds) *
                             rmath::max(0.0f, 1.0f - w.controlled_damping * kStepSeconds);
     }
-    w.previous_buttons = input.buttons;
 
     const JPH::EPhysicsUpdateError error =
         w.system.Update(kStepSeconds, 1, &w.temp_allocator, &w.job_system);
@@ -167,9 +174,19 @@ void SimWorld::step(const SimInput& input) {
                 "SimWorld::step: Jolt devolvió un error en Update");
 
     if (!w.controlled.IsInvalid()) {
-        const JPH::Vec3 velocity =
-            w.system.GetBodyInterfaceNoLock().GetLinearVelocity(w.controlled);
-        w.last_impact = (velocity - expected_velocity).Length();
+        JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
+        if (reset_pressed) {
+            // Mover y poner a cero, nunca quitar y añadir. Un traslado no es un impacto.
+            bodies.SetPositionAndRotation(w.controlled,
+                                          JPH::RVec3(w.spawn[0], w.spawn[1], w.spawn[2]),
+                                          JPH::Quat::sIdentity(), JPH::EActivation::Activate);
+            bodies.SetLinearAndAngularVelocity(w.controlled, JPH::Vec3::sZero(),
+                                               JPH::Vec3::sZero());
+            w.last_impact = 0.0f;
+        } else {
+            const JPH::Vec3 velocity = bodies.GetLinearVelocity(w.controlled);
+            w.last_impact = (velocity - expected_velocity).Length();
+        }
     }
 }
 
@@ -194,10 +211,42 @@ BodyPose SimWorld::pose(int index) const {
                     rotation.GetY(), rotation.GetZ(), rotation.GetW()};
 }
 
+BodyVelocity SimWorld::velocity(int index) const {
+    RALLY_CHECK(index >= 0 && index < body_count(), "SimWorld::velocity: índice fuera de rango");
+    JPH::Vec3 linear;
+    JPH::Vec3 angular;
+    impl_->system.GetBodyInterfaceNoLock().GetLinearAndAngularVelocity(
+        impl_->bodies[static_cast<std::size_t>(index)], linear, angular);
+    return BodyVelocity{linear.GetX(),  linear.GetY(),  linear.GetZ(),
+                        angular.GetX(), angular.GetY(), angular.GetZ()};
+}
+
 std::string SimWorld::save_state() const {
     JPH::StateRecorderImpl recorder;
     impl_->system.SaveState(recorder);
     return recorder.GetData();
+}
+
+namespace {
+
+void add_axis(Fnv1a64& hash, const SmoothedAxis& axis) {
+    hash.add_u32(static_cast<std::uint32_t>(axis.applied));
+    hash.add_byte(axis.digital ? 1 : 0);
+}
+
+} // namespace
+
+std::uint64_t SimWorld::state_hash() const {
+    Fnv1a64 hash;
+    hash.add_bytes(save_state());
+    const ControlState& c = impl_->controls;
+    add_axis(hash, c.steer);
+    add_axis(hash, c.throttle);
+    add_axis(hash, c.brake);
+    hash.add_u32(static_cast<std::uint32_t>(c.handbrake));
+    hash.add_u16(c.previous_buttons);
+    hash.add_u16(c.pressed);
+    return hash.value();
 }
 
 } // namespace rally::sim

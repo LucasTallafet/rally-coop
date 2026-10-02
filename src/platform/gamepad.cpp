@@ -14,8 +14,11 @@ struct PadBindings {
     SDL_GamepadAxis steer = SDL_GAMEPAD_AXIS_LEFTX;
     SDL_GamepadAxis vertical = SDL_GAMEPAD_AXIS_LEFTY; // solo para no tomarlo por dirección
     SDL_GamepadAxis accelerate = SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
-    SDL_GamepadAxis brake = SDL_GAMEPAD_AXIS_LEFT_TRIGGER; // freno y marcha atrás
-    SDL_GamepadButton jump = SDL_GAMEPAD_BUTTON_SOUTH;
+    SDL_GamepadAxis brake = SDL_GAMEPAD_AXIS_LEFT_TRIGGER;
+    SDL_GamepadButton handbrake = SDL_GAMEPAD_BUTTON_SOUTH;
+    SDL_GamepadButton reset = SDL_GAMEPAD_BUTTON_NORTH;
+    SDL_GamepadButton shift_down = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    SDL_GamepadButton shift_up = SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
 };
 constexpr PadBindings kDriverPad{};
 
@@ -47,7 +50,10 @@ PadState Gamepads::read() {
         reading.left_y = axis_value(pad, kDriverPad.vertical);
         reading.left_trigger = axis_value(pad, kDriverPad.brake);
         reading.right_trigger = axis_value(pad, kDriverPad.accelerate);
-        reading.jump = SDL_GetGamepadButton(pad, kDriverPad.jump);
+        reading.handbrake = SDL_GetGamepadButton(pad, kDriverPad.handbrake);
+        reading.reset = SDL_GetGamepadButton(pad, kDriverPad.reset);
+        reading.shift_down = SDL_GetGamepadButton(pad, kDriverPad.shift_down);
+        reading.shift_up = SDL_GetGamepadButton(pad, kDriverPad.shift_up);
         for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT && !reading.any_button; ++b) {
             reading.any_button = SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
         }

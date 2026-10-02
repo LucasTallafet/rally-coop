@@ -181,14 +181,19 @@ git worktree prune
 
 ## 8. Referencia rápida de la demo actual
 
-Válido al cierre de la fase 1, con la tarea 6 fusionada. La demo es temporal y cambiará con el coche (fase 2).
+Válido desde la tarea 2.1 de la fase 2. La demo de la caja es temporal y cambiará con el coche (tarea 2.4). Los botones del mando van por posición, sin teclas de depuración.
 
 | Tecla / mando | Acción |
 | --- | --- |
-| W/S o ↑/↓ · gatillos RT/LT | Acelerar / frenar y marcha atrás |
+| W o ↑ · gatillo derecho | Acelerador |
+| S o ↓ · gatillo izquierdo | Freno (con la caja, la lleva hacia atrás hasta la 2.4) |
 | A/D o ←/→ · stick izquierdo | Girar |
-| Espacio · botón de abajo de la cara derecha (A Xbox, ✕ PlayStation, B Nintendo) | Saltar |
-| R | Reiniciar el mundo |
+| Espacio · botón de abajo de la cara derecha (A Xbox, ✕ PlayStation, B Nintendo) | Freno de mano (sin efecto en la caja hasta la 2.6) |
+| Q · hombro izquierdo (LB, L1, L) | Bajar marcha (sin efecto hasta la 2.6) |
+| E · hombro derecho (RB, R1, R) | Subir marcha (sin efecto hasta la 2.6) |
+| R · botón de arriba de la cara derecha (Y Xbox, △ PlayStation, X Nintendo) | Recolocar: a la salida, parado y mirando al frente |
+| X | Saltar (temporal, solo la caja; desaparece en la 2.4) |
+| Retroceso | Reiniciar el mundo (cierra la grabación y empieza otra) |
 | Tab | Primera persona / cámara fija |
 | O | Mundo a 20 km del origen (y de vuelta) |
 | J | Dibujar en float del mundo (depuración del render relativo) |
@@ -209,6 +214,8 @@ Válido al cierre de la fase 1, con la tarea 6 fusionada. La demo es temporal y 
 | `--fullscreen` | Arranca en pantalla completa sin bordes |
 | `--frame-log` | Graba el registro por fotograma desde el inicio |
 | `--bench-forest` | Mide los cuatro modos del bosque a 1920×1080 sin sincronización vertical, escribe `rendimiento_NNN.txt` junto al exe y se cierra |
+
+Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: `info <archivo>`, `run <archivo>` («hash OK» o el primer problema), `run <archivo> --bench N` y `rewrite <archivo>` (solo grabaciones sintéticas de tests).
 
 ---
 

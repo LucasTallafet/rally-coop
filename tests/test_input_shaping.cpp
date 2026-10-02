@@ -15,6 +15,7 @@ using rally::platform::shape_steer;
 using rally::platform::shape_trigger;
 using rally::platform::to_axis;
 using rally::sim::kAxisMax;
+using rally::sim::kButtonBrakeDigital;
 using rally::sim::kButtonJump;
 using rally::sim::kButtonSteerDigital;
 using rally::sim::kButtonThrottleDigital;
@@ -139,28 +140,39 @@ TEST_CASE("input shaping: the active gamepad is the last one used") {
     CHECK(state.steer > 0.0f);
 }
 
-TEST_CASE("input shaping: triggers are digital until they give an intermediate value") {
+TEST_CASE("input shaping: each trigger is digital until it gives an intermediate value") {
     PadTracker tracker;
     PadReading switch_pro = pad(5);
     switch_pro.right_trigger = 1.0f;
     PadState state = tracker.update(&switch_pro, 1);
     CHECK(state.throttle_digital);
+    CHECK(state.brake_digital);
     switch_pro.right_trigger = 0.0f;
     switch_pro.left_trigger = 1.0f;
     state = tracker.update(&switch_pro, 1);
-    CHECK(state.throttle_digital);
-    CHECK(state.throttle == -1.0f);
-    CHECK(tracker.trigger_digital(5));
+    CHECK(state.brake_digital);
+    CHECK(state.brake == 1.0f);
+    CHECK(state.throttle == 0.0f);
+    CHECK(tracker.left_trigger_digital(5));
+    CHECK(tracker.right_trigger_digital(5));
 
-    // Un valor intermedio: analógico, y se queda así aunque vuelva a 0 o a 1.
+    // Gatillos de 0 o 1: el freno lleva su bit digital.
+    CHECK((combine_inputs(KeyboardState{}, state).buttons & kButtonBrakeDigital) != 0);
+
+    // Un valor intermedio en el izquierdo: el freno pasa a analógico y se queda así aunque
+    // vuelva a 0 o a 1; el acelerador sigue digital (se aprende por gatillo).
     switch_pro.left_trigger = 0.4f;
-    CHECK_FALSE(tracker.update(&switch_pro, 1).throttle_digital);
+    state = tracker.update(&switch_pro, 1);
+    CHECK_FALSE(state.brake_digital);
+    CHECK(state.throttle_digital);
     switch_pro.left_trigger = 1.0f;
-    CHECK_FALSE(tracker.update(&switch_pro, 1).throttle_digital);
+    state = tracker.update(&switch_pro, 1);
+    CHECK_FALSE(state.brake_digital);
+    CHECK((combine_inputs(KeyboardState{}, state).buttons & kButtonBrakeDigital) == 0);
 
     // Al desconectar se olvida: al volver, digital hasta otro valor intermedio.
     tracker.update(nullptr, 0);
-    CHECK(tracker.update(&switch_pro, 1).throttle_digital);
+    CHECK(tracker.update(&switch_pro, 1).brake_digital);
 
     // raylib da -1 antes del primer movimiento: no cuenta como intermedio.
     PadReading fresh = pad(6);
@@ -169,7 +181,49 @@ TEST_CASE("input shaping: triggers are digital until they give an intermediate v
     fresh.any_button = true;
     state = tracker.update(&fresh, 1);
     CHECK(state.throttle_digital);
+    CHECK(state.brake_digital);
     CHECK(state.throttle == 0.0f);
+    CHECK(state.brake == 0.0f);
+}
+
+TEST_CASE("input shaping: throttle and brake are independent axes") {
+    PadTracker tracker;
+    PadReading both = pad(3);
+    both.right_trigger = 0.8f;
+    both.left_trigger = 0.6f;
+    const PadState state = tracker.update(&both, 1);
+    REQUIRE(state.active);
+    const rally::sim::SimInput input = combine_inputs(KeyboardState{}, state);
+    // Los dos gatillos a la vez dan los dos ejes (frenada con el pie izquierdo).
+    CHECK(input.throttle == to_axis(shape_trigger(0.8f)));
+    CHECK(input.brake == to_axis(shape_trigger(0.6f)));
+    CHECK(input.throttle > 0);
+    CHECK(input.brake > 0);
+
+    // Con el teclado, W y S a la vez también.
+    KeyboardState keys;
+    keys.throttle = true;
+    keys.brake = true;
+    const rally::sim::SimInput key_input = combine_inputs(keys, PadState{});
+    CHECK(key_input.throttle == kAxisMax);
+    CHECK(key_input.brake == kAxisMax);
+    CHECK((key_input.buttons & kButtonThrottleDigital) != 0);
+    CHECK((key_input.buttons & kButtonBrakeDigital) != 0);
+}
+
+TEST_CASE("input shaping: drift neither brakes nor throttles") {
+    PadTracker tracker;
+    PadReading worn = pad(4);
+    worn.left_trigger = 0.04f; // gatillo que no vuelve del todo, dentro de la zona muerta
+    worn.right_trigger = 0.03f;
+    worn.left_y = 1.0f; // stick que deriva en vertical
+    worn.any_button = true;
+    const PadState state = tracker.update(&worn, 1);
+    REQUIRE(state.active);
+    const rally::sim::SimInput input = combine_inputs(KeyboardState{}, state);
+    CHECK(input.brake == 0);
+    CHECK(input.throttle == 0);
+    CHECK(input.steer == 0);
 }
 
 TEST_CASE("input shaping: keyboard and gamepad mix by magnitude per axis") {
@@ -179,21 +233,33 @@ TEST_CASE("input shaping: keyboard and gamepad mix by magnitude per axis") {
 
     // Solo teclado: a fondo y con los bits digitales.
     keys.right = true;
-    keys.forward = true;
+    keys.throttle = true;
     rally::sim::SimInput input = combine_inputs(keys, PadState{});
     CHECK(input.steer == kAxisMax);
     CHECK(input.throttle == kAxisMax);
+    CHECK(input.brake == 0);
     CHECK((input.buttons & kButtonSteerDigital) != 0);
     CHECK((input.buttons & kButtonThrottleDigital) != 0);
+    CHECK((input.buttons & kButtonBrakeDigital) == 0);
 
     // El stick a medias pierde contra la tecla; el gatillo analógico a fondo empata y gana.
+    // El freno del mando no compite con el acelerador del teclado: es otro eje.
     pad_state.steer = -0.5f;
-    pad_state.throttle = -1.0f;
+    pad_state.throttle = 1.0f;
+    pad_state.brake = 0.5f;
     input = combine_inputs(keys, pad_state);
     CHECK(input.steer == kAxisMax);
     CHECK((input.buttons & kButtonSteerDigital) != 0);
-    CHECK(input.throttle == -kAxisMax);
+    CHECK(input.throttle == kAxisMax);
     CHECK((input.buttons & kButtonThrottleDigital) == 0);
+    CHECK(input.brake == to_axis(0.5f));
+    CHECK((input.buttons & kButtonBrakeDigital) == 0);
+
+    // S a fondo gana al freno del mando a medias y pone el bit del freno.
+    keys.brake = true;
+    input = combine_inputs(keys, pad_state);
+    CHECK(input.brake == kAxisMax);
+    CHECK((input.buttons & kButtonBrakeDigital) != 0);
 
     // El stick a fondo gana (empate) y quita el bit de la dirección.
     pad_state.steer = -1.0f;
@@ -208,12 +274,45 @@ TEST_CASE("input shaping: keyboard and gamepad mix by magnitude per axis") {
     input = combine_inputs(keys, pad_state);
     CHECK(input.throttle == kAxisMax);
     CHECK((input.buttons & kButtonThrottleDigital) != 0);
+}
 
-    // Salto de cualquiera de los dos.
-    CHECK((combine_inputs(KeyboardState{false, false, false, false, true}, PadState{}).buttons &
-           kButtonJump) != 0);
-    pad_state.jump = true;
-    CHECK((combine_inputs(KeyboardState{}, pad_state).buttons & kButtonJump) != 0);
+TEST_CASE("input shaping: buttons come from either the keyboard or the gamepad") {
+    struct Case {
+        bool KeyboardState::* key;
+        bool PadState::* pad;
+        std::uint16_t bit;
+    };
+    const Case cases[] = {
+        {&KeyboardState::handbrake, &PadState::handbrake, rally::sim::kButtonHandbrake},
+        {&KeyboardState::shift_up, &PadState::shift_up, rally::sim::kButtonShiftUp},
+        {&KeyboardState::shift_down, &PadState::shift_down, rally::sim::kButtonShiftDown},
+        {&KeyboardState::reset, &PadState::reset, rally::sim::kButtonReset},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.bit);
+        KeyboardState keys;
+        keys.*c.key = true;
+        CHECK(combine_inputs(keys, PadState{}).buttons == c.bit);
+        PadState pad_state;
+        pad_state.active = true;
+        pad_state.*c.pad = true;
+        CHECK(combine_inputs(KeyboardState{}, pad_state).buttons == c.bit);
+    }
+    // El salto (temporal) solo va en el teclado: nada de depuración en el mando.
+    KeyboardState keys;
+    keys.jump = true;
+    CHECK(combine_inputs(keys, PadState{}).buttons == kButtonJump);
+
+    // Los botones del mando llegan desde la lectura cruda.
+    PadTracker tracker;
+    PadReading reading = pad(9);
+    reading.handbrake = true;
+    reading.reset = true;
+    reading.any_button = true;
+    const PadState state = tracker.update(&reading, 1);
+    CHECK(state.handbrake);
+    CHECK(state.reset);
+    CHECK_FALSE(state.shift_up);
 }
 
 TEST_CASE("input shaping: rumble only above the impact threshold") {

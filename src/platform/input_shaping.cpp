@@ -51,15 +51,14 @@ PadState PadTracker::update(const PadReading* pads, int count) {
     Known next[kMaxPads];
     for (int i = 0; i < count; ++i) {
         next[i].id = pads[i].id;
-        for (int j = 0; j < known_count_; ++j) {
-            if (known_[j].id == pads[i].id) {
-                next[i].analog_trigger = known_[j].analog_trigger;
-                break;
-            }
+        if (const Known* known = find(pads[i].id)) {
+            next[i] = *known;
         }
-        if (intermediate(std::clamp(pads[i].left_trigger, 0.0f, 1.0f)) ||
-            intermediate(std::clamp(pads[i].right_trigger, 0.0f, 1.0f))) {
-            next[i].analog_trigger = true;
+        if (intermediate(std::clamp(pads[i].left_trigger, 0.0f, 1.0f))) {
+            next[i].analog_left = true;
+        }
+        if (intermediate(std::clamp(pads[i].right_trigger, 0.0f, 1.0f))) {
+            next[i].analog_right = true;
         }
     }
     std::copy(next, next + count, known_);
@@ -92,19 +91,34 @@ PadState PadTracker::update(const PadReading* pads, int count) {
     const PadReading& pad = pads[active_index];
     state.active = true;
     state.steer = shape_steer(pad.left_x);
-    state.throttle = shape_trigger(pad.right_trigger) - shape_trigger(pad.left_trigger);
-    state.throttle_digital = !known_[active_index].analog_trigger;
-    state.jump = pad.jump;
+    state.throttle = shape_trigger(pad.right_trigger);
+    state.brake = shape_trigger(pad.left_trigger);
+    state.throttle_digital = !known_[active_index].analog_right;
+    state.brake_digital = !known_[active_index].analog_left;
+    state.handbrake = pad.handbrake;
+    state.shift_up = pad.shift_up;
+    state.shift_down = pad.shift_down;
+    state.reset = pad.reset;
     return state;
 }
 
-bool PadTracker::trigger_digital(std::uint32_t id) const {
+const PadTracker::Known* PadTracker::find(std::uint32_t id) const {
     for (int i = 0; i < known_count_; ++i) {
         if (known_[i].id == id) {
-            return !known_[i].analog_trigger;
+            return &known_[i];
         }
     }
-    return false;
+    return nullptr;
+}
+
+bool PadTracker::left_trigger_digital(std::uint32_t id) const {
+    const Known* known = find(id);
+    return known != nullptr && !known->analog_left;
+}
+
+bool PadTracker::right_trigger_digital(std::uint32_t id) const {
+    const Known* known = find(id);
+    return known != nullptr && !known->analog_right;
 }
 
 namespace {
@@ -118,23 +132,30 @@ float keyboard_axis(bool negative, bool positive) {
 
 sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad) {
     const float key_steer = keyboard_axis(keys.left, keys.right);
-    const float key_throttle = keyboard_axis(keys.back, keys.forward);
+    const float key_throttle = keys.throttle ? 1.0f : 0.0f;
+    const float key_brake = keys.brake ? 1.0f : 0.0f;
     const bool keyboard_steers = std::abs(key_steer) > std::abs(pad.steer);
-    const bool keyboard_throttles = std::abs(key_throttle) > std::abs(pad.throttle);
+    const bool keyboard_throttles = key_throttle > pad.throttle;
+    const bool keyboard_brakes = key_brake > pad.brake;
 
     sim::SimInput input;
     input.steer = to_axis(keyboard_steers ? key_steer : pad.steer);
     input.throttle = to_axis(keyboard_throttles ? key_throttle : pad.throttle);
+    input.brake = to_axis(keyboard_brakes ? key_brake : pad.brake);
     std::uint16_t buttons = 0;
-    if (keys.jump || pad.jump) {
-        buttons |= sim::kButtonJump;
-    }
-    if (keyboard_steers) {
-        buttons |= sim::kButtonSteerDigital;
-    }
-    if (keyboard_throttles || (pad.active && pad.throttle_digital)) {
-        buttons |= sim::kButtonThrottleDigital;
-    }
+    const auto set = [&buttons](bool on, std::uint16_t bit) {
+        if (on) {
+            buttons |= bit;
+        }
+    };
+    set(keys.handbrake || pad.handbrake, sim::kButtonHandbrake);
+    set(keys.shift_up || pad.shift_up, sim::kButtonShiftUp);
+    set(keys.shift_down || pad.shift_down, sim::kButtonShiftDown);
+    set(keys.reset || pad.reset, sim::kButtonReset);
+    set(keys.jump, sim::kButtonJump);
+    set(keyboard_steers, sim::kButtonSteerDigital);
+    set(keyboard_throttles || (pad.active && pad.throttle_digital), sim::kButtonThrottleDigital);
+    set(keyboard_brakes || (pad.active && pad.brake_digital), sim::kButtonBrakeDigital);
     input.buttons = buttons;
     return input;
 }

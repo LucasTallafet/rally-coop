@@ -21,6 +21,7 @@ inline constexpr float kSteerCurveExponent = 1.5f;
 // Gatillos en [0, 1]: por debajo, 0; el resto se reescala a [0, 1].
 inline constexpr float kTriggerDeadzone = 0.05f;
 // Un gatillo es analógico en cuanto da un valor entre estos dos (Switch Pro: solo 0 o 1).
+// Se aprende por gatillo: cada uno es un eje (acelerador y freno).
 inline constexpr float kTriggerAnalogLow = 0.05f;
 inline constexpr float kTriggerAnalogHigh = 0.95f;
 
@@ -32,23 +33,33 @@ float shape_trigger(float value);
 std::int16_t to_axis(float value);
 
 // Lectura cruda de un mando conectado en un fotograma, ya pasada a float.
+// Botones por posición (platform/gamepad): freno de mano = el de abajo de la cara derecha,
+// recolocar = el de arriba, bajar y subir marcha = hombro izquierdo y derecho.
 struct PadReading {
     std::uint32_t id = 0;       // identificador estable mientras sigue conectado (nunca 0)
     float left_x = 0.0f;        // [-1, 1], derecha positiva
     float left_y = 0.0f;        // [-1, 1]; ni gira ni activa el mando (deriva de sticks gastados)
-    float left_trigger = 0.0f;  // [0, 1] (puede llegar < 0 de raylib; se recorta)
-    float right_trigger = 0.0f; // [0, 1]
-    bool jump = false;          // botón de salto (por posición: el de abajo de la cara derecha)
-    bool any_button = false;    // cualquier botón pulsado
+    float left_trigger = 0.0f;  // [0, 1] freno (puede llegar < 0 de raylib; se recorta)
+    float right_trigger = 0.0f; // [0, 1] acelerador
+    bool handbrake = false;
+    bool shift_up = false;
+    bool shift_down = false;
+    bool reset = false;
+    bool any_button = false; // cualquier botón pulsado
 };
 
 // Estado del mando activo ya con forma, listo para mezclar con el teclado.
 struct PadState {
     bool active = false;
-    float steer = 0.0f;    // [-1, 1]
-    float throttle = 0.0f; // [-1, 1]: gatillo derecho − gatillo izquierdo
-    bool throttle_digital = false;
-    bool jump = false;
+    float steer = 0.0f;            // [-1, 1]
+    float throttle = 0.0f;         // [0, 1]: gatillo derecho
+    float brake = 0.0f;            // [0, 1]: gatillo izquierdo
+    bool throttle_digital = false; // el gatillo derecho solo ha dado 0 o 1
+    bool brake_digital = false;    // el izquierdo, igual
+    bool handbrake = false;
+    bool shift_up = false;
+    bool shift_down = false;
+    bool reset = false;
 };
 
 // Mando activo = el último que ha movido un eje por encima de su zona muerta o pulsado un
@@ -64,13 +75,17 @@ public:
     PadState update(const PadReading* pads, int count);
 
     std::uint32_t active_id() const { return active_; } // 0 si ninguno
-    bool trigger_digital(std::uint32_t id) const;
+    // Si el gatillo izquierdo o el derecho del mando `id` solo ha dado 0 o 1 hasta ahora.
+    bool left_trigger_digital(std::uint32_t id) const;
+    bool right_trigger_digital(std::uint32_t id) const;
 
 private:
     struct Known {
         std::uint32_t id = 0;
-        bool analog_trigger = false;
+        bool analog_left = false;
+        bool analog_right = false;
     };
+    const Known* find(std::uint32_t id) const;
     Known known_[kMaxPads];
     int known_count_ = 0;
     std::uint32_t active_ = 0;
@@ -80,15 +95,20 @@ private:
 struct KeyboardState {
     bool left = false;
     bool right = false;
-    bool forward = false;
-    bool back = false;
-    bool jump = false;
+    bool throttle = false;
+    bool brake = false;
+    bool handbrake = false;
+    bool shift_up = false;
+    bool shift_down = false;
+    bool reset = false;
+    bool jump = false; // solo teclado: temporal hasta el coche (2.4)
 };
 
-// Mezcla teclado y mando activo: en cada eje gana el de mayor magnitud (empate: el mando).
-// Si gana el teclado, marca el bit digital del eje; en el acelerador también si gana un
-// gatillo digital. El salto es el OR de los dos. Los botones de pulsación (salto) salen
-// sin retener: platform/input les aplica ButtonLatch.
+// Mezcla teclado y mando activo: en cada eje (dirección, acelerador y freno, por separado)
+// gana el de mayor magnitud (empate: el mando). Si gana el teclado, marca el bit digital
+// del eje; en el acelerador y el freno también si es el gatillo digital del mando activo.
+// Los botones son el OR de los dos. Los de pulsación salen sin retener: platform/input les
+// aplica ButtonLatch.
 sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad);
 
 // Vibración por impacto: por encima del umbral, fuerza proporcional desde kRumbleMinStrength

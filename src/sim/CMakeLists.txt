@@ -2,6 +2,7 @@
 # cmake/CheckBuildRules.cmake). Las definiciones JPH_* llegan solo desde Jolt (PUBLIC).
 add_library(rally_sim STATIC
     check.cpp
+    demo_world.cpp
     fp_guard.cpp
     input_smoothing.cpp
     jolt_runtime.cpp

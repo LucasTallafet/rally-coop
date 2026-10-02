@@ -10,8 +10,10 @@ namespace rally::platform {
 // desconectar; aquí se leen directamente con SDL3, para que ejes, botón de salto, vibración,
 // nombre y tipo salgan siempre del mismo mando (GetGamepadName de raylib busca en una lista
 // que, tras reconectar mandos, deja de coincidir con sus huecos).
-// Botones por posición, nunca por letra: el salto es el botón de abajo de la cara derecha
-// (A en Xbox, X en PlayStation, B en Nintendo).
+// Botones por posición, nunca por letra: freno de mano = el de abajo de la cara derecha
+// (A en Xbox, ✕ en PlayStation, B en Nintendo), recolocar = el de arriba (Y, △, X), bajar
+// marcha = hombro izquierdo y subir = hombro derecho. Gatillo derecho = acelerador e
+// izquierdo = freno.
 class Gamepads {
 public:
     // Lee los mandos conectados y devuelve el estado del activo (PadTracker).
@@ -25,7 +27,12 @@ public:
     // nullptr si no hay mando activo.
     const char* active_name() const;
     const char* active_type() const;
-    bool active_trigger_digital() const { return tracker_.trigger_digital(tracker_.active_id()); }
+    bool active_throttle_digital() const {
+        return tracker_.right_trigger_digital(tracker_.active_id());
+    }
+    bool active_brake_digital() const {
+        return tracker_.left_trigger_digital(tracker_.active_id());
+    }
 
 private:
     PadTracker tracker_;

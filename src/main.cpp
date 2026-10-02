@@ -1,3 +1,4 @@
+#include "io/crash_save.h"
 #include "platform/box_demo.h"
 #include "platform/fatal_error.h"
 #include "platform/fixed_step_clock.h"
@@ -31,7 +32,12 @@ int main(int argc, char** argv) {
             "Jolt se compiló con definiciones distintas a las del juego.");
         return 1;
     }
-    rally::sim::set_check_handler(&rally::platform::show_fatal_error);
+    // Si salta un RALLY_CHECK, primero se guarda la grabación en curso (incompleta) y después
+    // se muestra el error.
+    rally::sim::set_check_handler([](const char* message) {
+        rally::io::save_crash_recording();
+        rally::platform::show_fatal_error(message);
+    });
 
     const rally::sim::JoltRuntime jolt;
     rally::platform::Window window(1280, 720, "Rally Coop");
@@ -75,6 +81,7 @@ int main(int argc, char** argv) {
         // La entrada se lee una vez por fotograma y vale para todos sus pasos.
         const rally::sim::SimInput input = driver.read(steps.count);
         float frame_impact = 0.0f;
+        demo.prepare_steps(steps.count);
         for (int i = 0; i < steps.count; ++i) {
             // El contador solo mide alrededor del paso: no toca la simulación.
             perf.begin_step();

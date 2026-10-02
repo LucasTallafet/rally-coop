@@ -19,6 +19,9 @@ using rally::platform::KeyboardState;
 using rally::platform::PadState;
 using rally::sim::ControlState;
 using rally::sim::kAxisMax;
+using rally::sim::kButtonBrakeDigital;
+using rally::sim::kButtonHandbrake;
+using rally::sim::kButtonShiftUp;
 using rally::sim::kButtonSteerDigital;
 using rally::sim::kButtonThrottleDigital;
 using rally::sim::SimInput;
@@ -55,6 +58,33 @@ int steps_until_throttle(ControlState& controls, const SimInput& input, std::int
     for (int steps = 1; steps <= 1000; ++steps) {
         controls.step(input);
         if (controls.throttle.applied == target) {
+            return steps;
+        }
+    }
+    return -1;
+}
+
+SimInput brake_input(std::int16_t brake, bool digital) {
+    SimInput input;
+    input.brake = brake;
+    input.buttons = digital ? kButtonBrakeDigital : 0;
+    return input;
+}
+
+int steps_until_brake(ControlState& controls, const SimInput& input, std::int32_t target) {
+    for (int steps = 1; steps <= 1000; ++steps) {
+        controls.step(input);
+        if (controls.brake.applied == target) {
+            return steps;
+        }
+    }
+    return -1;
+}
+
+int steps_until_handbrake(ControlState& controls, const SimInput& input, std::int32_t target) {
+    for (int steps = 1; steps <= 1000; ++steps) {
+        controls.step(input);
+        if (controls.handbrake == target) {
             return steps;
         }
     }
@@ -109,9 +139,70 @@ TEST_CASE("input smoothing: digital throttle ramps, analog throttle is applied a
     ControlState controls;
     CHECK(steps_until_throttle(controls, throttle_input(kAxisMax, true), kAxisMax) == 48);
     CHECK(steps_until_throttle(controls, SimInput{}, 0) == 24);
-    CHECK(steps_until_throttle(controls, throttle_input(-kAxisMax, true), -kAxisMax) == 48);
     CHECK(steps_until_throttle(controls, throttle_input(kAxisMax, false), kAxisMax) == 1);
-    CHECK(steps_until_throttle(controls, throttle_input(-12345, false), -12345) == 1);
+    CHECK(steps_until_throttle(controls, throttle_input(12345, false), 12345) == 1);
+    CHECK(steps_until_throttle(controls, throttle_input(0, false), 0) == 1);
+}
+
+TEST_CASE("input smoothing: digital brake ramps in 48 steps and releases in 24, analog as is") {
+    ControlState controls;
+    CHECK(steps_until_brake(controls, brake_input(kAxisMax, true), kAxisMax) == 48);
+    CHECK(steps_until_brake(controls, SimInput{}, 0) == 24);
+    CHECK(steps_until_brake(controls, brake_input(kAxisMax, false), kAxisMax) == 1);
+    CHECK(steps_until_brake(controls, brake_input(20000, false), 20000) == 1);
+    CHECK(steps_until_brake(controls, brake_input(0, false), 0) == 1);
+    // El freno no mueve el acelerador ni al revés.
+    CHECK(controls.throttle.applied == 0);
+}
+
+TEST_CASE("input smoothing: the handbrake is fully applied in 12 steps and released in 12") {
+    ControlState controls;
+    SimInput pull;
+    pull.buttons = kButtonHandbrake;
+    CHECK(steps_until_handbrake(controls, pull, kAxisMax) == rally::sim::kHandbrakeSteps);
+    CHECK(rally::sim::kHandbrakeSteps == 12); // 0,05 s
+    CHECK(steps_until_handbrake(controls, SimInput{}, 0) == 12);
+}
+
+TEST_CASE("input smoothing: holding shift up for 100 steps is one press") {
+    ControlState controls;
+    SimInput shift;
+    shift.buttons = kButtonShiftUp;
+    int presses = 0;
+    for (int i = 0; i < 100; ++i) {
+        controls.step(shift);
+        presses += (controls.pressed & kButtonShiftUp) != 0 ? 1 : 0;
+    }
+    CHECK(presses == 1);
+
+    // Pulsado en un fotograma de 8 pasos (30 fps; la entrada vale para los 8): 1, no 8.
+    controls.step(SimInput{});
+    presses = 0;
+    for (int i = 0; i < 8; ++i) {
+        controls.step(shift);
+        presses += (controls.pressed & kButtonShiftUp) != 0 ? 1 : 0;
+    }
+    CHECK(presses == 1);
+    CHECK(controls.previous_buttons == kButtonShiftUp);
+}
+
+TEST_CASE("input smoothing: zero_axes clears the applied axes and keeps previous buttons") {
+    ControlState controls;
+    SimInput input;
+    input.steer = kAxisMax;
+    input.throttle = kAxisMax;
+    input.brake = kAxisMax;
+    input.buttons = kButtonHandbrake | kButtonShiftUp;
+    for (int i = 0; i < 100; ++i) {
+        controls.step(input);
+    }
+    REQUIRE(controls.handbrake == kAxisMax);
+    controls.zero_axes();
+    CHECK(controls.steer.applied == 0);
+    CHECK(controls.throttle.applied == 0);
+    CHECK(controls.brake.applied == 0);
+    CHECK(controls.handbrake == 0);
+    CHECK(controls.previous_buttons == input.buttons);
 }
 
 TEST_CASE("input smoothing: follow_target never overshoots and stops at center when reversing") {
@@ -134,8 +225,11 @@ KeyboardState scripted_keys(int frame) {
     keys.right =
         (frame >= 6 && frame < 54) || (frame >= 80 && frame < 86) || (frame >= 100 && frame < 104);
     keys.left = (frame >= 54 && frame < 62) || (frame >= 100 && frame < 104);
-    keys.forward = (frame >= 10 && frame < 70) || (frame >= 90 && frame < 92);
-    keys.back = frame >= 70 && frame < 76;
+    keys.throttle = (frame >= 10 && frame < 70) || (frame >= 90 && frame < 92);
+    keys.brake = (frame >= 60 && frame < 76) || (frame >= 120 && frame < 122);
+    keys.handbrake = (frame >= 30 && frame < 34) || (frame >= 110 && frame < 112);
+    keys.shift_up = (frame >= 20 && frame < 22) || (frame >= 40 && frame < 60);
+    keys.shift_down = frame >= 64 && frame < 66;
     return keys;
 }
 
@@ -144,6 +238,9 @@ constexpr int kScriptFrames60 = 140;
 struct Trajectory {
     std::vector<std::int32_t> steer;       // dirección aplicada tras cada paso
     std::vector<std::int32_t> throttle;    // acelerador aplicado tras cada paso
+    std::vector<std::int32_t> brake;       // freno aplicado tras cada paso
+    std::vector<std::int32_t> handbrake;   // freno de mano aplicado tras cada paso
+    std::vector<std::uint16_t> pressed;    // pulsaciones de cada paso
     std::vector<std::int32_t> world_steer; // la misma, leída de SimWorld
     std::string state;                     // SaveState final
 };
@@ -175,6 +272,9 @@ Trajectory run_script(const std::array<std::int64_t, 3>& frame_cycle, int steps_
             world.step(input);
             trajectory.steer.push_back(controls.steer.applied);
             trajectory.throttle.push_back(controls.throttle.applied);
+            trajectory.brake.push_back(controls.brake.applied);
+            trajectory.handbrake.push_back(controls.handbrake);
+            trajectory.pressed.push_back(controls.pressed);
             trajectory.world_steer.push_back(world.controls().steer.applied);
         }
     }
@@ -184,7 +284,8 @@ Trajectory run_script(const std::array<std::int64_t, 3>& frame_cycle, int steps_
 
 } // namespace
 
-TEST_CASE("input smoothing: the same key presses give the same steer trajectory at 30 and 60 fps") {
+TEST_CASE("input smoothing: the same key presses give the same trajectories and presses at 30 and "
+          "60 fps") {
     const rally::sim::JoltRuntime runtime;
     // Duraciones de fotograma como en test_fixed_step_clock: el ciclo de tres suma un número
     // exacto de pasos.
@@ -197,10 +298,25 @@ TEST_CASE("input smoothing: the same key presses give the same steer trajectory 
     CHECK(*std::max_element(at60.steer.begin(), at60.steer.end()) == kAxisMax);
     CHECK(*std::min_element(at60.steer.begin(), at60.steer.end()) < 0);
     CHECK(*std::max_element(at60.throttle.begin(), at60.throttle.end()) == kAxisMax);
+    CHECK(*std::max_element(at60.brake.begin(), at60.brake.end()) == kAxisMax);
+    CHECK(*std::max_element(at60.handbrake.begin(), at60.handbrake.end()) == kAxisMax);
+    // Tres pulsaciones de marcha (dos de subir y una de bajar).
+    const auto count_presses = [](const Trajectory& t) {
+        int n = 0;
+        for (const std::uint16_t p : t.pressed) {
+            n += ((p & rally::sim::kButtonShiftUp) != 0 ? 1 : 0) +
+                 ((p & rally::sim::kButtonShiftDown) != 0 ? 1 : 0);
+        }
+        return n;
+    };
+    CHECK(count_presses(at60) == 3);
 
     // Bit a bit, paso a paso (son enteros: la igualdad es exacta).
     CHECK(at30.steer == at60.steer);
     CHECK(at30.throttle == at60.throttle);
+    CHECK(at30.brake == at60.brake);
+    CHECK(at30.handbrake == at60.handbrake);
+    CHECK(at30.pressed == at60.pressed);
     CHECK(at60.world_steer == at60.steer);
     CHECK(at30.world_steer == at30.steer);
     CHECK(at30.state == at60.state);

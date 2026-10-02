@@ -31,6 +31,19 @@ void ControlState::step(const SimInput& input) {
                kSteerAnalogRates);
     throttle.step(input.throttle, (input.buttons & kButtonThrottleDigital) != 0,
                   kThrottleDigitalRates, kThrottleAnalogRates);
+    brake.step(input.brake, (input.buttons & kButtonBrakeDigital) != 0, kBrakeDigitalRates,
+               kBrakeAnalogRates);
+    handbrake = follow_target(handbrake, (input.buttons & kButtonHandbrake) != 0 ? kAxisMax : 0,
+                              kHandbrakeRates);
+    pressed = static_cast<std::uint16_t>(input.buttons & ~previous_buttons);
+    previous_buttons = input.buttons;
+}
+
+void ControlState::zero_axes() {
+    steer.applied = 0;
+    throttle.applied = 0;
+    brake.applied = 0;
+    handbrake = 0;
 }
 
 } // namespace rally::sim

@@ -34,6 +34,13 @@ inline constexpr AxisRates kThrottleDigitalRates{rate_for_steps(kThrottleDigital
                                                  rate_for_steps(kThrottleDigitalFallSteps)};
 // Acelerador analógico: sin limitador (de un extremo al otro en un paso).
 inline constexpr AxisRates kThrottleAnalogRates{0, 0};
+// Freno: las mismas velocidades que el acelerador, digital y analógico.
+inline constexpr AxisRates kBrakeDigitalRates = kThrottleDigitalRates;
+inline constexpr AxisRates kBrakeAnalogRates = kThrottleAnalogRates;
+// Freno de mano (botón): aplicado a fondo en 0,05 s y suelto en lo mismo. Provisional.
+inline constexpr int kHandbrakeSteps = 12;
+inline constexpr AxisRates kHandbrakeRates{rate_for_steps(kHandbrakeSteps),
+                                           rate_for_steps(kHandbrakeSteps)};
 
 // Un paso del limitador: `applied` se acerca a `target` como mucho rise o fall. Hacia el
 // centro usa fall y se para en 0 si el objetivo está al otro lado; desde ahí sigue con rise
@@ -51,15 +58,23 @@ struct SmoothedAxis {
               AxisRates analog_rates);
 };
 
-// Dirección y acelerador que la simulación aplica de verdad, siguiendo a SimInput por paso.
-// Por paso y no por fotograma: la respuesta es la misma a 30 y a 60 fps y queda en la
-// grabación de entradas. Es estado de la simulación que no está en el SaveState de Jolt:
-// en el cambio de host (fase 5) viaja con el estado del juego, como previous_buttons.
+// Mandos que la simulación aplica de verdad, siguiendo a SimInput por paso, y pulsaciones
+// del paso. Por paso y no por fotograma: la respuesta es la misma a 30 y a 60 fps y queda
+// en la grabación de entradas. Es todo el estado de la simulación que no está en el
+// SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
 struct ControlState {
     SmoothedAxis steer;
     SmoothedAxis throttle;
+    SmoothedAxis brake;
+    std::int32_t handbrake = 0;         // freno de mano aplicado, en [0, kAxisMax]
+    std::uint16_t previous_buttons = 0; // botones del paso anterior
+    std::uint16_t pressed = 0;          // botones que pasan de 0 a 1 en este paso
 
+    // Una vez por paso, antes de usar los valores.
     void step(const SimInput& input);
+    // Recolocar: los ejes aplicados vuelven a 0. Los botones del paso anterior y el modo
+    // digital de cada eje se quedan como están.
+    void zero_axes();
 };
 
 } // namespace rally::sim

@@ -17,7 +17,8 @@ add_library(rally_loop STATIC
 target_include_directories(rally_loop PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_loop PRIVATE rally_sim rally_warnings)
 
-# Plataforma: ventana, render, entrada y audio sobre raylib (backend SDL).
+# Plataforma: ventana, render, entrada, audio y grabación de la partida sobre raylib
+# (backend SDL).
 # SDL se usa directamente para el intervalo de presentación, la frecuencia del monitor y los
 # mandos (platform/gamepad).
 add_library(rally_platform STATIC
@@ -33,11 +34,12 @@ add_library(rally_platform STATIC
     input.cpp
     perf_counter.cpp
     process_memory.cpp
+    recording_session.cpp
     screenshot.cpp
     window.cpp
 )
 target_include_directories(rally_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_platform
-    PUBLIC raylib rally_loop rally_sim
+    PUBLIC raylib rally_loop rally_io rally_sim
     PRIVATE rally_warnings SDL3::SDL3 user32 winmm
 )

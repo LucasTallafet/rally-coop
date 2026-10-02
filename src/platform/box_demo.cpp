@@ -8,6 +8,7 @@
 #include "platform/input_shaping.h"
 #include "platform/perf_counter.h"
 #include "platform/screenshot.h"
+#include "sim/demo_world.h"
 
 #include <SDL3/SDL_video.h>
 #include <raylib.h>
@@ -24,7 +25,7 @@ namespace {
 
 static_assert(sim::kStepsPerSecond == kStepsPerSecond, "la simulación y el bucle usan otro paso");
 
-constexpr int kControlled = 5;
+constexpr int kControlled = sim::kDemoControlled;
 
 // Cámara en primera persona. El campo de visión es fijo: el diseño prohíbe que cambie con
 // la velocidad. Los planos de recorte son provisionales: en la fase 6 se revisan con
@@ -43,29 +44,6 @@ constexpr Vec3d kFixedTarget{0.0, 0.0, 2.0};
 
 // O: el mundo se reconstruye a esta distancia del origen en x y z.
 constexpr double kFarOffset = 20000.0;
-
-// Suelo de 30 × 30 m, cuatro muros de 2 m, la caja controlada (cae desde 2 m al empezar) y
-// dos cajas sueltas para empujar. Todo desplazado `offset` en x y z.
-sim::WorldDesc arena(double offset) {
-    using sim::BodyMotion;
-    sim::WorldDesc desc;
-    desc.bodies = {
-        {BodyMotion::Static, 0.0, -0.5, 0.0, 15.0f, 0.5f, 15.0f},
-        {BodyMotion::Static, 0.0, 1.0, -15.5, 16.0f, 1.0f, 0.5f},
-        {BodyMotion::Static, 0.0, 1.0, 15.5, 16.0f, 1.0f, 0.5f},
-        {BodyMotion::Static, -15.5, 1.0, 0.0, 0.5f, 1.0f, 15.0f},
-        {BodyMotion::Static, 15.5, 1.0, 0.0, 0.5f, 1.0f, 15.0f},
-        {BodyMotion::Dynamic, 0.0, 2.0, 0.0, 0.5f, 0.5f, 0.5f},
-        {BodyMotion::Dynamic, 4.0, 0.5, -3.0, 0.5f, 0.5f, 0.5f},
-        {BodyMotion::Dynamic, -5.0, 0.75, 2.0, 0.75f, 0.75f, 0.75f},
-    };
-    for (sim::BoxDesc& box : desc.bodies) {
-        box.x += offset;
-        box.z += offset;
-    }
-    desc.controlled = kControlled;
-    return desc;
-}
 
 Color body_color(const sim::WorldDesc& desc, std::size_t index) {
     if (static_cast<int>(index) == desc.controlled) {
@@ -199,12 +177,13 @@ Pose to_pose(const sim::BodyPose& body) {
 
 } // namespace
 
-BoxDemo::BoxDemo() : desc_(arena(0.0)) {
+BoxDemo::BoxDemo() : desc_(sim::demo_arena(0.0)) {
     rlSetClipPlanes(kNearPlane, kFarPlane);
     reset();
 }
 
 BoxDemo::~BoxDemo() {
+    recording_.finish(*world_);
     if (target_.id != 0) {
         UnloadRenderTexture(target_);
     }
@@ -227,9 +206,16 @@ int BoxDemo::render_height() const {
 }
 
 void BoxDemo::reset() {
+    if (world_) {
+        recording_.finish(*world_);
+    }
     world_ = std::make_unique<sim::SimWorld>();
     world_->build(desc_);
     world_->seal();
+    recording_.start(desc_);
+    shift_up_presses_ = 0;
+    shift_down_presses_ = 0;
+    reset_presses_ = 0;
     read_poses(current_);
     previous_ = current_;
 }
@@ -279,11 +265,17 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     }
     if (IsKeyPressed(KEY_O)) {
         far_from_origin_ = !far_from_origin_;
-        desc_ = arena(far_from_origin_ ? kFarOffset : 0.0);
+        desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0);
         reset();
     }
-    if (IsKeyPressed(KEY_R)) {
+    if (IsKeyPressed(KEY_BACKSPACE)) {
         reset();
+    }
+}
+
+void BoxDemo::prepare_steps(int count) {
+    if (!paused_) {
+        recording_.prepare(count);
     }
 }
 
@@ -292,6 +284,11 @@ float BoxDemo::step(const sim::SimInput& input) {
         return 0.0f;
     }
     world_->step(input);
+    recording_.record(input);
+    const std::uint16_t pressed = world_->controls().pressed;
+    shift_up_presses_ += (pressed & sim::kButtonShiftUp) != 0 ? 1 : 0;
+    shift_down_presses_ += (pressed & sim::kButtonShiftDown) != 0 ? 1 : 0;
+    reset_presses_ += (pressed & sim::kButtonReset) != 0 ? 1 : 0;
     previous_.swap(current_);
     read_poses(current_);
     return world_->last_impact();
@@ -422,10 +419,10 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
              16, 198, 20, text);
     const Gamepads& pads = driver.gamepads();
     if (pads.active_name() != nullptr) {
-        DrawText(TextFormat("mando: %s (%s)   gatillos: %s   conectados: %d", pads.active_name(),
-                            pads.active_type(),
-                            pads.active_trigger_digital() ? "digitales" : "analógicos",
-                            pads.connected()),
+        DrawText(TextFormat(
+                     "mando: %s (%s)   gatillos: RT %s, LT %s   conectados: %d", pads.active_name(),
+                     pads.active_type(), pads.active_throttle_digital() ? "digital" : "analógico",
+                     pads.active_brake_digital() ? "digital" : "analógico", pads.connected()),
                  16, 224, 20, text);
     } else {
         DrawText(TextFormat("mando: ninguno activo   conectados: %d", pads.connected()), 16, 224,
@@ -436,18 +433,34 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     draw_axis_bar(16, 256, input.steer * kAxisScale, controls.steer.applied * kAxisScale);
     draw_axis_bar(16 + kAxisBarWidth + 16, 256, input.throttle * kAxisScale,
                   controls.throttle.applied * kAxisScale);
-    DrawText(
-        TextFormat("dirección %s y acelerador %s (blanco: objetivo; naranja: aplicado)",
-                   (input.buttons & sim::kButtonSteerDigital) != 0 ? "digital" : "analógica",
-                   (input.buttons & sim::kButtonThrottleDigital) != 0 ? "digital" : "analógico"),
-        16 + 2 * (kAxisBarWidth + 16), 252, 20, text);
+    draw_axis_bar(16 + 2 * (kAxisBarWidth + 16), 256, input.brake * kAxisScale,
+                  controls.brake.applied * kAxisScale);
+    const auto mode = [&input](std::uint16_t bit) {
+        return (input.buttons & bit) != 0 ? "digital" : "analógico";
+    };
+    // Barras: dirección, acelerador y freno; blanco el objetivo y naranja el aplicado.
+    DrawText(TextFormat("dirección %s, acelerador %s, freno %s", mode(sim::kButtonSteerDigital),
+                        mode(sim::kButtonThrottleDigital), mode(sim::kButtonBrakeDigital)),
+             16 + 3 * (kAxisBarWidth + 16), 252, 20, text);
+    DrawText(TextFormat("freno de mano: %3.0f %%   pulsaciones: subir %d, bajar %d, recolocar %d",
+                        100.0f * controls.handbrake * kAxisScale, shift_up_presses_,
+                        shift_down_presses_, reset_presses_),
+             16, 282, 20, text);
     DrawText(TextFormat("impacto: %.2f m/s   último que vibró: %.2f m/s (umbral %.1f)",
                         frame_impact, last_rumble_impact_, kImpactThreshold),
-             16, 282, 20, text);
+             16, 308, 20, text);
+    DrawText(TextFormat("grabación: %s   pasos: %llu%s", recording_.name().c_str(),
+                        static_cast<unsigned long long>(recording_.steps()),
+                        recording_.error().empty()
+                            ? ""
+                            : TextFormat("   ERROR: %s", recording_.error().c_str())),
+             16, 334, 20, text);
     const Color help = Color{150, 156, 168, 255};
-    DrawText("W/S o gatillos: acelerar/atrás   A/D o stick: girar   Espacio o botón de abajo: "
-             "saltar   R: reiniciar   O: origen/20 km",
-             16, GetScreenHeight() - 114, 20, help);
+    DrawText("W/S o gatillos: acelerar/frenar   A/D o stick: girar   Espacio o abajo: freno de "
+             "mano   Q/E o hombros: marchas   R o arriba: recolocar",
+             16, GetScreenHeight() - 140, 20, help);
+    DrawText("X: saltar (temporal)   Retroceso: reiniciar el mundo   O: origen/20 km", 16,
+             GetScreenHeight() - 114, 20, help);
     DrawText("Tab: cámara   J: render en float del mundo   F: monitor/30 fps   I: interpolación",
              16, GetScreenHeight() - 88, 20, help);
     DrawText("V: sincronización vertical   N: ajuste al refresco   L: registro   B: bosque", 16,

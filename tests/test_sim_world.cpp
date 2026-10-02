@@ -32,10 +32,11 @@ using rally::sim::SimInput;
 using rally::sim::SimWorld;
 using rally::sim::WorldDesc;
 
-// Huella del SaveState tras 60 s de entradas pseudoaleatorias (run_random_inputs).
+// Huella (SimWorld::state_hash: SaveState más ControlState) tras 60 s de entradas
+// pseudoaleatorias (run_random_inputs).
 // Si el test de huella falla por un cambio intencionado, se copia aquí el valor nuevo y se
 // dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedFingerprint = 0xfb7852dd64be99e5ull;
+constexpr std::uint64_t kExpectedFingerprint = 0x249c8804faca4764ull;
 
 constexpr int kSecondsOfInput = 60;
 constexpr int kStepsPerFrame = 4; // la entrada cambia cada fotograma de 60 fps
@@ -47,14 +48,14 @@ constexpr int kCountedSteps = 1000;
 // cuerpo cambió de caja envolvente; si no, ninguna): la broad phase lo reconstruye y
 // QuadTree::UpdatePrepare y QuadTree::BuildTree hacen un new[] cada uno (con su delete[]
 // en la misma llamada). Desde que la caja controlada solo gira en Y hay pasos sin
-// reservas (un 7 % con las entradas de este test). Tamaño constante y sin
+// reservas (un 1 % con las entradas de este test). Tamaño constante y sin
 // efecto en la reproducibilidad; aceptado (docs/progreso.md, hallazgos). Si un cambio
 // intencionado lo altera, se actualiza como la huella.
 constexpr int kJoltAllocationsPerStep = 2;
 // Total de reservas de Jolt en los kCountedSteps pasos medidos con las entradas del test
-// (932 pasos con reservas y 68 sin ellas). Si un cambio intencionado lo altera, se
+// (988 pasos con reservas y 12 sin ellas). Si un cambio intencionado lo altera, se
 // actualiza como la huella y se dice en el mensaje del commit.
-constexpr int kExpectedJoltAllocations = 1864;
+constexpr int kExpectedJoltAllocations = 1976;
 
 // Suelo de 20 × 20 m con cuatro muros de 3 m, la caja controlada apoyada en el centro y
 // otra caja suelta para que haya contactos entre cuerpos dinámicos.
@@ -71,6 +72,18 @@ WorldDesc arena() {
     };
     desc.controlled = kControlled;
     return desc;
+}
+
+// Pedal (acelerador o freno) en [0, kAxisMax]: suelto, a fondo o intermedio.
+std::int16_t random_pedal(rally::sim::Pcg32& rng) {
+    switch (rng.bounded(3)) {
+    case 0:
+        return 0;
+    case 1:
+        return kAxisMax;
+    default:
+        return static_cast<std::int16_t>(rng.bounded(kAxisMax + 1u));
+    }
 }
 
 std::int16_t random_axis(rally::sim::Pcg32& rng) {
@@ -94,17 +107,26 @@ std::vector<SimInput> random_inputs(int seconds) {
     inputs.reserve(static_cast<std::size_t>(seconds * rally::sim::kStepsPerSecond));
     while (inputs.size() < inputs.capacity()) {
         SimInput input;
-        input.throttle = random_axis(rng);
         input.steer = random_axis(rng);
-        std::uint16_t buttons = rng.bounded(90) == 0 ? kButtonJump : 0;
-        // Mitad de los fotogramas con dirección o acelerador digitales: pasan por los
-        // limitadores del teclado.
-        if (rng.bounded(2) == 0) {
-            buttons |= kButtonSteerDigital;
-        }
-        if (rng.bounded(2) == 0) {
-            buttons |= kButtonThrottleDigital;
-        }
+        input.throttle = random_pedal(rng);
+        // Freno en un tercio de los fotogramas, a veces a la vez que el acelerador.
+        input.brake = rng.bounded(3) == 0 ? random_pedal(rng) : 0;
+        std::uint16_t buttons = 0;
+        const auto maybe = [&rng, &buttons](std::uint32_t one_in, std::uint16_t bit) {
+            if (rng.bounded(one_in) == 0) {
+                buttons |= bit;
+            }
+        };
+        maybe(90, kButtonJump);
+        maybe(8, rally::sim::kButtonHandbrake);
+        maybe(30, rally::sim::kButtonShiftUp);
+        maybe(30, rally::sim::kButtonShiftDown);
+        // Recolocar de vez en cuando (unas 6 veces en 60 s).
+        maybe(600, rally::sim::kButtonReset);
+        // Mitad de los fotogramas con cada eje digital: pasan por los limitadores del teclado.
+        maybe(2, kButtonSteerDigital);
+        maybe(2, kButtonThrottleDigital);
+        maybe(2, rally::sim::kButtonBrakeDigital);
         input.buttons = buttons;
         for (int i = 0; i < kStepsPerFrame && inputs.size() < inputs.capacity(); ++i) {
             inputs.push_back(input);
@@ -115,6 +137,7 @@ std::vector<SimInput> random_inputs(int seconds) {
 
 struct RunResult {
     std::string state;
+    std::uint64_t hash = 0; // SimWorld::state_hash
     std::vector<BodyPose> poses;
     double max_distance = 0.0; // distancia horizontal máxima de la caja controlada al centro
 };
@@ -137,6 +160,7 @@ RunResult run_random_inputs() {
         result.poses.push_back(world.pose(i));
     }
     result.state = world.save_state();
+    result.hash = world.state_hash();
     return result;
 }
 
@@ -154,16 +178,6 @@ bool same_pose(const BodyPose& a, const BodyPose& b) {
     return same_bits(a.x, b.x) && same_bits(a.y, b.y) && same_bits(a.z, b.z) &&
            same_bits(a.qx, b.qx) && same_bits(a.qy, b.qy) && same_bits(a.qz, b.qz) &&
            same_bits(a.qw, b.qw);
-}
-
-// FNV-1a de 64 bits.
-std::uint64_t fnv1a64(const std::string& bytes) {
-    std::uint64_t hash = 0xcbf2'9ce4'8422'2325ull;
-    for (const char c : bytes) {
-        hash ^= static_cast<unsigned char>(c);
-        hash *= 0x0000'0100'0000'01b3ull;
-    }
-    return hash;
 }
 
 // Cuenta las reservas que pasan por el asignador de Jolt mientras vive.
@@ -321,11 +335,84 @@ TEST_CASE("sim_world: 60 s of random inputs are bit-identical across two runs") 
     }
     REQUIRE(!first.state.empty());
     CHECK(first.state == second.state);
+    CHECK(first.hash == second.hash);
+}
+
+TEST_CASE("sim_world: reset puts the box back at its spawn, still, in the same step") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(arena());
+    world.seal();
+    const BodyPose spawn = world.pose(kControlled);
+
+    // Conduce girando un segundo y medio, con el freno de mano: lejos y girada.
+    SimInput drive;
+    drive.throttle = kAxisMax;
+    drive.steer = kAxisMax / 2;
+    drive.buttons = rally::sim::kButtonHandbrake;
+    for (int i = 0; i < rally::sim::kStepsPerSecond * 3 / 2; ++i) {
+        world.step(drive);
+    }
+    const BodyPose away = world.pose(kControlled);
+    REQUIRE(std::hypot(away.x - spawn.x, away.z - spawn.z) > 1.0);
+    REQUIRE(std::abs(yaw(away)) > 0.5);
+    REQUIRE(world.controls().throttle.applied == kAxisMax);
+    REQUIRE(world.controls().handbrake == kAxisMax);
+
+    // Recolocar sin soltar nada: al volver de step() está en la salida, mirando al frente
+    // (orientación identidad) y quieta.
+    SimInput reset = drive;
+    reset.buttons |= rally::sim::kButtonReset;
+    world.step(reset);
+    const BodyPose back = world.pose(kControlled);
+    CHECK(same_pose(back, BodyPose{spawn.x, spawn.y, spawn.z, 0.0, 0.0, 0.0, 1.0}));
+    const rally::sim::BodyVelocity still = world.velocity(kControlled);
+    CHECK(still.vx == 0.0f);
+    CHECK(still.vy == 0.0f);
+    CHECK(still.vz == 0.0f);
+    CHECK(still.wx == 0.0f);
+    CHECK(still.wy == 0.0f);
+    CHECK(still.wz == 0.0f);
+    CHECK(world.last_impact() == 0.0f);
+    // Los ejes aplicados vuelven a 0; los botones del paso anterior se quedan.
+    const rally::sim::ControlState& controls = world.controls();
+    CHECK(controls.steer.applied == 0);
+    CHECK(controls.throttle.applied == 0);
+    CHECK(controls.brake.applied == 0);
+    CHECK(controls.handbrake == 0);
+    CHECK(controls.previous_buttons == reset.buttons);
+
+    // Mantener recolocar no vuelve a recolocar: es una pulsación. La caja vuelve a moverse.
+    for (int i = 0; i < rally::sim::kStepsPerSecond / 2; ++i) {
+        world.step(reset);
+    }
+    const BodyPose moved = world.pose(kControlled);
+    CHECK(std::hypot(moved.x - spawn.x, moved.z - spawn.z) > 0.1);
+}
+
+TEST_CASE("sim_world: a full brake for 1 s moves the box backwards") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(arena());
+    world.seal();
+    const BodyPose start = world.pose(kControlled);
+    SimInput brake;
+    brake.brake = kAxisMax;
+    for (int i = 0; i < rally::sim::kStepsPerSecond; ++i) {
+        world.step(brake);
+    }
+    const BodyPose after = world.pose(kControlled);
+    // Adelante es -z: hacia atrás es +z, sin moverse de lado ni girar.
+    MESSAGE("freno a fondo 1 s: ", after.z - start.z, " m hacia atrás");
+    CHECK(after.z - start.z > 1.0);
+    CHECK(std::abs(after.x - start.x) < 1e-3);
+    CHECK(yaw(after) == doctest::Approx(0.0));
+    CHECK(world.controls().brake.applied == kAxisMax);
 }
 
 TEST_CASE("sim_world: state fingerprint after 60 s of random inputs matches the stored one") {
     const rally::sim::JoltRuntime runtime;
-    const std::uint64_t fingerprint = fnv1a64(run_random_inputs().state);
+    const std::uint64_t fingerprint = run_random_inputs().hash;
 
     char message[320];
     std::snprintf(message, sizeof(message),

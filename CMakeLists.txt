@@ -49,6 +49,7 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/sim/fp_guard.cpp
 target_compile_definitions(Jolt PUBLIC $<$<CONFIG:Debug>:JPH_ENABLE_ASSERTS>)
 
 add_subdirectory(src)
+add_subdirectory(tools/replay)
 
 enable_testing()
 add_subdirectory(tests)
