@@ -1,5 +1,7 @@
 #include "sim/demo_world.h"
 
+#include "sim/test_zone.h"
+
 namespace rally::sim {
 
 WorldDesc demo_arena(double offset) {
@@ -19,6 +21,26 @@ WorldDesc demo_arena(double offset) {
         box.z += offset;
     }
     desc.controlled = kDemoControlled;
+    return desc;
+}
+
+} // namespace rally::sim
+
+namespace rally::sim {
+
+WorldDesc zone_world(Surface blind_surface) {
+    const TestZone zone(blind_surface);
+    WorldDesc desc;
+    const RespawnPoint& start = zone.start();
+    BoxDesc box;
+    box.motion = BodyMotion::Dynamic;
+    box.x = start.x;
+    box.y = zone.ground_height(start.x, start.z) + box.half_y;
+    box.z = start.z;
+    desc.bodies = {box};
+    desc.controlled = kZoneControlled;
+    desc.test_zone = true;
+    desc.blind_surface = blind_surface;
     return desc;
 }
 

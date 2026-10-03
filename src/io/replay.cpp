@@ -7,9 +7,14 @@
 
 namespace rally::io {
 
+std::int64_t timed_steps(const sim::SimWorld& world) {
+    const sim::LapState* lap = world.lap();
+    return lap != nullptr ? lap->best_lap : -1;
+}
+
 bool build_world(const Recording& recording, sim::SimWorld& world, std::string& error) {
     sim::WorldDesc desc;
-    if (!parse_world(recording.header.world, desc, error)) {
+    if (!parse_world(recording.header.world, desc, error, recording.header.format_version)) {
         return false;
     }
     world.build(desc);
@@ -31,6 +36,7 @@ ReplayResult replay(const Recording& recording) {
     }
     result.ran = true;
     result.hash = world.state_hash();
+    result.timed_steps = timed_steps(world);
     result.version_mismatch = recording.header.sim_version != sim::kSimVersion;
     result.incomplete = !recording.footer.complete;
 
@@ -57,6 +63,11 @@ ReplayResult replay(const Recording& recording) {
                       "hash final distinto: grabado 0x%016" PRIx64 ", repetido 0x%016" PRIx64,
                       recording.footer.final_hash, result.hash);
         result.problem = buffer;
+    } else if (result.timed_steps != recording.footer.timed_steps) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "tiempo cronometrado distinto: grabado %" PRId64 " pasos, repetido %" PRId64,
+                      recording.footer.timed_steps, result.timed_steps);
+        result.problem = buffer;
     } else {
         result.hash_ok = true;
     }
@@ -72,6 +83,7 @@ ReplayResult rewrite_footer(Recording& recording) {
     recording.footer.complete = true;
     recording.footer.total_steps = result.steps;
     recording.footer.final_hash = result.hash;
+    recording.footer.timed_steps = result.timed_steps;
     return replay(recording);
 }
 

@@ -6,8 +6,10 @@ add_library(rally_sim STATIC
     fp_guard.cpp
     input_smoothing.cpp
     jolt_runtime.cpp
+    lap_timer.cpp
     pcg32.cpp
     sim_world.cpp
+    test_zone.cpp
 )
 target_include_directories(rally_sim PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_sim

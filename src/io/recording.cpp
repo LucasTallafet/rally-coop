@@ -178,10 +178,12 @@ ParseResult parse(std::string_view bytes) {
     }
     RecordingHeader& h = result.recording.header;
     h.format_version = r.u32();
-    if (r.ok() && h.format_version != kRecordingFormatVersion) {
+    if (r.ok() && (h.format_version < kOldestRecordingFormatVersion ||
+                   h.format_version > kRecordingFormatVersion)) {
         char buffer[96];
-        std::snprintf(buffer, sizeof(buffer), "versión del formato %u, se esperaba la %u",
-                      h.format_version, kRecordingFormatVersion);
+        std::snprintf(buffer, sizeof(buffer),
+                      "versión del formato %u, se esperaba de la %u a la %u", h.format_version,
+                      kOldestRecordingFormatVersion, kRecordingFormatVersion);
         result.error = buffer;
         return result;
     }
@@ -257,14 +259,19 @@ std::string serialize_world(const sim::WorldDesc& desc) {
         w.f32(box.half_z);
     }
     w.i32(desc.controlled);
+    w.u8(desc.test_zone ? 1 : 0);
+    w.u8(static_cast<std::uint8_t>(desc.blind_surface));
     return out;
 }
 
-bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& error) {
+bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& error,
+                 std::uint32_t format_version) {
     constexpr std::size_t kBodyBytes = 1 + 3 * 8 + 3 * 4;
+    // Desde la versión 2 del formato, la zona de pruebas y la superficie de la pista ciega.
+    const std::size_t tail_bytes = format_version >= 2 ? 4 + 2 : 4;
     Reader r(bytes);
     const std::uint32_t count = r.u32();
-    if (!r.ok() || static_cast<std::uint64_t>(count) * kBodyBytes + 4 != r.remaining()) {
+    if (!r.ok() || static_cast<std::uint64_t>(count) * kBodyBytes + tail_bytes != r.remaining()) {
         error = "descripción del mundo con un tamaño que no cuadra";
         return false;
     }
@@ -290,6 +297,16 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
                                      sim::BodyMotion::Dynamic)) {
         error = "descripción del mundo: cuerpo controlado no válido";
         return false;
+    }
+    if (format_version >= 2) {
+        const std::uint8_t zone = r.u8();
+        const std::uint8_t surface = r.u8();
+        if (zone > 1 || surface >= sim::kSurfaceCount) {
+            error = "descripción del mundo: zona de pruebas o superficie no válidas";
+            return false;
+        }
+        desc.test_zone = zone == 1;
+        desc.blind_surface = static_cast<sim::Surface>(surface);
     }
     return true;
 }

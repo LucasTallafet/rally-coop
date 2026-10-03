@@ -17,6 +17,7 @@ add_executable(rally_tests
     test_recording.cpp
     test_rmath.cpp
     test_sim_world.cpp
+    test_test_zone.cpp
 )
 target_link_libraries(rally_tests PRIVATE rally_sim rally_io rally_loop doctest::doctest
     rally_warnings)
@@ -70,3 +71,29 @@ add_test(NAME sim_rules.fixture_bad
             -P ${_rules_script})
 add_test(NAME sim_rules.fixture_good
     COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}/rules/good -P ${_rules_script})
+
+# Zona de pruebas (tarea 2.2). rally_replay escribe el trazado en JSON y un test de Python
+# (solo biblioteca estándar) lo comprueba contra las medidas de la tabla. Sin Python 3 el
+# test falla con su nombre a la vista, en vez de desaparecer.
+set(_zone_json ${CMAKE_CURRENT_BINARY_DIR}/zone.json)
+add_test(NAME replay.zone_json COMMAND rally_replay zone --json ${_zone_json})
+set_tests_properties(replay.zone_json PROPERTIES
+    FIXTURES_SETUP zone_json
+    PASS_REGULAR_EXPRESSION "zona escrita: ")
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME zone_json.python
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/telemetry/test_zone_json.py
+                ${_zone_json})
+else()
+    add_test(NAME zone_json.python COMMAND ${CMAKE_COMMAND} -E false)
+    message(WARNING "Python 3 no encontrado: el test zone_json.python fallará")
+endif()
+set_tests_properties(zone_json.python PROPERTIES FIXTURES_REQUIRED zone_json)
+# Vuelta cronometrada grabada (la genera el test de la zona con RALLY_WRITE_TEST_RECORDINGS=1):
+# rally_replay la repite con el mismo tiempo y el mismo hash.
+add_test(NAME replay.zone_lap
+    COMMAND rally_replay run ${CMAKE_CURRENT_SOURCE_DIR}/data/recordings/zone_lap.rrec)
+set_tests_properties(replay.zone_lap PROPERTIES
+    PASS_REGULAR_EXPRESSION "vuelta: [0-9]+ pasos .*hash OK"
+    FAIL_REGULAR_EXPRESSION "FALLO|vuelta: ninguno")

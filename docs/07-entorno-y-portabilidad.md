@@ -181,7 +181,7 @@ git worktree prune
 
 ## 8. Referencia rápida de la demo actual
 
-Válido desde la tarea 2.1 de la fase 2. La demo de la caja es temporal y cambiará con el coche (tarea 2.4). Los botones del mando van por posición, sin teclas de depuración.
+Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambiará con el coche (tarea 2.4). Arranca en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración.
 
 | Tecla / mando | Acción |
 | --- | --- |
@@ -191,11 +191,15 @@ Válido desde la tarea 2.1 de la fase 2. La demo de la caja es temporal y cambia
 | Espacio · botón de abajo de la cara derecha (A Xbox, ✕ PlayStation, B Nintendo) | Freno de mano (sin efecto en la caja hasta la 2.6) |
 | Q · hombro izquierdo (LB, L1, L) | Bajar marcha (sin efecto hasta la 2.6) |
 | E · hombro derecho (RB, R1, R) | Subir marcha (sin efecto hasta la 2.6) |
-| R · botón de arriba de la cara derecha (Y Xbox, △ PlayStation, X Nintendo) | Recolocar: a la salida, parado y mirando al frente |
+| R · botón de arriba de la cara derecha (Y Xbox, △ PlayStation, X Nintendo) | Recolocar: en la zona, al punto de recolocación más cercano, parado y con su orientación; en el recinto, a la salida mirando al frente |
 | X | Saltar (temporal, solo la caja; desaparece en la 2.4) |
 | Retroceso | Reiniciar el mundo (cierra la grabación y empieza otra) |
-| Tab | Primera persona / cámara fija |
-| O | Mundo a 20 km del origen (y de vuelta) |
+| Tab | Cámara: primera persona → fija (recinto) o detrás y por encima (zona) → toda la zona |
+| K | Zona de pruebas / recinto de la fase 1 (reconstruye el mundo y empieza otra grabación) |
+| G | Zona: siguiente superficie de la pista ciega (reconstruye); a ciegas, siguiente prueba de la serie |
+| M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15») |
+| H | Ocultar / mostrar el texto (quedan las vueltas) |
+| O | Recinto: mundo a 20 km del origen (y de vuelta) |
 | J | Dibujar en float del mundo (depuración del render relativo) |
 | F | Frecuencia del monitor / 30 fps |
 | V | Sincronización vertical sí / no |
@@ -205,7 +209,7 @@ Válido desde la tarea 2.1 de la fase 2. La demo de la caja es temporal y cambia
 | C | Captura del fotograma (`captura_NNN.png` junto al exe) |
 | L | Registro por fotograma (`fotogramas_NNN.csv` junto al exe) |
 | F1 | Contador de rendimiento (CPU, GPU, draw calls, memoria, gráfica de fotogramas) |
-| B | Escena de medida del bosque: apagado → uno a uno → `DrawMeshInstanced` → persistente |
+| B | Recinto: escena de medida del bosque: apagado → uno a uno → `DrawMeshInstanced` → persistente |
 | F11 o Alt+Intro | Pantalla completa sin bordes |
 | Esc | Salir |
 
@@ -213,9 +217,11 @@ Válido desde la tarea 2.1 de la fase 2. La demo de la caja es temporal y cambia
 | --- | --- |
 | `--fullscreen` | Arranca en pantalla completa sin bordes |
 | `--frame-log` | Graba el registro por fotograma desde el inicio |
-| `--bench-forest` | Mide los cuatro modos del bosque a 1920×1080 sin sincronización vertical, escribe `rendimiento_NNN.txt` junto al exe y se cierra |
+| `--bench-forest` | Mide los cuatro modos del bosque en el recinto a 1920×1080 sin sincronización vertical, escribe `rendimiento_NNN.txt` junto al exe y se cierra |
+| `--bench-zone` | Mide la CPU del dibujo del suelo de la zona en pantalla completa sin bordes, con la cámara por la pista ciega a 100 km/h (3 s de calentamiento y 20 s de medida); escribe `rendimiento_zona_NNN.txt` junto al exe y se cierra |
+| `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
 
-Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: `info <archivo>`, `run <archivo>` («hash OK» o el primer problema), `run <archivo> --bench N` y `rewrite <archivo>` (solo grabaciones sintéticas de tests).
+Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: `info <archivo>`, `run <archivo>` («hash OK» o el primer problema), `run <archivo> --bench N`, `rewrite <archivo>` (solo grabaciones sintéticas de tests) y `zone --json <archivo> [--blind <superficie>]` (trazado de la zona de pruebas para los scripts de Python). `info` dice la superficie real de la pista ciega y `run`, la mejor vuelta cronometrada.
 
 ---
 

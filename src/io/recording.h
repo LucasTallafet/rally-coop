@@ -23,12 +23,16 @@ namespace rally::io {
 //             u16 buttons
 //   pie       u32 indicadores (bit 0: completa), u64 pasos totales, u64 hash del estado
 //             final (SimWorld::state_hash; 0 si incompleta), i64 tiempo del recorrido
-//             cronometrado en pasos (-1 si no hay), "REND" (4 B)
+//             cronometrado en pasos (la mejor vuelta completa; -1 si no hay), "REND" (4 B)
 //
 // Una grabación incompleta es la que se guarda al saltar un RALLY_CHECK: lleva los pasos
 // terminados hasta entonces y no tiene hash final.
+//
+// Versiones del formato: 1 (tarea 2.1); 2 (tarea 2.2): la descripción del mundo lleva la zona
+// de pruebas y la superficie de la pista ciega. Se siguen leyendo las de la versión 1.
 
-inline constexpr std::uint32_t kRecordingFormatVersion = 1;
+inline constexpr std::uint32_t kRecordingFormatVersion = 2;
+inline constexpr std::uint32_t kOldestRecordingFormatVersion = 1;
 inline constexpr std::size_t kRunBytes = 12;
 inline constexpr std::size_t kFooterBytes = 32;
 
@@ -75,9 +79,12 @@ struct ParseResult {
 ParseResult parse(std::string_view bytes);
 
 // Descripción del mundo en bytes (u32 cuerpos; por cuerpo u8 movimiento, f64 x, y, z y f32
-// medias medidas, como sus bits; i32 cuerpo controlado).
+// medias medidas, como sus bits; i32 cuerpo controlado; desde la versión 2, u8 zona de
+// pruebas y u8 superficie de la pista ciega). Se lee con la versión del formato de la
+// grabación de la que sale.
 std::string serialize_world(const sim::WorldDesc& desc);
-bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& error);
+bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& error,
+                 std::uint32_t format_version = kRecordingFormatVersion);
 
 // Archivos. Las rutas van en UTF-8. write_file crea la carpeta si falta.
 bool read_file(const std::string& path, std::string& bytes, std::string& error);

@@ -12,9 +12,11 @@
 #include "sim/jolt_runtime.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <system_error>
 
 // Piden la gráfica dedicada en PCs con dos gráficas (AMD PowerXpress y NVIDIA Optimus).
 // Sin ellas, OpenGL puede elegir la integrada aunque el monitor esté en la dedicada.
@@ -56,18 +58,35 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argv[i], "--fullscreen") == 0) {
             window.toggle_fullscreen();
         } else if (std::strcmp(argv[i], "--bench-forest") == 0 && !bench) {
+            // El bosque se mide alrededor del recinto de la fase 1.
             window.toggle_fullscreen();
+            demo.use_arena();
             demo.set_render_size(1920, 1080);
             pacer.set_vsync(false);
             perf.set_visible(true);
             bench.emplace(demo);
+        } else if (std::strcmp(argv[i], "--bench-zone") == 0 && !bench) {
+            // Dibujo del suelo de la zona a la frecuencia del monitor, en pantalla completa sin
+            // bordes (escribe rendimiento_zona_NNN.txt y se cierra).
+            window.toggle_fullscreen();
+            perf.set_visible(true);
+            demo.start_zone_bench();
+        } else if (std::strcmp(argv[i], "--blind-seed") == 0 && i + 1 < argc) {
+            // Semilla de la serie de pruebas a ciegas (M en la zona).
+            const char* text = argv[++i];
+            std::uint64_t seed = 0;
+            const std::from_chars_result parsed =
+                std::from_chars(text, text + std::strlen(text), seed);
+            if (parsed.ec == std::errc{} && *parsed.ptr == '\0') {
+                demo.set_blind_seed(seed);
+            }
         }
     }
 
     while (!window.should_close()) {
         const std::int64_t frame_ns = pacer.begin_frame();
         perf.begin_frame(frame_ns, pacer.last_wait_ns());
-        if (bench && !bench->update(perf, pacer, demo)) {
+        if ((bench && !bench->update(perf, pacer, demo)) || demo.zone_bench_done()) {
             break;
         }
         // Ajuste del dt al refresco del monitor (N lo desactiva en la demo, para comparar).

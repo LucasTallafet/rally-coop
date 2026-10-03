@@ -3,6 +3,8 @@
 //   rally_replay run <archivo> [--bench N]   repite y dice "hash OK" o el primer problema;
 //                                            con --bench, N repeticiones y ms por paso
 //   rally_replay rewrite <archivo>           pie con la versión actual (solo tests)
+//   rally_replay zone --json <archivo> [--blind <superficie>]
+//                                            trazado de la zona de pruebas en JSON
 // Códigos de salida: 0 bien, 1 el hash no cuadra, 2 error de uso o de archivo.
 
 #include "io/build_info.h"
@@ -11,6 +13,8 @@
 #include "sim/jolt_runtime.h"
 #include "sim/sim_version.h"
 #include "sim/sim_world.h"
+#include "sim/surface.h"
+#include "sim/test_zone.h"
 
 #include <algorithm>
 #include <charconv>
@@ -33,9 +37,19 @@ int usage() {
     std::fputs("uso:\n"
                "  rally_replay info <archivo.rrec>\n"
                "  rally_replay run <archivo.rrec> [--bench N]\n"
-               "  rally_replay rewrite <archivo.rrec>\n",
+               "  rally_replay rewrite <archivo.rrec>\n"
+               "  rally_replay zone --json <archivo.json> [--blind <superficie>]\n",
                stderr);
     return 2;
+}
+
+void print_timed(const char* label, std::int64_t steps) {
+    if (steps < 0) {
+        std::printf("%s ninguno\n", label);
+    } else {
+        std::printf("%s %" PRId64 " pasos (%.3f s)\n", label, steps,
+                    static_cast<double>(steps) / rally::sim::kStepsPerSecond);
+    }
 }
 
 bool load(const char* path, std::string& bytes, Recording& recording) {
@@ -63,7 +77,7 @@ int info(const char* path) {
     const rally::io::RecordingFooter& f = recording.footer;
     rally::sim::WorldDesc desc;
     std::string error;
-    const bool world_ok = rally::io::parse_world(h.world, desc, error);
+    const bool world_ok = rally::io::parse_world(h.world, desc, error, h.format_version);
     const double raw_bytes = static_cast<double>(f.total_steps) * sizeof(rally::sim::SimInput);
     std::printf("archivo:             %s (%zu bytes)\n", path, bytes.size());
     std::printf("formato:             %u\n", h.format_version);
@@ -74,6 +88,13 @@ int info(const char* path) {
     if (world_ok) {
         std::printf("mundo:               %zu cuerpos, controlado %d\n", desc.bodies.size(),
                     desc.controlled);
+        if (desc.test_zone) {
+            // La superficie real: en las pruebas a ciegas solo se ve aquí.
+            std::printf("zona de pruebas:     sí, pista ciega de %s\n",
+                        rally::sim::surface_name(desc.blind_surface));
+        } else {
+            std::printf("zona de pruebas:     no\n");
+        }
     } else {
         std::printf("mundo:               no válido (%s)\n", error.c_str());
     }
@@ -90,7 +111,7 @@ int info(const char* path) {
     } else {
         std::printf("hash final:          ninguno (grabación incompleta: se guardó al abortar)\n");
     }
-    std::printf("tiempo cronometrado: %" PRId64 " pasos\n", f.timed_steps);
+    print_timed("tiempo cronometrado:", f.timed_steps);
     return 0;
 }
 
@@ -151,6 +172,7 @@ int run(const char* path, int bench_repetitions) {
     }
     std::printf("pasos: %" PRIu64 " (%.2f s)   hash: 0x%016" PRIx64 "\n", result.steps,
                 static_cast<double>(result.steps) / rally::sim::kStepsPerSecond, result.hash);
+    print_timed("vuelta:", result.timed_steps);
     int code = 0;
     if (result.hash_ok) {
         std::puts("hash OK");
@@ -198,6 +220,33 @@ int rewrite(const char* path) {
     return 0;
 }
 
+// Trazado de la zona de pruebas en JSON. Sin --blind, la pista ciega es de grava.
+int zone_json(const char* path, const char* blind) {
+    rally::sim::Surface surface = rally::sim::Surface::Gravel;
+    if (blind != nullptr) {
+        bool found = false;
+        for (int s = 0; s < rally::sim::kSurfaceCount; ++s) {
+            const auto candidate = static_cast<rally::sim::Surface>(s);
+            if (std::strcmp(blind, rally::sim::surface_key(candidate)) == 0) {
+                surface = candidate;
+                found = true;
+            }
+        }
+        if (!found) {
+            std::fprintf(stderr, "error: superficie desconocida: %s\n", blind);
+            return 2;
+        }
+    }
+    const rally::sim::TestZone zone(surface);
+    std::string error;
+    if (!rally::io::write_file(path, zone.to_json(), error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 2;
+    }
+    std::printf("zona escrita: %s (pista ciega de %s)\n", path, rally::sim::surface_name(surface));
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -212,6 +261,16 @@ int main(int argc, char** argv) {
     }
     const rally::sim::JoltRuntime jolt;
     const char* command = argv[1];
+    if (std::strcmp(command, "zone") == 0) {
+        if (argc == 4 && std::strcmp(argv[2], "--json") == 0) {
+            return zone_json(argv[3], nullptr);
+        }
+        if (argc == 6 && std::strcmp(argv[2], "--json") == 0 &&
+            std::strcmp(argv[4], "--blind") == 0) {
+            return zone_json(argv[3], argv[5]);
+        }
+        return usage();
+    }
     const char* path = argv[2];
     if (std::strcmp(command, "info") == 0 && argc == 3) {
         return info(path);

@@ -9,7 +9,10 @@
 #include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/StateRecorderImpl.h>
 
@@ -30,6 +33,22 @@ constexpr float kTurnRate = 1.5f;          // rad/s alrededor de Y con la direcc
 constexpr float kJumpSpeed = 5.0f;         // m/s hacia arriba que suma el impulso de salto
 
 enum class State : std::uint8_t { Empty, Built, Sealed };
+
+// Material del suelo de la zona: lleva su superficie (el neumático la leerá en la 2.4).
+class SurfaceMaterial final : public JPH::PhysicsMaterial {
+public:
+    explicit SurfaceMaterial(Surface surface) : surface_(surface) {}
+    const char* GetDebugName() const override { return surface_key(surface_); }
+    Surface surface() const { return surface_; }
+
+private:
+    Surface surface_;
+};
+
+// Bloques de 4 × 4 muestras con 8 bits por muestra: en la rampa (la zona más inclinada) el
+// error de altura es de ~1,5 mm.
+constexpr JPH::uint kGroundBlockSize = 4;
+constexpr JPH::uint kGroundBitsPerSample = 8;
 
 } // namespace
 
@@ -54,11 +73,19 @@ struct SimWorld::Impl {
     // Salida del cuerpo controlado (recolocar). En doubles y no en RVec3, que está alineado
     // a 32 bytes y rellenaría Impl.
     double spawn[3] = {0.0, 0.0, 0.0};
+    float controlled_half_y = 0.0f; // para apoyar la caja en el suelo al recolocar
     // Mandos aplicados y botones del paso anterior. Es estado de la simulación que no está
     // en el SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
     ControlState controls;
     float last_impact = 0.0f; // salida de diagnóstico; no es estado de la simulación
     State state = State::Empty;
+
+    // Zona de pruebas (si la descripción la pide).
+    std::unique_ptr<TestZone> zone;
+    std::unique_ptr<LapTimer> lap;
+    JPH::BodyID ground;
+    std::uint64_t ground_hash = 0;
+    std::size_t ground_bytes = 0;
 };
 
 SimWorld::SimWorld() : impl_(std::make_unique<Impl>()) {}
@@ -79,6 +106,39 @@ void SimWorld::build(const WorldDesc& desc) {
                 "SimWorld::build: el cuerpo controlado tiene que ser dinámico");
 
     JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
+    // Lote de cuerpos en el orden de creación: el suelo (si hay zona) y la descripción.
+    std::vector<JPH::BodyID> batch;
+    if (desc.test_zone) {
+        w.zone = std::make_unique<TestZone>(desc.blind_surface);
+        w.lap = std::make_unique<LapTimer>(w.zone->finish_line());
+        std::vector<float> heights;
+        std::vector<std::uint8_t> surfaces;
+        w.zone->fill_ground(heights, surfaces);
+        w.ground_hash = sim::ground_hash(heights, surfaces);
+        JPH::PhysicsMaterialList materials;
+        for (int s = 0; s < kSurfaceCount; ++s) {
+            materials.push_back(new SurfaceMaterial(static_cast<Surface>(s)));
+        }
+        JPH::HeightFieldShapeSettings ground_settings(
+            heights.data(),
+            JPH::Vec3(static_cast<float>(zone::kGroundOrigin), 0.0f,
+                      static_cast<float>(zone::kGroundOrigin)),
+            JPH::Vec3(static_cast<float>(zone::kGroundSpacing), 1.0f,
+                      static_cast<float>(zone::kGroundSpacing)),
+            zone::kGroundSamples, surfaces.data(), materials);
+        ground_settings.mBlockSize = kGroundBlockSize;
+        ground_settings.mBitsPerSample = kGroundBitsPerSample;
+        const JPH::ShapeSettings::ShapeResult shape = ground_settings.Create();
+        RALLY_CHECK(shape.IsValid(), "SimWorld::build: Jolt no pudo crear el suelo de la zona");
+        w.ground_bytes = shape.Get()->GetStats().mSizeBytes;
+        const JPH::BodyCreationSettings settings(shape.Get(), JPH::RVec3::sZero(),
+                                                 JPH::Quat::sIdentity(), JPH::EMotionType::Static,
+                                                 layers::kStatic);
+        const JPH::Body* body = bodies.CreateBody(settings);
+        RALLY_CHECK(body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
+        w.ground = body->GetID();
+        batch.push_back(w.ground);
+    }
     w.bodies.reserve(desc.bodies.size());
     for (int i = 0; i < count; ++i) {
         const BoxDesc& box = desc.bodies[static_cast<std::size_t>(i)];
@@ -105,15 +165,18 @@ void SimWorld::build(const WorldDesc& desc) {
             w.spawn[0] = box.x;
             w.spawn[1] = box.y;
             w.spawn[2] = box.z;
+            w.controlled_half_y = box.half_y;
         }
     }
 
     // AddBodiesPrepare reordena el array por capas: se le pasa una copia para conservar el
     // orden de la descripción en `bodies`.
-    if (count > 0) {
-        std::vector<JPH::BodyID> batch = w.bodies;
-        const JPH::BodyInterface::AddState add_state = bodies.AddBodiesPrepare(batch.data(), count);
-        bodies.AddBodiesFinalize(batch.data(), count, add_state, JPH::EActivation::Activate);
+    batch.insert(batch.end(), w.bodies.begin(), w.bodies.end());
+    if (!batch.empty()) {
+        const int batch_count = static_cast<int>(batch.size());
+        const JPH::BodyInterface::AddState add_state =
+            bodies.AddBodiesPrepare(batch.data(), batch_count);
+        bodies.AddBodiesFinalize(batch.data(), batch_count, add_state, JPH::EActivation::Activate);
     }
     w.state = State::Built;
 }
@@ -139,8 +202,14 @@ void SimWorld::step(const SimInput& input) {
     }
     // Velocidad que tendría el cuerpo controlado tras el paso sin contactos, para el impacto.
     JPH::Vec3 expected_velocity = JPH::Vec3::sZero();
+    // Posición antes del paso, para el cronómetro.
+    double before_x = 0.0;
+    double before_z = 0.0;
     if (!w.controlled.IsInvalid()) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
+        const JPH::RVec3 before = bodies.GetPosition(w.controlled);
+        before_x = before.GetX();
+        before_z = before.GetZ();
         constexpr float kAxisScale = 1.0f / kAxisMax;
         const float throttle = rmath::clamp(
             static_cast<float>(w.controls.throttle.applied - w.controls.brake.applied) * kAxisScale,
@@ -177,15 +246,28 @@ void SimWorld::step(const SimInput& input) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
         if (reset_pressed) {
             // Mover y poner a cero, nunca quitar y añadir. Un traslado no es un impacto.
-            bodies.SetPositionAndRotation(w.controlled,
-                                          JPH::RVec3(w.spawn[0], w.spawn[1], w.spawn[2]),
-                                          JPH::Quat::sIdentity(), JPH::EActivation::Activate);
+            JPH::RVec3 target(w.spawn[0], w.spawn[1], w.spawn[2]);
+            JPH::Quat rotation = JPH::Quat::sIdentity();
+            if (w.zone) {
+                const JPH::RVec3 at = bodies.GetPosition(w.controlled);
+                const RespawnPoint& r = w.zone->respawns()[static_cast<std::size_t>(
+                    w.zone->nearest_respawn(at.GetX(), at.GetZ()))];
+                target =
+                    JPH::RVec3(r.x, w.zone->ground_height(r.x, r.z) + w.controlled_half_y, r.z);
+                rotation = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), static_cast<float>(r.yaw));
+            }
+            bodies.SetPositionAndRotation(w.controlled, target, rotation,
+                                          JPH::EActivation::Activate);
             bodies.SetLinearAndAngularVelocity(w.controlled, JPH::Vec3::sZero(),
                                                JPH::Vec3::sZero());
             w.last_impact = 0.0f;
         } else {
             const JPH::Vec3 velocity = bodies.GetLinearVelocity(w.controlled);
             w.last_impact = (velocity - expected_velocity).Length();
+        }
+        if (w.lap) {
+            const JPH::RVec3 after = bodies.GetPosition(w.controlled);
+            w.lap->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
         }
     }
 }
@@ -221,6 +303,34 @@ BodyVelocity SimWorld::velocity(int index) const {
                         angular.GetX(), angular.GetY(), angular.GetZ()};
 }
 
+const TestZone* SimWorld::zone() const { return impl_->zone.get(); }
+
+const LapState* SimWorld::lap() const { return impl_->lap ? &impl_->lap->state() : nullptr; }
+
+std::uint64_t SimWorld::ground_hash() const { return impl_->ground_hash; }
+
+std::size_t SimWorld::ground_bytes() const { return impl_->ground_bytes; }
+
+GroundProbe SimWorld::probe_ground(double x, double z) const {
+    GroundProbe probe;
+    if (impl_->ground.IsInvalid()) {
+        return probe;
+    }
+    constexpr double kTop = 1000.0;
+    const JPH::TransformedShape shape =
+        impl_->system.GetBodyInterfaceNoLock().GetTransformedShape(impl_->ground);
+    const JPH::RRayCast ray(JPH::RVec3(x, kTop, z), JPH::Vec3(0.0f, -2.0f * kTop, 0.0f));
+    JPH::RayCastResult hit;
+    if (!shape.CastRay(ray, hit)) {
+        return probe;
+    }
+    probe.hit = true;
+    probe.y = ray.GetPointOnRay(hit.mFraction).GetY();
+    const auto* material = static_cast<const SurfaceMaterial*>(shape.GetMaterial(hit.mSubShapeID2));
+    probe.surface = material->surface();
+    return probe;
+}
+
 std::string SimWorld::save_state() const {
     JPH::StateRecorderImpl recorder;
     impl_->system.SaveState(recorder);
@@ -246,6 +356,20 @@ std::uint64_t SimWorld::state_hash() const {
     hash.add_u32(static_cast<std::uint32_t>(c.handbrake));
     hash.add_u16(c.previous_buttons);
     hash.add_u16(c.pressed);
+    if (impl_->lap) {
+        const LapState& lap = impl_->lap->state();
+        const auto add_i64 = [&hash](std::int64_t value) {
+            const auto bits = static_cast<std::uint64_t>(value);
+            hash.add_u32(static_cast<std::uint32_t>(bits));
+            hash.add_u32(static_cast<std::uint32_t>(bits >> 32));
+        };
+        add_i64(lap.steps);
+        add_i64(lap.lap_start);
+        hash.add_u32(static_cast<std::uint32_t>(lap.debt));
+        hash.add_u32(static_cast<std::uint32_t>(lap.laps));
+        add_i64(lap.last_lap);
+        add_i64(lap.best_lap);
+    }
     return hash.value();
 }
 

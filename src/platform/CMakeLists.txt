@@ -37,6 +37,7 @@ add_library(rally_platform STATIC
     recording_session.cpp
     screenshot.cpp
     window.cpp
+    zone_draw.cpp
 )
 target_include_directories(rally_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_platform
