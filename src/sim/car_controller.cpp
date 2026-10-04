@@ -278,6 +278,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
             }
             omega = 0.0f;
             out.anchored = true;
+            out.contact_speed = speed;
             out.kappa = -vx / denominator;
         } else {
             // Giro de la rueda en subpasos con la velocidad del cuerpo fija. Semi-implícito en
@@ -460,8 +461,6 @@ JPH::BodyCreationSettings car_body_settings(const CarData& car, JPH::RVec3Arg po
 
 JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarData& car,
                                                      float gravity, bool explicit_wheels) {
-    const JPH::MotionProperties* motion = body.GetMotionProperties();
-    const JPH::Mat44 inverse_inertia = motion->GetLocalSpaceInverseInertia();
     const float max_length = kMinSuspensionLength + car.travel;
 
     JPH::VehicleConstraintSettings settings;
@@ -483,24 +482,22 @@ JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarD
         wheel->mSuspensionMinLength = kMinSuspensionLength;
         wheel->mSuspensionMaxLength = max_length;
         wheel->mSuspensionPreloadLength = 0.0f;
-        wheel->mSuspensionSpring.mMode = JPH::ESpringMode::FrequencyAndDamping;
-        wheel->mSuspensionSpring.mFrequency = frequency;
-        wheel->mSuspensionSpring.mDamping = car.damping_ratio;
         wheel->mRadius = car.wheel_radius;
         wheel->mWidth = car.wheel_width;
         const float x = (left ? -0.5f : 0.5f) * car.track;
         const float z = (front ? -0.5f : 0.5f) * car.wheelbase;
 
-        // Rigidez del muelle como la calcula Jolt (VehicleConstraint::SetupVelocityConstraint):
-        // masa efectiva en el punto medio del recorrido. El producto vectorial con -arriba no
-        // depende de la altura, así que no hace falta conocer el anclaje.
-        const JPH::Vec3 force_point(x, 0.0f, z);
-        const JPH::Vec3 arm = force_point.Cross(-kCarUp);
-        const float effective_mass =
-            1.0f / (motion->GetInverseMass() + arm.Dot(inverse_inertia.Multiply3x3(arm)));
+        // Muelle y amortiguador con la masa suspendida de la esquina (carga estática / g), para
+        // que la frecuencia del archivo sea la del coche: k = m·(2πf)², c = 2·ζ·√(k·m). Jolt los
+        // usa tal cual (StiffnessAndDamping). No hay masa no suspendida aparte.
+        const float corner_mass = static_load / gravity;
         const float omega = kTwoPi * frequency;
-        const float stiffness = effective_mass * omega * omega;
-        const float sag = static_load / stiffness;
+        const float stiffness = corner_mass * omega * omega;
+        const float damping = 2.0f * car.damping_ratio * rmath::sqrt(stiffness * corner_mass);
+        wheel->mSuspensionSpring.mMode = JPH::ESpringMode::StiffnessAndDamping;
+        wheel->mSuspensionSpring.mStiffness = stiffness;
+        wheel->mSuspensionSpring.mDamping = damping;
+        const float sag = static_load / stiffness; // = g / (2πf)²
         RALLY_CHECK(sag < car.travel, "make_car_constraint: la compresión de equilibrio no cabe "
                                       "en el recorrido de la suspensión");
         // En equilibrio la suspensión mide max_length - sag y el centro de la rueda está a su

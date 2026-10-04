@@ -60,6 +60,7 @@ struct WheelOutput {
     float brake_torque = 0.0f;       // N·m pedido (freno y freno de mano)
     float h = 0.0f;                  // m: media de h sobre la huella
     bool anchored = false;           // ancla de parada activa
+    float contact_speed = 0.0f;      // m/s: |v| en el plano del contacto (solo con el ancla)
 };
 
 // Ajustes del controlador (los construye make_car).
@@ -171,6 +172,7 @@ JPH::BodyCreationSettings car_body_settings(const CarData& car, JPH::RVec3Arg po
                                             JPH::QuatArg rotation, float speed);
 
 // Crea la VehicleConstraint del coche sobre su cuerpo ya creado (sin añadirla al sistema).
+// Muelles con la masa suspendida de cada esquina (la frecuencia del archivo es la del coche).
 // Coloca los anclajes de la suspensión para que, en equilibrio en llano con el reparto del
 // archivo, el centro de las ruedas quede a su radio del suelo y la caja horizontal.
 JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarData& car,

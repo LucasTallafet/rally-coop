@@ -98,7 +98,9 @@ Se usa `VehicleConstraint` de Jolt (suspensión, contacto por cylinder cast) con
   - La carga de cada rueda es `GetSuspensionLambda() / dt` del paso anterior: incluye la barra estabilizadora y el tope.
   - El giro de la rueda se integra de forma semi-implícita: ω' = ω + h·(T − r·Fx) / (I + h·r·∂Fx/∂ω), con ∂Fx/∂ω = 0 si la fuerza está en el límite. El freno y la rodadura llevan ω hacia 0 con el mismo denominador y nunca la invierten.
   - El tester de las ruedas pone el contacto bajo el centro de la rueda, porque el punto más profundo del cilindro de Jolt salta de un borde al otro del ancho. La media de h se toma sobre 3 × 3 muestras de la huella.
-  - Los anclajes de la suspensión se colocan en `build()` para que el coche quede horizontal en equilibrio.
+  - Muelle y amortiguador de cada rueda con la masa suspendida de su esquina (carga estática / g): k = m·(2πf)² y c = 2·ζ·√(k·m), en modo `StiffnessAndDamping` de Jolt. Así la frecuencia del `.car` es la del coche (compresión de equilibrio g/(2πf)²). Sin masa no suspendida aparte.
+  - Los anclajes de la suspensión se colocan en `build()` con esa rigidez para que el coche quede horizontal en equilibrio.
+  - Prueba de estabilidad de las ruedas (barrido): los cambios de signo de ω·r − v se cuentan solo en los pasos sin ancla (una rueda anclada tiene ω = 0 impuesto y no puede oscilar); parado y anclado todo el último segundo, |v| en el contacto < 1 cm/s.
   - Ancla de parada: un muelle por rueda (ζ = 1), limitado a min(μ·Fz, par de freno / r), que se arrastra al pasar del límite.
 - **Baja velocidad:** por debajo de ~2 m/s, el modelo se mezcla con un amortiguamiento longitudinal y lateral (los ángulos de deslizamiento no se definen a velocidad cero). Parado y con freno, el coche no se mueve.
 - **Motor:** curva de par según las RPM; turbo con presión de primer orden (constante de tiempo, umbral de RPM, válvula de descarga), que da el retardo real. Sin nitro.

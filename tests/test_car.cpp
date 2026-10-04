@@ -246,6 +246,26 @@ TEST_CASE("car: at rest on flat ground the loads add up to m g with the 45/55 sp
     CHECK(std::abs(roll_deg(pose)) < 0.1);
 }
 
+TEST_CASE("car: the equilibrium compression of each axle is g over (2 pi f) squared") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(flat_world(Surface::Asphalt));
+    world.seal();
+    run(world, SimInput{}, 3 * kStepsPerSecond);
+    const CarData& car = reference_car();
+    for (int i = 0; i < kWheelCount; ++i) {
+        const bool front = i < 2;
+        const double f = front ? car.frequency_front : car.frequency_rear;
+        const double expected = kGravity / ((2.0 * kPi * f) * (2.0 * kPi * f));
+        const double measured = world.car_controller().wheel(i).compression;
+        MESSAGE("rueda ", i, ": compresión ", measured, " m; g/(2πf)² = ", expected, " m");
+        CHECK(std::abs(measured - expected) / expected < 0.02);
+    }
+    const BodyPose pose = world.car_pose();
+    CHECK(std::abs(pitch_deg(pose)) < 0.1);
+    CHECK(std::abs(roll_deg(pose)) < 0.1);
+}
+
 // --- 3. Caída --------------------------------------------------------------------------------
 
 TEST_CASE("car: dropped from 0.5 m it settles with at most 2 visible bounces") {
@@ -366,8 +386,10 @@ namespace {
 enum class Case { Throttle, Brake, Neutral };
 
 struct SweepResult {
-    int sign_changes = 0;   // máximo de las cuatro ruedas en el último segundo
-    double kappa_std = 0.0; // máximo de las cuatro ruedas en el último segundo
+    int sign_changes = 0;        // máximo de las cuatro ruedas en el último segundo, sin ancla
+    double kappa_std = 0.0;      // máximo de las cuatro ruedas en el último segundo
+    int anchored_steps = 0;      // pasos × ruedas con el ancla en el último segundo
+    double anchored_speed = 0.0; // |v| máxima en el contacto con el ancla puesta
 };
 
 SweepResult sweep_case(Surface surface, float speed, Case c, bool explicit_wheels) {
@@ -384,11 +406,22 @@ SweepResult sweep_case(Surface surface, float speed, Case c, bool explicit_wheel
     std::array<int, kWheelCount> last_sign{};
     std::array<double, kWheelCount> sum{};
     std::array<double, kWheelCount> sum_sq{};
+    SweepResult result;
     for (int s = 0; s < kStepsPerSecond; ++s) {
         world.step(input);
         for (int i = 0; i < kWheelCount; ++i) {
             const auto k = static_cast<std::size_t>(i);
-            const double kappa = world.car_controller().wheel(i).kappa;
+            const WheelOutput& w = world.car_controller().wheel(i);
+            const double kappa = w.kappa;
+            if (w.anchored) {
+                // Rueda anclada: ω = 0 impuesto, sin grado de libertad que pueda oscilar. Sus
+                // pasos no cuentan para el signo; se mide que el contacto esté quieto.
+                ++result.anchored_steps;
+                result.anchored_speed =
+                    std::max(result.anchored_speed, static_cast<double>(w.contact_speed));
+                last_sign[k] = 0;
+                continue;
+            }
             // El signo de ω·r − v es el de κ (el denominador es positivo).
             const int sign = kappa > 0.0 ? 1 : (kappa < 0.0 ? -1 : 0);
             if (sign != 0) {
@@ -401,7 +434,6 @@ SweepResult sweep_case(Surface surface, float speed, Case c, bool explicit_wheel
             sum_sq[k] += kappa * kappa;
         }
     }
-    SweepResult result;
     for (std::size_t k = 0; k < kWheelCount; ++k) {
         result.sign_changes = std::max(result.sign_changes, changes[k]);
         const double mean = sum[k] / kStepsPerSecond;
@@ -414,19 +446,29 @@ SweepResult sweep_case(Surface surface, float speed, Case c, bool explicit_wheel
 constexpr std::array<float, 9> kSweepSpeeds = {0.5f,  1.0f,  2.0f,  3.0f, 5.0f,
                                                10.0f, 20.0f, 40.0f, 60.0f};
 
-std::string sweep_table(bool explicit_wheels, int& worst_changes, double& worst_std) {
-    std::string table = "superficie | v (m/s) | acelerador | freno | punto muerto (σκ)\n";
+std::string sweep_table(bool explicit_wheels, int& worst_changes, double& worst_std,
+                        double& worst_anchored_speed) {
+    std::string table = "superficie | v (m/s) | acelerador | freno (pasos anclados, |v| máx "
+                        "anclado) | punto muerto (σκ)\n";
     worst_changes = 0;
     worst_std = 0.0;
+    worst_anchored_speed = 0.0;
     for (const Surface surface : {Surface::Asphalt, Surface::Snow}) {
         for (const float speed : kSweepSpeeds) {
             const SweepResult t = sweep_case(surface, speed, Case::Throttle, explicit_wheels);
             const SweepResult b = sweep_case(surface, speed, Case::Brake, explicit_wheels);
             const SweepResult n = sweep_case(surface, speed, Case::Neutral, explicit_wheels);
-            char row[160];
-            std::snprintf(row, sizeof(row), "%s | %.1f | %d | %d | %d (%.5f)\n",
+            char row[200];
+            std::snprintf(row, sizeof(row), "%s | %.1f | %d | %d (%d, %.4f m/s) | %d (%.5f)\n",
                           rally::sim::surface_name(surface), static_cast<double>(speed),
-                          t.sign_changes, b.sign_changes, n.sign_changes, n.kappa_std);
+                          t.sign_changes, b.sign_changes, b.anchored_steps, b.anchored_speed,
+                          n.sign_changes, n.kappa_std);
+            // Parado y anclado todo el último segundo (las cuatro ruedas en los 240 pasos): el
+            // cabeceo tras la frenada se tiene que haber apagado. Si se para dentro del segundo,
+            // el ancla engancha a hasta hold_speed y eso no es el cabeceo.
+            if (b.anchored_steps == kWheelCount * kStepsPerSecond) {
+                worst_anchored_speed = std::max(worst_anchored_speed, b.anchored_speed);
+            }
             table += row;
             worst_changes =
                 std::max({worst_changes, t.sign_changes, b.sign_changes, n.sign_changes});
@@ -442,17 +484,21 @@ TEST_CASE("car: the wheels are stable from 0.5 to 60 m/s on asphalt and snow") {
     const rally::sim::JoltRuntime runtime;
     int changes = 0;
     double kappa_std = 0.0;
-    const std::string table = sweep_table(false, changes, kappa_std);
-    MESSAGE("barrido semi-implícito (cambios de signo de ω·r − v en el último segundo, máximo "
-            "de las cuatro ruedas):\n",
+    double anchored_speed = 0.0;
+    const std::string table = sweep_table(false, changes, kappa_std, anchored_speed);
+    MESSAGE("barrido semi-implícito (cambios de signo de ω·r − v en el último segundo en los "
+            "pasos sin ancla, máximo de las cuatro ruedas):\n",
             table);
     CHECK(changes <= 2);
     CHECK(kappa_std < 0.02);
+    // Parado y anclado, el cabeceo tras la frenada se apaga: el contacto queda quieto.
+    CHECK(anchored_speed < 0.01);
 
     // Referencia, sin juzgar: la integración explícita.
     int explicit_changes = 0;
     double explicit_std = 0.0;
-    const std::string reference = sweep_table(true, explicit_changes, explicit_std);
+    double explicit_speed = 0.0;
+    const std::string reference = sweep_table(true, explicit_changes, explicit_std, explicit_speed);
     MESSAGE("barrido explícito (referencia, no se juzga):\n", reference);
 }
 
