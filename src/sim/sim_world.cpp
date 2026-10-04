@@ -371,6 +371,8 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
         wt.compression = out.compression;
         wt.kappa = out.kappa;
         wt.alpha = out.alpha;
+        wt.slip_x = out.slip_x;
+        wt.slip_y = out.slip_y;
         wt.fx = out.fx;
         wt.fy = out.fy;
         wt.omega = out.omega;
@@ -442,9 +444,15 @@ SimWorld::WheelPose SimWorld::car_wheel(int index) const {
     pose.suspension_length = wheel->GetSuspensionLength();
     pose.steer = wheel->GetSteerAngle();
     pose.rotation = wheel->GetRotationAngle();
-    pose.radius = settings->mRadius;
+    pose.radius = impl_->car_controller->wheel_radius(index);
     pose.width = settings->mWidth;
     return pose;
+}
+
+void SimWorld::set_wheel_radius(int index, float radius) {
+    RALLY_CHECK(has_car() && index >= 0 && index < kWheelCount && radius > 0.0f,
+                "SimWorld::set_wheel_radius: sin coche, rueda fuera de rango o radio no válido");
+    impl_->car_controller->set_wheel_radius(index, radius);
 }
 
 int SimWorld::body_count() const { return static_cast<int>(impl_->bodies.size()); }

@@ -46,8 +46,6 @@ struct CarData {
     float brake_torque = 0.0f;      // N·m, total con el freno a fondo
     float brake_front_share = 0.0f; // fracción al eje delantero
     float handbrake_torque = 0.0f;  // N·m por rueda trasera
-    float hold_frequency = 0.0f;    // Hz: muelle del ancla de parada
-    float hold_speed = 0.0f;        // m/s: por debajo, el freno ancla la rueda
 
     // [steering]
     float max_steer = 0.0f; // rad: ángulo de la rueda interior con la dirección a fondo
@@ -61,9 +59,12 @@ struct CarData {
     float mu_gravel = 0.0f;
     float mu_snow = 0.0f;
     float mu_sand = 0.0f;
-    float rolling_resistance = 0.0f; // coeficiente × carga
-    float min_slip_speed = 0.0f;     // m/s: denominador mínimo de κ y α
-    float low_speed_blend = 0.0f;    // m/s: por debajo, mezcla con el amortiguamiento lateral
+    float rolling_resistance = 0.0f;   // coeficiente × carga
+    float relaxation_long = 0.0f;      // m: σ_x, longitud de relajación longitudinal
+    float relaxation_lat = 0.0f;       // m: σ_y, longitud de relajación lateral
+    float carcass_damping_long = 0.0f; // ζ del modo carrocería–huella, longitudinal
+    float carcass_damping_lat = 0.0f;  // ζ del modo carrocería–huella, lateral
+    float carcass_damping_fade = 0.0f; // m/s: el amortiguamiento de la carcasa llega a 0
 
     // [drive] (provisional, tarea 2.6)
     float drive_torque = 0.0f;      // N·m total a las ruedas

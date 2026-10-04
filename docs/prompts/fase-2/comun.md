@@ -16,6 +16,7 @@ Antes de escribir código, un plan corto (una pantalla como mucho):
 - tests que vas a escribir, con el valor esperado de cada uno;
 - si la huella cambia y por qué;
 - riesgos y preguntas abiertas: cualquier valor que no esté en el prompt ni en los documentos y que vayas a elegir tú.
+- En las tareas de física del coche (2.4–2.8), el plan incluye una tabla de regímenes: parado, arranque, baja velocidad, crucero, saturación, en el aire, aterrizaje y recolocar. Para cada uno, el mecanismo que lo cubre y el test que lo comprueba. Un régimen sin mecanismo único es un defecto de diseño: se pregunta antes de programar.
 
 Espera mi visto bueno si la tarea toca más de un módulo (casi todas). No empieces a escribir mientras esperas.
 

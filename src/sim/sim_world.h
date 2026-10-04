@@ -171,6 +171,9 @@ public:
         float width = 0.0f;
     };
     WheelPose car_wheel(int index) const;
+    // Condición de la rueda `index`: su radio efectivo (al construir, el del archivo).
+    // Recolocar no lo cambia. Hasta los daños (fase 4) solo lo usan los tests; fuera del paso.
+    void set_wheel_radius(int index, float radius);
 
     int body_count() const;
     // Índice y número de secuencia del BodyID de Jolt del cuerpo `index` de la descripción.

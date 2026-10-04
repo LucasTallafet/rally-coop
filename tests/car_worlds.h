@@ -58,10 +58,11 @@ inline sim::WorldDesc flat_world(sim::Surface surface, bool micro = false, float
 // Pendiente de la rampa de los tests (15 %).
 inline constexpr double kRampGrade = 0.15;
 
-// Rampa de asfalto del 15 % y 40 m que sube hacia -z, con el coche parado en su mitad mirando
-// cuesta arriba. La caja de la rampa gira alrededor de x; el coche sale apoyado en ella.
-inline sim::WorldDesc ramp_world() {
-    const double angle = std::atan(kRampGrade);
+// Rampa de asfalto de pendiente `grade` (por defecto el 15 %) y 40 m que sube hacia -z, con el
+// coche parado en su mitad mirando cuesta arriba. La caja de la rampa gira alrededor de x; el
+// coche sale apoyado en ella.
+inline sim::WorldDesc ramp_world(double grade = kRampGrade) {
+    const double angle = std::atan(grade);
     sim::WorldDesc desc;
     sim::BoxDesc ramp;
     ramp.half_x = 10.0f;

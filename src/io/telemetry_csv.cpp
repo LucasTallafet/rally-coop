@@ -43,7 +43,46 @@ constexpr ColumnKind kReal = ColumnKind::Real;
 // aceleración a 1 mm/s²; entradas a 1e-5 (el paso de un eje es 3e-5); tiempo a 1 µs.
 // clang-format off
 // Columnas de una rueda W (0 FL, 1 FR, 2 RL, 3 RR) con el sufijo de su nombre.
-#define RALLY_WHEEL_COLUMNS(W, SUFFIX)                                                                 C{"contact_" SUFFIX, "", "0 o 1", "Rueda en el suelo", kInt, 0,                                      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].contact); }, nullptr},       C{"surface_" SUFFIX, "", "texto", "Superficie del material del contacto (la que usa el neumático); none en el aire",       ColumnKind::Text, 0, nullptr, wheel_surface_text<W>},                                           C{"load_" SUFFIX, "N", "≥ 0", "Carga normal (suspensión, barra y tope del paso anterior)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].load); }, nullptr},          C{"compression_" SUFFIX, "m", "≥ 0", "Compresión de la suspensión desde la extensión máxima", kReal, 4,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].compression); }, nullptr},     C{"kappa_" SUFFIX, "", "+ la rueda gira más rápido que el suelo", "Deslizamiento longitudinal (ω·r − vx) / max(|vx|, min_slip_speed)", kReal, 5,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].kappa); }, nullptr},         C{"alpha_" SUFFIX, "rad", "+ la rueda va hacia su derecha", "Ángulo de deriva atan2(vy, max(|vx|, min_slip_speed))", kReal, 5,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].alpha); }, nullptr},         C{"fx_" SUFFIX, "N", "+ hacia delante de la rueda", "Fuerza longitudinal del neumático (media de los subpasos)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fx); }, nullptr},            C{"fy_" SUFFIX, "N", "+ hacia la derecha de la rueda", "Fuerza lateral del neumático (media de los subpasos)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fy); }, nullptr},            C{"omega_" SUFFIX, "rad/s", "+ rodando hacia delante", "Giro de la rueda al final del paso", kReal, 4,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].omega); }, nullptr},         C{"brake_torque_" SUFFIX, "N·m", "≥ 0", "Par de freno pedido (freno y freno de mano)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].brake_torque); }, nullptr},     C{"h_" SUFFIX, "m", "+ arriba", "Media del microrrelieve h sobre la huella", kReal, 5,               [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].h); }, nullptr}
+#define RALLY_WHEEL_COLUMNS(W, SUFFIX) \
+    C{"contact_" SUFFIX, "", "0 o 1", "Rueda en el suelo", kInt, 0, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].contact); }, \
+      nullptr}, \
+    C{"surface_" SUFFIX, "", "texto", \
+      "Superficie del material del contacto (la que usa el neumático); none en el aire", \
+      ColumnKind::Text, 0, nullptr, wheel_surface_text<W>}, \
+    C{"load_" SUFFIX, "N", "≥ 0", "Carga normal (suspensión, barra y tope del paso anterior)", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].load); }, \
+      nullptr}, \
+    C{"compression_" SUFFIX, "m", "≥ 0", "Compresión de la suspensión desde la extensión máxima", kReal, 4, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].compression); }, \
+      nullptr}, \
+    C{"kappa_" SUFFIX, "", "+ tracción", "Deslizamiento relajado κ_r = u/σ_x (deformación longitudinal de la huella)", kReal, 5, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].kappa); }, \
+      nullptr}, \
+    C{"alpha_" SUFFIX, "rad", "− la rueda va hacia su derecha", "Ángulo de deriva relajado α_r = atan(w/σ_y) (deformación lateral de la huella)", kReal, 5, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].alpha); }, \
+      nullptr}, \
+    C{"slip_x_" SUFFIX, "m/s", "+ la rueda gira más rápido que el suelo", "Velocidad de deslizamiento longitudinal ω·r − v_x", kReal, 4, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].slip_x); }, \
+      nullptr}, \
+    C{"slip_y_" SUFFIX, "m/s", "+ la rueda va hacia su izquierda", "Velocidad de deslizamiento lateral −v_y", kReal, 4, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].slip_y); }, \
+      nullptr}, \
+    C{"fx_" SUFFIX, "N", "+ hacia delante de la rueda", "Fuerza longitudinal del neumático (media de los subpasos)", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fx); }, \
+      nullptr}, \
+    C{"fy_" SUFFIX, "N", "+ hacia la derecha de la rueda", "Fuerza lateral del neumático (media de los subpasos)", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fy); }, \
+      nullptr}, \
+    C{"omega_" SUFFIX, "rad/s", "+ rodando hacia delante", "Giro de la rueda al final del paso", kReal, 4, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].omega); }, \
+      nullptr}, \
+    C{"brake_torque_" SUFFIX, "N·m", "≥ 0", "Par de freno pedido (freno y freno de mano)", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].brake_torque); }, \
+      nullptr}, \
+    C{"h_" SUFFIX, "m", "+ arriba", "Media del microrrelieve h sobre la huella", kReal, 5, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].h); }, \
+      nullptr}
 
 constexpr std::array kColumns = {
     C{"step", "", "", "Paso desde que se construyó el mundo (1 tras el primero)", kInt, 0,
@@ -226,8 +265,9 @@ std::string telemetry_columns_markdown() {
           "- Ruedas (sufijos `_fl`, `_fr`, `_rl`, `_rr`: delante izquierda, delante derecha, "
           "detrás izquierda, detrás derecha): ejes del contacto, longitudinal hacia delante de "
           "la rueda y lateral hacia su derecha. La carga es la de la suspensión del paso "
-          "anterior; las fuerzas, la media de los 4 subpasos. En el aire, `contact` = 0, "
-          "`surface` = none y lo demás a 0 salvo `omega` y `brake_torque`.\n"
+          "anterior; las fuerzas, la media de los 4 subpasos. κ y α son los relajados, de la "
+          "deformación de la huella (u, w). En el aire, `contact` = 0, "
+          "`surface` = none y lo demás a 0 salvo `omega`, `slip_x` y `brake_torque`.\n"
           "- Rumbo: 0 mirando a −z del mundo y crece girando a la derecha (como `psi` de la "
           "zona de pruebas).\n"
           "- Guiñada > 0 girando a la derecha, como `SimInput::steer` > 0.\n"

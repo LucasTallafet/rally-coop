@@ -12,7 +12,7 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 - Números con punto decimal y precisión fija por columna; un valor que redondea a 0 se escribe sin signo.
 - Mundo: +y arriba. Coche: adelante = −z local, derecha = +x local, arriba = +y local.
 - Posición y velocidad son las del centro de masas del coche (no coincide con el origen del cuerpo, que está en el suelo entre los ejes).
-- Ruedas (sufijos `_fl`, `_fr`, `_rl`, `_rr`: delante izquierda, delante derecha, detrás izquierda, detrás derecha): ejes del contacto, longitudinal hacia delante de la rueda y lateral hacia su derecha. La carga es la de la suspensión del paso anterior; las fuerzas, la media de los 4 subpasos. En el aire, `contact` = 0, `surface` = none y lo demás a 0 salvo `omega` y `brake_torque`.
+- Ruedas (sufijos `_fl`, `_fr`, `_rl`, `_rr`: delante izquierda, delante derecha, detrás izquierda, detrás derecha): ejes del contacto, longitudinal hacia delante de la rueda y lateral hacia su derecha. La carga es la de la suspensión del paso anterior; las fuerzas, la media de los 4 subpasos. κ y α son los relajados, de la deformación de la huella (u, w). En el aire, `contact` = 0, `surface` = none y lo demás a 0 salvo `omega`, `slip_x` y `brake_torque`.
 - Rumbo: 0 mirando a −z del mundo y crece girando a la derecha (como `psi` de la zona de pruebas).
 - Guiñada > 0 girando a la derecha, como `SimInput::steer` > 0.
 - β = atan2(v_right, v_forward): > 0 cuando la velocidad apunta a la derecha del morro. Girando a la derecha con el coche deslizando, la velocidad queda a la izquierda del morro (β < 0). Sin suavizar; a baja velocidad no está definido (los scripts lo ignoran por debajo de 3 m/s de velocidad horizontal).
@@ -61,8 +61,10 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `surface_fl` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_fl` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
 | `compression_fl` | m | ≥ 0 | Compresión de la suspensión desde la extensión máxima |
-| `kappa_fl` | — | + la rueda gira más rápido que el suelo | Deslizamiento longitudinal (ω·r − vx) / max(|vx|, min_slip_speed) |
-| `alpha_fl` | rad | + la rueda va hacia su derecha | Ángulo de deriva atan2(vy, max(|vx|, min_slip_speed)) |
+| `kappa_fl` | — | + tracción | Deslizamiento relajado κ_r = u/σ_x (deformación longitudinal de la huella) |
+| `alpha_fl` | rad | − la rueda va hacia su derecha | Ángulo de deriva relajado α_r = atan(w/σ_y) (deformación lateral de la huella) |
+| `slip_x_fl` | m/s | + la rueda gira más rápido que el suelo | Velocidad de deslizamiento longitudinal ω·r − v_x |
+| `slip_y_fl` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_fl` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_fl` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
 | `omega_fl` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
@@ -72,8 +74,10 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `surface_fr` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_fr` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
 | `compression_fr` | m | ≥ 0 | Compresión de la suspensión desde la extensión máxima |
-| `kappa_fr` | — | + la rueda gira más rápido que el suelo | Deslizamiento longitudinal (ω·r − vx) / max(|vx|, min_slip_speed) |
-| `alpha_fr` | rad | + la rueda va hacia su derecha | Ángulo de deriva atan2(vy, max(|vx|, min_slip_speed)) |
+| `kappa_fr` | — | + tracción | Deslizamiento relajado κ_r = u/σ_x (deformación longitudinal de la huella) |
+| `alpha_fr` | rad | − la rueda va hacia su derecha | Ángulo de deriva relajado α_r = atan(w/σ_y) (deformación lateral de la huella) |
+| `slip_x_fr` | m/s | + la rueda gira más rápido que el suelo | Velocidad de deslizamiento longitudinal ω·r − v_x |
+| `slip_y_fr` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_fr` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_fr` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
 | `omega_fr` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
@@ -83,8 +87,10 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `surface_rl` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_rl` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
 | `compression_rl` | m | ≥ 0 | Compresión de la suspensión desde la extensión máxima |
-| `kappa_rl` | — | + la rueda gira más rápido que el suelo | Deslizamiento longitudinal (ω·r − vx) / max(|vx|, min_slip_speed) |
-| `alpha_rl` | rad | + la rueda va hacia su derecha | Ángulo de deriva atan2(vy, max(|vx|, min_slip_speed)) |
+| `kappa_rl` | — | + tracción | Deslizamiento relajado κ_r = u/σ_x (deformación longitudinal de la huella) |
+| `alpha_rl` | rad | − la rueda va hacia su derecha | Ángulo de deriva relajado α_r = atan(w/σ_y) (deformación lateral de la huella) |
+| `slip_x_rl` | m/s | + la rueda gira más rápido que el suelo | Velocidad de deslizamiento longitudinal ω·r − v_x |
+| `slip_y_rl` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_rl` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_rl` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
 | `omega_rl` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
@@ -94,8 +100,10 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `surface_rr` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_rr` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
 | `compression_rr` | m | ≥ 0 | Compresión de la suspensión desde la extensión máxima |
-| `kappa_rr` | — | + la rueda gira más rápido que el suelo | Deslizamiento longitudinal (ω·r − vx) / max(|vx|, min_slip_speed) |
-| `alpha_rr` | rad | + la rueda va hacia su derecha | Ángulo de deriva atan2(vy, max(|vx|, min_slip_speed)) |
+| `kappa_rr` | — | + tracción | Deslizamiento relajado κ_r = u/σ_x (deformación longitudinal de la huella) |
+| `alpha_rr` | rad | − la rueda va hacia su derecha | Ángulo de deriva relajado α_r = atan(w/σ_y) (deformación lateral de la huella) |
+| `slip_x_rr` | m/s | + la rueda gira más rápido que el suelo | Velocidad de deslizamiento longitudinal ω·r − v_x |
+| `slip_y_rr` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_rr` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_rr` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
 | `omega_rr` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |

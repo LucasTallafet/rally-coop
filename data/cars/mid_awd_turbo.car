@@ -38,15 +38,14 @@ antiroll_rear = 10000     # N/m. Estimado
 max_torque = 4400         # N·m total con el freno a fondo. Estimado (~1,3 g en asfalto)
 front_share = 0.60        # fracción al eje delantero. Estimado
 handbrake_torque = 1500   # N·m por rueda trasera. Estimado
-hold_frequency = 4        # Hz: muelle del ancla de parada (ζ = 1). Valor de partida, se ajusta en 2.10
-hold_speed = 0.1          # m/s: por debajo, el freno ancla la rueda. Valor de partida, se ajusta en 2.10
 
 [steering]
 max_steer_deg = 30        # ángulo de la rueda interior. Estimado
 ackermann = 0.5           # fracción de Ackermann. Estimado
 
-# Neumático provisional (lo sustituye la Pacejka de la tarea 2.5): rigideces lineales
-# limitadas por el círculo de fricción, con un μ por superficie. Con estas rigideces la fuerza
+# Neumático provisional (la Pacejka de la tarea 2.5 sustituye la fuerza estacionaria lineal):
+# deformación de la huella como estado (modelo transitorio), rigideces lineales limitadas
+# por el círculo de fricción y un μ por superficie. Con estas rigideces la fuerza
 # lateral satura a ~4° con μ = 0,7; en grava, un neumático real llega a su máximo con más
 # ángulo (8-12°). Lo resuelve la Pacejka por superficie de la 2.5: no se compensa aquí.
 [tire]
@@ -58,8 +57,11 @@ mu_gravel = 0.7           # Valor de partida (provisional)
 mu_snow = 0.45            # Valor de partida (provisional)
 mu_sand = 0.5             # Valor de partida (provisional)
 rolling_resistance = 0.015 # coeficiente × carga. Valor de partida (provisional)
-min_slip_speed = 3        # m/s: denominador mínimo del deslizamiento. Valor de partida
-low_speed_blend = 2       # m/s: mezcla con el amortiguamiento lateral. Diseño
+relaxation_long = 0.15    # m: σ_x, longitud de relajación longitudinal. Valor de partida, se ajusta en 2.10
+relaxation_lat = 0.40     # m: σ_y, longitud de relajación lateral. Valor de partida, se ajusta en 2.10
+carcass_damping_long = 0.6 # ζ del modo carrocería-huella, longitudinal. Valor de partida, se ajusta en 2.10
+carcass_damping_lat = 0.6 # ζ del modo carrocería-huella, lateral. Valor de partida, se ajusta en 2.10
+carcass_damping_fade = 3  # m/s: el amortiguamiento de la carcasa baja a 0 aquí. Valor de partida, se ajusta en 2.10
 
 # Tracción provisional (la sustituyen el motor y la transmisión de la tarea 2.6).
 [drive]

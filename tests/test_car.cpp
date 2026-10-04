@@ -321,32 +321,61 @@ double moved(const BodyPose& a, const BodyPose& b) {
                      (a.z - b.z) * (a.z - b.z));
 }
 
-double hold_on_ramp(const SimInput& input) {
-    WorldDesc desc = rally::tests::ramp_world();
+struct Hold {
+    double moved = 0.0;
+    // Pasos de los 10 s con ω exactamente 0, por rueda.
+    std::array<int, kWheelCount> locked_steps{};
+};
+
+Hold hold_on_ramp(const SimInput& input, double grade = rally::tests::kRampGrade) {
+    WorldDesc desc = rally::tests::ramp_world(grade);
     desc.car_spawn.y = 0.25; // sale por encima y cae sobre la rampa
     SimWorld world;
     world.build(desc);
     world.seal();
-    run(world, input, 3 * kStepsPerSecond); // se asienta con el freno puesto
+    run(world, input, 3 * kStepsPerSecond); // se asienta
     const BodyPose start = world.car_pose();
-    run(world, input, 10 * kStepsPerSecond);
+    Hold hold;
+    for (int s = 0; s < 10 * kStepsPerSecond; ++s) {
+        world.step(input);
+        for (int i = 0; i < kWheelCount; ++i) {
+            hold.locked_steps[static_cast<std::size_t>(i)] +=
+                world.car_controller().wheel(i).omega == 0.0f ? 1 : 0;
+        }
+    }
     for (int i = 0; i < kWheelCount; ++i) {
         const WheelOutput& w = world.car_controller().wheel(i);
-        MESSAGE("rueda ", i, ": ancla ", w.anchored, ", carga ", w.load, " N");
+        MESSAGE("rueda ", i, ": ω = 0 en ", hold.locked_steps[static_cast<std::size_t>(i)],
+                " de 2400 pasos; carga ", w.load, " N; u ", w.u * 1000.0, " mm");
     }
-    return moved(start, world.car_pose());
+    hold.moved = moved(start, world.car_pose());
+    return hold;
 }
 
 } // namespace
 
 TEST_CASE("car: parked on the 15 percent ramp it moves less than 1 cm in 10 s") {
     const rally::sim::JoltRuntime runtime;
-    const double with_brake = hold_on_ramp(pedal(0, kAxisMax));
-    const double with_handbrake = hold_on_ramp(pedal(0, 0, rally::sim::kButtonHandbrake));
-    MESSAGE("en la rampa del 15 % en 10 s: con el freno ", with_brake * 1000.0,
-            " mm; con el freno de mano ", with_handbrake * 1000.0, " mm");
-    CHECK(with_brake < 0.01);
-    CHECK(with_handbrake < 0.01);
+    const Hold with_brake = hold_on_ramp(pedal(0, kAxisMax));
+    const Hold with_handbrake = hold_on_ramp(pedal(0, 0, rally::sim::kButtonHandbrake));
+    MESSAGE("en la rampa del 15 % en 10 s: con el freno ", with_brake.moved * 1000.0,
+            " mm; con el freno de mano ", with_handbrake.moved * 1000.0, " mm");
+    CHECK(with_brake.moved < 0.01);
+    CHECK(with_handbrake.moved < 0.01);
+    // Con el freno, las cuatro ruedas quedan bloqueadas por fricción estática: ω = 0 exacto.
+    for (const int locked : with_brake.locked_steps) {
+        CHECK(locked == 10 * kStepsPerSecond);
+    }
+}
+
+TEST_CASE("car: without brakes it stays on a 1 percent slope and rolls down a 3 percent one") {
+    const rally::sim::JoltRuntime runtime;
+    const Hold one = hold_on_ramp(SimInput{}, 0.01);
+    const Hold three = hold_on_ramp(SimInput{}, 0.03);
+    MESSAGE("sin freno en 10 s: al 1 % ", one.moved * 1000.0, " mm; al 3 % ", three.moved,
+            " m (la rodadura sujeta hasta el 1,5 %)");
+    CHECK(one.moved < 0.001);
+    CHECK(three.moved > 0.1);
 }
 
 TEST_CASE("car: released on the ramp it rolls back") {
@@ -386,10 +415,11 @@ namespace {
 enum class Case { Throttle, Brake, Neutral };
 
 struct SweepResult {
-    int sign_changes = 0;        // máximo de las cuatro ruedas en el último segundo, sin ancla
+    int sign_changes = 0;        // máximo de las cuatro ruedas en el último segundo, girando
     double kappa_std = 0.0;      // máximo de las cuatro ruedas en el último segundo
-    int anchored_steps = 0;      // pasos × ruedas con el ancla en el último segundo
-    double anchored_speed = 0.0; // |v| máxima en el contacto con el ancla puesta
+    int anchored_steps = 0;      // pasos × ruedas bloqueadas (ω = 0) en el último segundo
+    double anchored_speed = 0.0; // |v| máxima en el contacto con la rueda bloqueada
+    bool stopped = false;        // el coche está parado (< 1 cm/s) al empezar el último segundo
 };
 
 SweepResult sweep_case(Surface surface, float speed, Case c, bool explicit_wheels) {
@@ -402,28 +432,33 @@ SweepResult sweep_case(Surface surface, float speed, Case c, bool explicit_wheel
                            : c == Case::Brake  ? pedal(0, kAxisMax)
                                                : SimInput{};
     run(world, input, kStepsPerSecond);
+    const rally::sim::BodyVelocity start = world.car_velocity();
+    const bool stopped =
+        std::sqrt(static_cast<double>(start.vx * start.vx + start.vz * start.vz)) < 0.01;
     std::array<int, kWheelCount> changes{};
     std::array<int, kWheelCount> last_sign{};
     std::array<double, kWheelCount> sum{};
     std::array<double, kWheelCount> sum_sq{};
     SweepResult result;
+    result.stopped = stopped;
     for (int s = 0; s < kStepsPerSecond; ++s) {
         world.step(input);
         for (int i = 0; i < kWheelCount; ++i) {
             const auto k = static_cast<std::size_t>(i);
             const WheelOutput& w = world.car_controller().wheel(i);
             const double kappa = w.kappa;
-            if (w.anchored) {
-                // Rueda anclada: ω = 0 impuesto, sin grado de libertad que pueda oscilar. Sus
-                // pasos no cuentan para el signo; se mide que el contacto esté quieto.
+            if (w.locked) {
+                // Rueda bloqueada por fricción estática: ω = 0, sin grado de libertad que pueda
+                // oscilar. Sus pasos no cuentan para el signo; se mide que el contacto esté
+                // quieto.
                 ++result.anchored_steps;
                 result.anchored_speed =
                     std::max(result.anchored_speed, static_cast<double>(w.contact_speed));
                 last_sign[k] = 0;
                 continue;
             }
-            // El signo de ω·r − v es el de κ (el denominador es positivo).
-            const int sign = kappa > 0.0 ? 1 : (kappa < 0.0 ? -1 : 0);
+            const double slip = w.slip_x; // ω·r − v
+            const int sign = slip > 0.0 ? 1 : (slip < 0.0 ? -1 : 0);
             if (sign != 0) {
                 if (last_sign[k] != 0 && sign != last_sign[k]) {
                     ++changes[k];
@@ -448,8 +483,8 @@ constexpr std::array<float, 9> kSweepSpeeds = {0.5f,  1.0f,  2.0f,  3.0f, 5.0f,
 
 std::string sweep_table(bool explicit_wheels, int& worst_changes, double& worst_std,
                         double& worst_anchored_speed) {
-    std::string table = "superficie | v (m/s) | acelerador | freno (pasos anclados, |v| máx "
-                        "anclado) | punto muerto (σκ)\n";
+    std::string table = "superficie | v (m/s) | acelerador | freno (pasos bloqueados, |v| máx "
+                        "bloqueada) | punto muerto (σκ)\n";
     worst_changes = 0;
     worst_std = 0.0;
     worst_anchored_speed = 0.0;
@@ -463,10 +498,10 @@ std::string sweep_table(bool explicit_wheels, int& worst_changes, double& worst_
                           rally::sim::surface_name(surface), static_cast<double>(speed),
                           t.sign_changes, b.sign_changes, b.anchored_steps, b.anchored_speed,
                           n.sign_changes, n.kappa_std);
-            // Parado y anclado todo el último segundo (las cuatro ruedas en los 240 pasos): el
-            // cabeceo tras la frenada se tiene que haber apagado. Si se para dentro del segundo,
-            // el ancla engancha a hasta hold_speed y eso no es el cabeceo.
-            if (b.anchored_steps == kWheelCount * kStepsPerSecond) {
+            // Parado al empezar el último segundo y con las cuatro ruedas bloqueadas los 240
+            // pasos: el cabeceo tras la frenada se tiene que haber apagado. A más velocidad las
+            // ruedas también se bloquean, pero patinando (frenada con bloqueo): no es esto.
+            if (b.stopped && b.anchored_steps == kWheelCount * kStepsPerSecond) {
                 worst_anchored_speed = std::max(worst_anchored_speed, b.anchored_speed);
             }
             table += row;
@@ -486,12 +521,12 @@ TEST_CASE("car: the wheels are stable from 0.5 to 60 m/s on asphalt and snow") {
     double kappa_std = 0.0;
     double anchored_speed = 0.0;
     const std::string table = sweep_table(false, changes, kappa_std, anchored_speed);
-    MESSAGE("barrido semi-implícito (cambios de signo de ω·r − v en el último segundo en los "
-            "pasos sin ancla, máximo de las cuatro ruedas):\n",
+    MESSAGE("barrido semi-implícito (cambios de signo de ω·r − v en el último segundo con la "
+            "rueda girando, máximo de las cuatro ruedas):\n",
             table);
     CHECK(changes <= 2);
     CHECK(kappa_std < 0.02);
-    // Parado y anclado, el cabeceo tras la frenada se apaga: el contacto queda quieto.
+    // Parado y bloqueado, el cabeceo tras la frenada se apaga: el contacto queda quieto.
     CHECK(anchored_speed < 0.01);
 
     // Referencia, sin juzgar: la integración explícita.
@@ -731,18 +766,20 @@ TEST_CASE("car: reset puts it at the nearest respawn point, still, with the cont
     run(world, drive, 3 * kStepsPerSecond);
     SimInput down;
     down.brake = kAxisMax;
-    run(world, down, 4 * kStepsPerSecond); // parado y con el freno: ancla
+    run(world, down, 4 * kStepsPerSecond); // parado y con el freno: ruedas bloqueadas
     down.buttons = rally::sim::kButtonShiftDown;
     world.step(down); // a N
     REQUIRE(world.car_controller().gear() == rally::sim::Gear::Neutral);
     SimInput hold;
     hold.brake = kAxisMax;
-    world.step(hold);
-    bool any_anchor = false;
+    hold.steer = kAxisMax; // con la dirección girada, la huella se deforma de lado
+    run(world, hold, kStepsPerSecond / 2);
+    bool any_deformed = false;
     for (int i = 0; i < kWheelCount; ++i) {
-        any_anchor = any_anchor || world.car_controller().wheel(i).anchored;
+        const WheelOutput& w = world.car_controller().wheel(i);
+        any_deformed = any_deformed || w.u != 0.0f || w.w != 0.0f;
     }
-    REQUIRE(any_anchor);
+    REQUIRE(any_deformed);
 
     const BodyPose at = world.car_pose();
     const rally::sim::TestZone& zone = *world.zone();
@@ -767,7 +804,8 @@ TEST_CASE("car: reset puts it at the nearest respawn point, still, with the cont
     CHECK(controller.gear() == rally::sim::Gear::Forward);
     for (int i = 0; i < kWheelCount; ++i) {
         CHECK(controller.wheel(i).omega == 0.0f);
-        CHECK_FALSE(controller.wheel(i).anchored);
+        CHECK(controller.wheel(i).u == 0.0f);
+        CHECK(controller.wheel(i).w == 0.0f);
         CHECK(world.car_wheel(i).rotation == 0.0f);
         CHECK(world.car_wheel(i).steer == 0.0f);
     }
@@ -778,7 +816,7 @@ TEST_CASE("car: reset puts it at the nearest respawn point, still, with the cont
 
 namespace {
 
-// Entradas del escenario: en la rampa, freno 4 s (ancla), bajar a N, freno hasta 10 s; después
+// Entradas del escenario: en la rampa, freno 4 s (bloqueo), bajar a N, freno hasta 10 s; después
 // suelta el freno y acelera con dirección (vuelve a adelante) durante 240 pasos.
 SimInput ramp_script(int step) {
     SimInput input;
@@ -812,11 +850,12 @@ TEST_CASE("car: SaveState at 10 s and RestoreState in a fresh world give the sam
     for (int s = 0; s < kSave; ++s) {
         world.step(ramp_script(s));
     }
-    // El estado guardado tiene que ser distinto del de un mundo nuevo: anclas puestas, en N.
-    // Si el controlador no guardara algo de esto, la continuación restaurada se separaría.
+    // El estado guardado tiene que ser distinto del de un mundo nuevo: en N y con la huella
+    // deformada (sujeta el coche en la rampa). Si el controlador no guardara algo de esto, la
+    // continuación restaurada se separaría.
     REQUIRE(world.car_controller().gear() == rally::sim::Gear::Neutral);
     for (int i = 0; i < kWheelCount; ++i) {
-        REQUIRE(world.car_controller().wheel(i).anchored);
+        REQUIRE(world.car_controller().wheel(i).u != 0.0f);
     }
     const std::string saved = world.save_state();
     const rally::sim::ControlState controls = world.controls();
@@ -927,4 +966,180 @@ TEST_CASE("car impact: falling from 3 m is above the rumble threshold, resting b
     CHECK(in_air < 0.01f);
     CHECK(landing > 1.0f);
     CHECK(resting < 0.1f);
+}
+
+// --- Neumático: deformación de la huella (2.4-respuesta-2) -----------------------------------
+
+namespace {
+
+constexpr float kSubstep = rally::sim::kStepSeconds / rally::sim::kWheelSubsteps;
+
+// Rueda rodando a `vx` sin deslizar, con carga fija en asfalto.
+rally::sim::TireInput rolling_input(float vx, float vy) {
+    rally::sim::TireInput in;
+    in.vx = vx;
+    in.vy = vy;
+    in.load = 3000.0f;
+    in.mu = reference_car().mu_asphalt;
+    in.radius = reference_car().wheel_radius;
+    return in;
+}
+
+} // namespace
+
+TEST_CASE("tire: after a steer step the lateral force reaches 63 percent after rolling sigma") {
+    const CarData& car = reference_car();
+    const float alpha = 5.0f * static_cast<float>(kPi) / 180.0f;
+    for (const float vx : {20.0f, 60.0f}) {
+        const rally::sim::TireInput in = rolling_input(vx, vx * std::tan(alpha));
+        rally::sim::WheelDynamics state;
+        state.omega = vx / in.radius;
+        // Fuerza final: Cα·α (con la rueda girando libre, sin fuerza longitudinal).
+        const double final_fy = -car.lat_stiffness * in.load * alpha;
+        double previous = 0.0;
+        double crossing = -1.0; // distancia rodada al pasar del 63 %
+        double peak = 0.0;
+        double travelled = 0.0;
+        for (int s = 0; s < 4000; ++s) {
+            const rally::sim::TireForce f = rally::sim::step_tire(car, in, kSubstep, true, state);
+            travelled += vx * kSubstep;
+            const double ratio = f.fy / final_fy;
+            peak = std::max(peak, ratio);
+            if (crossing < 0.0 && ratio >= 0.632) {
+                // Interpolación lineal dentro del subpaso.
+                crossing = travelled - vx * kSubstep * (ratio - 0.632) / (ratio - previous);
+            }
+            previous = ratio;
+        }
+        MESSAGE("a ", vx, " m/s: 63 % tras rodar ", crossing, " m (σ_y = ", car.relaxation_lat,
+                " m); máximo ", peak, " del final; ω final ", state.omega, " rad/s");
+        if (vx == 20.0f) {
+            CHECK(std::abs(crossing - car.relaxation_lat) / car.relaxation_lat < 0.05);
+        } else {
+            CHECK(peak <= 1.0 + 1.0e-6);
+        }
+    }
+}
+
+TEST_CASE("tire: after 2 s of saturated sliding there is no rope when grip comes back") {
+    const CarData& car = reference_car();
+    const float vx = 20.0f;
+    const float sliding = 20.0f * static_cast<float>(kPi) / 180.0f;
+    const float gripping = 2.0f * static_cast<float>(kPi) / 180.0f;
+    // A: 2 s deslizando a 20° (saturado) y vuelta a 2°.
+    rally::sim::WheelDynamics a;
+    a.omega = vx / reference_car().wheel_radius;
+    const int slide_steps = 2 * kStepsPerSecond * rally::sim::kWheelSubsteps;
+    rally::sim::TireForce last;
+    for (int s = 0; s < slide_steps; ++s) {
+        last = rally::sim::step_tire(car, rolling_input(vx, vx * std::tan(sliding)), kSubstep, true,
+                                     a);
+    }
+    const double limit = car.mu_asphalt * 3000.0;
+    REQUIRE(std::abs(last.fy) == doctest::Approx(limit).epsilon(1e-4)); // saturado
+    // B: la deformación justo en el límite, sin historia de deslizamiento.
+    rally::sim::WheelDynamics b = a;
+    b.w = -car.relaxation_lat * std::tan(static_cast<float>(limit) / (car.lat_stiffness * 3000.0f));
+    MESSAGE("deformación lateral tras 2 s saturado: ", a.w * 1000.0,
+            " mm; en el límite: ", b.w * 1000.0, " mm");
+    CHECK(a.w == doctest::Approx(b.w).epsilon(1e-4)); // no acumula: se queda en el límite
+    const double final_fy = car.lat_stiffness * 3000.0 * gripping;
+    double max_diff = 0.0;
+    double travelled = 0.0;
+    double at_four_sigma = 0.0;
+    for (int s = 0; s < 2000; ++s) {
+        const rally::sim::TireInput in = rolling_input(vx, vx * std::tan(gripping));
+        const rally::sim::TireForce fa = rally::sim::step_tire(car, in, kSubstep, true, a);
+        const rally::sim::TireForce fb = rally::sim::step_tire(car, in, kSubstep, true, b);
+        max_diff = std::max(max_diff, static_cast<double>(std::abs(fa.fy - fb.fy)));
+        CHECK(std::abs(fa.fy) <= limit * (1.0 + 1e-6));
+        travelled += vx * kSubstep;
+        if (at_four_sigma == 0.0 && travelled >= 4.0 * car.relaxation_lat) {
+            at_four_sigma = std::abs(fa.fy);
+        }
+    }
+    MESSAGE("vuelta a 2°: diferencia máxima con la huella recién en el límite ", max_diff,
+            " N; tras rodar 4σ_y, ", at_four_sigma, " N frente a la estacionaria ", final_fy,
+            " N (", 100.0 * (at_four_sigma / final_fy - 1.0), " %)");
+    CHECK(max_diff < 1.0);
+    CHECK(std::abs(at_four_sigma / final_fy - 1.0) < 0.05);
+}
+
+TEST_CASE("car: in the air the footprint is undeformed and landing gives no force jump") {
+    const rally::sim::JoltRuntime runtime;
+    WorldDesc desc = flat_world(Surface::Asphalt, false, 10.0f);
+    desc.car_spawn.y = 0.6; // cae desde 0,6 m rodando a 10 m/s
+    SimWorld world;
+    world.build(desc);
+    world.seal();
+    SimInput steer;
+    steer.steer = kAxisMax / 4;
+    int airborne = 0;
+    // En el paso del aterrizaje de cada rueda, su fuerza sale de la deformación que acumula ese
+    // paso desde u = w = 0: una fracción del límite, no un salto. Se mide como fracción de
+    // μ·F_z.
+    double worst_landing = 0.0;
+    std::array<bool, kWheelCount> was_airborne{};
+    for (int s = 0; s < 2 * kStepsPerSecond; ++s) {
+        world.step(steer);
+        for (int i = 0; i < kWheelCount; ++i) {
+            const auto k = static_cast<std::size_t>(i);
+            const WheelOutput& w = world.car_controller().wheel(i);
+            if (!w.contact) {
+                ++airborne;
+                was_airborne[k] = true;
+                CHECK(w.u == 0.0f);
+                CHECK(w.w == 0.0f);
+                CHECK(w.fx == 0.0f);
+                CHECK(w.fy == 0.0f);
+            } else if (was_airborne[k] && w.load > 0.0f) {
+                // Primer paso con carga (en el primero con contacto aún es la del paso
+                // anterior, 0).
+                was_airborne[k] = false;
+                const double force = std::sqrt(static_cast<double>(w.fx * w.fx + w.fy * w.fy));
+                const double fraction = force / (reference_car().mu_asphalt * w.load);
+                MESSAGE("rueda ", i, " aterriza: F_z ", w.load, " N, fuerza ", force, " N (",
+                        100.0 * fraction, " % de μ·F_z)");
+                worst_landing = std::max(worst_landing, fraction);
+            }
+        }
+    }
+    MESSAGE("pasos × ruedas en el aire: ", airborne);
+    CHECK(airborne > 0);
+    // Un paso a 10 m/s son 4 cm: el 10 % de σ_y y el 28 % de σ_x.
+    CHECK(worst_landing < 0.3);
+}
+
+TEST_CASE("car: reset clears the dynamic state and keeps the wheel condition") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(flat_world(Surface::Asphalt));
+    world.seal();
+    world.set_wheel_radius(rally::sim::kFrontLeft, 0.29f); // condición distinta de la nominal
+    SimInput drive;
+    drive.throttle = kAxisMax;
+    drive.steer = kAxisMax / 2;
+    run(world, drive, kStepsPerSecond);
+    REQUIRE(world.car_controller().wheel(0).omega != 0.0f);
+    SimInput reset;
+    reset.buttons = rally::sim::kButtonReset;
+    world.step(reset);
+    const CarController& c = world.car_controller();
+    CHECK(c.gear() == rally::sim::Gear::Forward);
+    for (int i = 0; i < kWheelCount; ++i) {
+        CHECK(c.wheel(i).omega == 0.0f);
+        CHECK(c.wheel(i).u == 0.0f);
+        CHECK(c.wheel(i).w == 0.0f);
+        CHECK(world.car_wheel(i).rotation == 0.0f);
+    }
+    CHECK(c.wheel_radius(rally::sim::kFrontLeft) == 0.29f);
+    CHECK(world.car_wheel(rally::sim::kFrontLeft).radius == 0.29f);
+    CHECK(c.wheel_radius(rally::sim::kFrontRight) == reference_car().wheel_radius);
+    // La condición va en el estado: otro radio da otro estado.
+    SimWorld other;
+    other.build(flat_world(Surface::Asphalt));
+    other.seal();
+    const std::string nominal = other.save_state();
+    other.set_wheel_radius(rally::sim::kFrontLeft, 0.29f);
+    CHECK(other.save_state() != nominal);
 }

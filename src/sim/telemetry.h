@@ -14,8 +14,10 @@ struct WheelTelemetry {
     std::int8_t surface = -1;  // superficie del material del contacto (Surface), -1 en el aire
     float load = 0.0f;         // N: carga normal (suspensión del paso anterior)
     float compression = 0.0f;  // m desde la extensión máxima de la suspensión
-    float kappa = 0.0f;        // deslizamiento longitudinal (ω·r − vx) / max(|vx|, mínimo)
-    float alpha = 0.0f;        // rad: ángulo de deriva, > 0 con la rueda yendo a su derecha
+    float kappa = 0.0f;        // deslizamiento relajado κ_r = u / σ_x
+    float alpha = 0.0f;        // rad: α_r = atan(w / σ_y), < 0 yendo hacia su derecha
+    float slip_x = 0.0f;       // m/s: velocidad de deslizamiento ω·r − v_x
+    float slip_y = 0.0f;       // m/s: velocidad de deslizamiento −v_y
     float fx = 0.0f;           // N: fuerza longitudinal media de los subpasos (adelante +)
     float fy = 0.0f;           // N: fuerza lateral media de los subpasos (derecha +)
     float omega = 0.0f;        // rad/s: giro de la rueda (> 0 rodando hacia delante)

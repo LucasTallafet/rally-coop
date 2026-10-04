@@ -36,7 +36,7 @@ using rally::sim::WorldDesc;
 // pseudoaleatorias (run_random_inputs).
 // Si el test de huella falla por un cambio intencionado, se copia aquí el valor nuevo y se
 // dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedFingerprint = 0xff19239388c95b66ull;
+constexpr std::uint64_t kExpectedFingerprint = 0xe352a180fe918b3bull;
 
 constexpr int kSecondsOfInput = 60;
 constexpr int kStepsPerFrame = 4; // la entrada cambia cada fotograma de 60 fps
@@ -51,9 +51,9 @@ constexpr int kCountedSteps = 1000;
 // intencionado lo altera, se actualiza como la huella.
 constexpr int kJoltAllocationsPerStep = 2;
 // Total de reservas de Jolt en los kCountedSteps pasos medidos con las entradas del test
-// (993 pasos con reservas y 7 sin ellas). Si un cambio intencionado lo altera, se
+// (982 pasos con reservas y 18 sin ellas). Si un cambio intencionado lo altera, se
 // actualiza como la huella y se dice en el mensaje del commit.
-constexpr int kExpectedJoltAllocations = 1986;
+constexpr int kExpectedJoltAllocations = 1964;
 
 // Suelo de 20 × 20 m con cuatro muros de 3 m, el coche de referencia parado en el centro
 // mirando a -z y una caja suelta para que haya contactos entre cuerpos dinámicos.

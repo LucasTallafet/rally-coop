@@ -6,9 +6,15 @@
 #include "sim/test_zone.h"
 
 #include <Jolt/Physics/Body/Body.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
+#include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollisionCollector.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Collision/ShapeCast.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/StateRecorder.h>
 #include <Jolt/Physics/Vehicle/VehicleAntiRollBar.h>
@@ -44,15 +50,116 @@ public:
     }
 };
 
-// Lleva `omega` hacia 0 en `delta` sin pasarlo (freno y rodadura nunca invierten el giro).
-float toward_zero(float omega, float delta) {
-    if (rmath::abs(omega) <= delta) {
-        return 0.0f;
+// Gravedad para la masa de esquina del amortiguamiento de la carcasa (la de Jolt por defecto).
+constexpr float kGravity = 9.81f;
+
+// Paso de Coulomb: `base` es el giro sin los pares de Coulomb y `stop`, lo que esos pares
+// quitan en el paso. Nunca invierten el giro: si no llegan a moverla, la rueda queda en 0.
+float coulomb(float base, float stop) {
+    if (base > stop) {
+        return base - stop;
     }
-    return omega - sign_of(omega) * delta;
+    if (base < -stop) {
+        return base + stop;
+    }
+    return 0.0f;
 }
 
+// Relajación exponencial exacta en h con tasa a: x ← x·e + entrada·φ.
+struct Relax {
+    float e = 1.0f;
+    float phi = 0.0f;
+};
+
+Relax relax(float a, float h) {
+    Relax r;
+    if (a * h < 1.0e-6f) {
+        r.e = 1.0f - a * h;
+        r.phi = h;
+    } else {
+        r.e = rmath::exp(-a * h);
+        r.phi = (1.0f - r.e) / a;
+    }
+    return r;
+}
+
+float magnitude(float x, float y) { return rmath::sqrt(x * x + y * y); }
+
 } // namespace
+
+TireForce step_tire(const CarData& car, const TireInput& in, float h, bool implicit,
+                    WheelDynamics& state) {
+    const float r = in.radius;
+    const float inertia = car.wheel_inertia;
+    TireForce force;
+    if (!(in.load > 0.0f)) {
+        // Sin carga (en el aire): límite 0, sin deformación ni fuerza. El motor acelera la
+        // rueda y el freno la para.
+        state.u = 0.0f;
+        state.w = 0.0f;
+        const float k = h / inertia;
+        state.omega = coulomb(state.omega + k * in.drive_torque, k * in.stop_torque);
+        return force;
+    }
+    const float limit = in.mu * in.load;
+    const float sigma_x = car.relaxation_long;
+    const float sigma_y = car.relaxation_lat;
+    const float c_kappa = car.long_stiffness * in.load;
+    const float c_alpha = car.lat_stiffness * in.load;
+    const float k_x = c_kappa / sigma_x; // N/m: rigidez longitudinal de la huella
+    // Amortiguamiento de la carcasa con ζ del modo carrocería–huella (masa de esquina F_z/g):
+    // c = 2·ζ·√(k·m), proporcional a la carga.
+    const float c_x = 2.0f * car.carcass_damping_long * in.load *
+                      rmath::sqrt(car.long_stiffness / sigma_x / kGravity);
+    const float c_y = 2.0f * car.carcass_damping_lat * in.load *
+                      rmath::sqrt(car.lat_stiffness / sigma_y / kGravity);
+    const float speed = magnitude(in.vx, in.vy);
+    const float fade = rmath::clamp(1.0f - speed / car.carcass_damping_fade, 0.0f, 1.0f);
+    const Relax rx = relax(rmath::abs(in.vx) / sigma_x, h);
+    const Relax ry = relax(rmath::abs(in.vx) / sigma_y, h);
+    const float s_y = -in.vy;
+
+    // Predicción con el giro sin cambiar, para el giro semi-implícito.
+    const float s_x0 = state.omega * r - in.vx;
+    const float u_p = state.u * rx.e + s_x0 * rx.phi;
+    const float w_p = state.w * ry.e + s_y * ry.phi;
+    float fx0 = k_x * u_p + c_x * fade * s_x0;
+    const float fy0 = c_alpha * rmath::atan(w_p / sigma_y) + c_y * fade * s_y;
+    float slope = k_x * r * rx.phi + c_x * r * fade; // ∂F_x/∂ω
+    const float predicted = magnitude(fx0, fy0);
+    if (predicted > limit) {
+        fx0 *= limit / predicted;
+        slope = 0.0f;
+    }
+    if (!implicit) {
+        slope = 0.0f;
+    }
+    const float k = h / (inertia + h * r * slope);
+    state.omega = coulomb(state.omega + k * (in.drive_torque - r * fx0), k * in.stop_torque);
+
+    // Deformación con el giro nuevo y límite de Coulomb: la huella desliza y no acumula.
+    const float s_x = state.omega * r - in.vx;
+    state.u = state.u * rx.e + s_x * rx.phi;
+    state.w = state.w * ry.e + s_y * ry.phi;
+    float elastic_x = k_x * state.u;
+    float elastic_y = c_alpha * rmath::atan(state.w / sigma_y);
+    const float elastic = magnitude(elastic_x, elastic_y);
+    if (elastic > limit) {
+        const float scale = limit / elastic;
+        elastic_x *= scale;
+        elastic_y *= scale;
+        state.u = elastic_x / k_x;
+        state.w = sigma_y * rmath::tan(elastic_y / c_alpha);
+    }
+    force.fx = elastic_x + c_x * fade * s_x;
+    force.fy = elastic_y + c_y * fade * s_y;
+    const float total = magnitude(force.fx, force.fy);
+    if (total > limit) {
+        force.fx *= limit / total;
+        force.fy *= limit / total;
+    }
+    return force;
+}
 
 double ReliefSource::height(MicroRelief relief, Surface surface, double x, double z) const {
     switch (relief) {
@@ -75,12 +182,8 @@ CarController::CarController(JPH::VehicleConstraint& constraint,
                              const CarControllerSettings& settings)
     : JPH::VehicleController(constraint), car_(settings.car),
       explicit_wheels_(settings.explicit_wheels) {
-    // Ancla: muelle y amortiguador críticos sobre la cuarta parte de la masa.
-    const float wheel_mass = 0.25f * car_.mass;
-    const float omega = kTwoPi * car_.hold_frequency;
-    anchor_stiffness_ = wheel_mass * omega * omega;
-    anchor_damping_ = 2.0f * wheel_mass * omega;
     contact_surface_.fill(Surface::Dirt);
+    radius_.fill(car_.wheel_radius);
 }
 
 JPH::Ref<JPH::VehicleControllerSettings> CarController::GetSettings() const {
@@ -95,9 +198,10 @@ JPH::Wheel* CarController::ConstructWheel(const JPH::WheelSettings& wheel) const
 }
 
 void CarController::reset() {
+    // Estado dinámico a cero; la condición (radio_) no cambia.
     gear_ = Gear::Forward;
-    anchored_.fill(0);
-    anchor_ = {};
+    u_.fill(0.0f);
+    w_.fill(0.0f);
     steer_.fill(0.0f);
     outputs_.fill(WheelOutput{});
     contact_h_.fill(0.0f);
@@ -113,7 +217,7 @@ void CarController::reset() {
 void CarController::set_rolling(float speed) {
     for (int i = 0; i < kWheelCount; ++i) {
         mConstraint.GetWheel(static_cast<JPH::uint>(i))
-            ->SetAngularVelocity(speed / car_.wheel_radius);
+            ->SetAngularVelocity(speed / radius_[static_cast<std::size_t>(i)]);
     }
 }
 
@@ -160,8 +264,6 @@ void CarController::PreCollide(float, JPH::PhysicsSystem&) {
 
 void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
     JPH::Body* body = mConstraint.GetVehicleBody();
-    const float r = car_.wheel_radius;
-    const float inertia = car_.wheel_inertia;
     const float h = dt / static_cast<float>(kWheelSubsteps);
 
     // Tracción provisional: par total = acelerador × min(par máximo, potencia / ω medio),
@@ -188,143 +290,74 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         const bool front = i == kFrontLeft || i == kFrontRight;
         WheelOutput& out = outputs_[index];
         out = WheelOutput{};
+        const float r = radius_[index];
 
-        const float drive_torque =
+        TireInput in;
+        in.radius = r;
+        in.drive_torque =
             drive * 0.5f * (front ? car_.drive_front_share : 1.0f - car_.drive_front_share);
-        float stop_torque = controls_.brake * car_.brake_torque * 0.5f *
-                            (front ? car_.brake_front_share : 1.0f - car_.brake_front_share);
+        float brake = controls_.brake * car_.brake_torque * 0.5f *
+                      (front ? car_.brake_front_share : 1.0f - car_.brake_front_share);
         if (!front) {
-            stop_torque += controls_.handbrake * car_.handbrake_torque;
+            brake += controls_.handbrake * car_.handbrake_torque;
         }
-        out.brake_torque = stop_torque;
-        const JPH::WheelSettings* settings = w->GetSettings();
-        out.compression = settings->mSuspensionMaxLength - w->GetSuspensionLength();
-        float omega = w->GetAngularVelocity();
+        out.brake_torque = brake;
 
-        if (!w->HasContact()) {
-            // En el aire: el par motor la acelera y el freno la para, sin neumático.
-            anchored_[index] = 0;
-            out.compression = 0.0f;
-            for (int s = 0; s < kWheelSubsteps; ++s) {
-                omega = toward_zero(omega + h * drive_torque / inertia, h * stop_torque / inertia);
-            }
-            w->SetAngularVelocity(omega);
-            out.omega = omega;
-            continue;
+        JPH::RVec3 point = JPH::RVec3::sZero();
+        JPH::Vec3 longitudinal = JPH::Vec3::sZero();
+        JPH::Vec3 lateral = JPH::Vec3::sZero();
+        if (w->HasContact()) {
+            // Carga: la impulsión normal de la suspensión (con la barra y el tope) del paso
+            // anterior.
+            in.load = rmath::max(0.0f, w->GetSuspensionLambda() / dt);
+            const Surface surface = contact_surface_[index];
+            in.mu = car_.mu(surface);
+            point = w->GetContactPosition();
+            longitudinal = w->GetContactLongitudinal();
+            lateral = w->GetContactLateral();
+            const JPH::Vec3 velocity = body->GetPointVelocity(point) - w->GetContactPointVelocity();
+            in.vx = velocity.Dot(longitudinal);
+            in.vy = velocity.Dot(lateral);
+            out.contact = true;
+            out.surface = surface;
+            out.load = in.load;
+            out.h = contact_h_[index];
+            out.compression = w->GetSettings()->mSuspensionMaxLength - w->GetSuspensionLength();
         }
+        // Freno, freno de mano y rodadura: pares de Coulomb sobre la rueda.
+        in.stop_torque = brake + car_.rolling_resistance * in.load * r;
 
-        // Carga: la impulsión normal de la suspensión (con la barra y el tope) del paso
-        // anterior.
-        const float load = rmath::max(0.0f, w->GetSuspensionLambda() / dt);
-        const Surface surface = contact_surface_[index];
-        const float mu = car_.mu(surface);
-        const JPH::RVec3 point = w->GetContactPosition();
-        const JPH::Vec3 longitudinal = w->GetContactLongitudinal();
-        const JPH::Vec3 lateral = w->GetContactLateral();
-        const JPH::Vec3 velocity = body->GetPointVelocity(point) - w->GetContactPointVelocity();
-        const float vx = velocity.Dot(longitudinal);
-        const float vy = velocity.Dot(lateral);
-        const float speed = rmath::sqrt(vx * vx + vy * vy);
-        out.contact = true;
-        out.surface = surface;
-        out.load = load;
-        out.h = contact_h_[index];
-
-        const float denominator = rmath::max(rmath::abs(vx), car_.min_slip_speed);
-        const float c_kappa = car_.long_stiffness * load;
-        const float c_alpha = car_.lat_stiffness * load;
-        const float alpha = rmath::atan2(vy, denominator);
-        out.alpha = alpha;
-        const float limit = mu * load;
-        const float stop_total = stop_torque + car_.rolling_resistance * load * r;
-
-        // Ancla de parada: con el freno ganando al motor y la rueda casi quieta, un muelle
-        // sujeta el punto de contacto. Su fuerza no pasa de μ·Fz ni de lo que da el freno.
-        const bool hold =
-            stop_torque > 0.0f && stop_torque > rmath::abs(drive_torque) && load > 0.0f;
-        if (!hold) {
-            anchored_[index] = 0;
-        } else if (anchored_[index] == 0 && speed < car_.hold_speed &&
-                   rmath::abs(omega * r) < car_.hold_speed) {
-            anchored_[index] = 1;
-            anchor_[index] = {point.GetX(), point.GetY(), point.GetZ()};
+        // Giro y huella en subpasos con la velocidad del cuerpo fija; al cuerpo, la media.
+        WheelDynamics state{w->GetAngularVelocity(), u_[index], w_[index]};
+        float sum_fx = 0.0f;
+        float sum_fy = 0.0f;
+        for (int s = 0; s < kWheelSubsteps; ++s) {
+            const TireForce f = step_tire(car_, in, h, !explicit_wheels_, state);
+            sum_fx += f.fx;
+            sum_fy += f.fy;
         }
+        w->SetAngularVelocity(state.omega);
+        u_[index] = state.u;
+        w_[index] = state.w;
+        const float fx = sum_fx / kWheelSubsteps;
+        const float fy = sum_fy / kWheelSubsteps;
 
-        float fx = 0.0f;
-        float fy = 0.0f;
-        if (anchored_[index] != 0) {
-            const std::array<double, 3>& anchor = anchor_[index];
-            const JPH::Vec3 offset(point - JPH::RVec3(anchor[0], anchor[1], anchor[2]));
-            const float dx = offset.Dot(longitudinal);
-            const float dy = offset.Dot(lateral);
-            fx = -anchor_stiffness_ * dx - anchor_damping_ * vx;
-            fy = -anchor_stiffness_ * dy - anchor_damping_ * vy;
-            const float anchor_limit = rmath::min(limit, stop_torque / r);
-            const float magnitude = rmath::sqrt(fx * fx + fy * fy);
-            if (magnitude > anchor_limit) {
-                // Se rompe: Coulomb. El ancla se arrastra hasta donde el muelle da el límite;
-                // si además la rueda ya se mueve, se suelta.
-                const float scale = anchor_limit / magnitude;
-                fx *= scale;
-                fy *= scale;
-                const float new_dx = -(fx + anchor_damping_ * vx) / anchor_stiffness_;
-                const float new_dy = -(fy + anchor_damping_ * vy) / anchor_stiffness_;
-                const JPH::RVec3 moved =
-                    point - JPH::RVec3(longitudinal * new_dx + lateral * new_dy);
-                anchor_[index] = {moved.GetX(), moved.GetY(), moved.GetZ()};
-                if (speed > car_.hold_speed) {
-                    anchored_[index] = 0;
-                }
-            }
-            omega = 0.0f;
-            out.anchored = true;
-            out.contact_speed = speed;
-            out.kappa = -vx / denominator;
-        } else {
-            // Giro de la rueda en subpasos con la velocidad del cuerpo fija. Semi-implícito en
-            // el neumático: ω' = ω + h·(T − r·Fx(ω)) / (I + h·r·∂Fx/∂ω), con ∂Fx/∂ω = 0 si la
-            // fuerza está en el límite. El freno y la rodadura llevan ω hacia 0 con el mismo
-            // denominador y nunca la invierten.
-            const float blend = rmath::clamp(speed / car_.low_speed_blend, 0.0f, 1.0f);
-            const float fy_free = blend * (-c_alpha * alpha) +
-                                  (1.0f - blend) * (-c_alpha / car_.low_speed_blend * vy);
-            float sum_fx = 0.0f;
-            float sum_fy = 0.0f;
-            float kappa = 0.0f;
-            for (int s = 0; s < kWheelSubsteps; ++s) {
-                kappa = (omega * r - vx) / denominator;
-                float sub_fx = c_kappa * kappa;
-                float sub_fy = fy_free;
-                float slope = c_kappa * r / denominator; // ∂Fx/∂ω
-                const float magnitude = rmath::sqrt(sub_fx * sub_fx + sub_fy * sub_fy);
-                if (magnitude > limit) {
-                    const float scale = magnitude > 0.0f ? limit / magnitude : 0.0f;
-                    sub_fx *= scale;
-                    sub_fy *= scale;
-                    slope = 0.0f;
-                }
-                if (explicit_wheels_) {
-                    slope = 0.0f;
-                }
-                const float denominator_i = inertia + h * r * slope;
-                const float free = omega + h * (drive_torque - r * sub_fx) / denominator_i;
-                const float next = toward_zero(free, h * stop_total / denominator_i);
-                sum_fx += sub_fx + slope * (next - omega);
-                sum_fy += sub_fy;
-                omega = next;
-            }
-            fx = sum_fx / kWheelSubsteps;
-            fy = sum_fy / kWheelSubsteps;
-            out.kappa = kappa;
-        }
-        w->SetAngularVelocity(omega);
-        out.omega = omega;
+        out.omega = state.omega;
+        out.locked = state.omega == 0.0f;
+        out.u = state.u;
+        out.w = state.w;
+        out.kappa = state.u / car_.relaxation_long;
+        out.alpha = rmath::atan(state.w / car_.relaxation_lat);
+        out.slip_x = state.omega * r - in.vx;
+        out.slip_y = -in.vy;
+        out.contact_speed = magnitude(in.vx, in.vy);
         out.fx = fx;
         out.fy = fy;
-
-        const JPH::Vec3 force = longitudinal * fx + lateral * fy;
-        body->AddForce(force, point);
-        applied_force_ += force;
+        if (out.contact) {
+            const JPH::Vec3 force = longitudinal * fx + lateral * fy;
+            body->AddForce(force, point);
+            applied_force_ += force;
+        }
     }
 
     // Resistencia aerodinámica en el centro de masas.
@@ -345,11 +378,16 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
 }
 
 void CarController::SaveState(JPH::StateRecorder& stream) const {
+    // Dinámico.
     stream.Write(static_cast<std::int8_t>(gear_));
     for (std::size_t i = 0; i < kWheelCount; ++i) {
-        stream.Write(anchored_[i]);
-        stream.Write(anchor_[i]);
+        stream.Write(u_[i]);
+        stream.Write(w_[i]);
         stream.Write(steer_[i]);
+    }
+    // Condición.
+    for (std::size_t i = 0; i < kWheelCount; ++i) {
+        stream.Write(radius_[i]);
     }
 }
 
@@ -358,35 +396,100 @@ void CarController::RestoreState(JPH::StateRecorder& stream) {
     stream.Read(gear);
     gear_ = static_cast<Gear>(gear);
     for (std::size_t i = 0; i < kWheelCount; ++i) {
-        stream.Read(anchored_[i]);
-        stream.Read(anchor_[i]);
+        stream.Read(u_[i]);
+        stream.Read(w_[i]);
         stream.Read(steer_[i]);
         mConstraint.GetWheel(static_cast<JPH::uint>(i))->SetSteerAngle(steer_[i]);
+    }
+    for (std::size_t i = 0; i < kWheelCount; ++i) {
+        stream.Read(radius_[i]);
     }
 }
 
 CarWheelTester::CarWheelTester(JPH::ObjectLayer layer, const ReliefSource& relief,
                                CarController& controller)
-    : cylinder_(new JPH::VehicleCollisionTesterCastCylinder(layer)), relief_(relief),
-      controller_(controller) {}
+    : layer_(layer), relief_(relief), controller_(controller) {}
+
+namespace {
+
+// El contacto más cercano del cilindro (como en VehicleCollisionTesterCastCylinder de Jolt).
+class ClosestHit final : public JPH::CastShapeCollector {
+public:
+    ClosestHit(JPH::PhysicsSystem& system, const JPH::RShapeCast& cast)
+        : system_(system), cast_(cast) {}
+
+    void AddHit(const JPH::ShapeCastResult& result) override {
+        const float early_out = result.GetEarlyOutFraction();
+        if (early_out >= GetEarlyOutFraction()) {
+            return;
+        }
+        const JPH::BodyLockRead lock(system_.GetBodyLockInterfaceNoLock(), result.mBodyID2);
+        const JPH::Body* hit = &lock.GetBody();
+        if (hit->IsSensor()) {
+            return;
+        }
+        UpdateEarlyOutFraction(early_out);
+        body = hit;
+        sub_shape = result.mSubShapeID2;
+        normal = -result.mPenetrationAxis.Normalized();
+        fraction = result.mFraction;
+    }
+
+    const JPH::Body* body = nullptr;
+    JPH::SubShapeID sub_shape;
+    JPH::Vec3 normal = JPH::Vec3::sZero();
+    float fraction = 0.0f;
+
+private:
+    JPH::PhysicsSystem& system_;
+    const JPH::RShapeCast& cast_;
+};
+
+} // namespace
 
 bool CarWheelTester::Collide(JPH::PhysicsSystem& system, const JPH::VehicleConstraint& constraint,
                              JPH::uint wheel_index, JPH::RVec3Arg origin, JPH::Vec3Arg direction,
                              const JPH::BodyID& vehicle_body, JPH::Body*& out_body,
                              JPH::SubShapeID& out_sub_shape, JPH::RVec3& out_position,
                              JPH::Vec3& out_normal, float& out_suspension_length) const {
-    if (!cylinder_->Collide(system, constraint, wheel_index, origin, direction, vehicle_body,
-                            out_body, out_sub_shape, out_position, out_normal,
-                            out_suspension_length)) {
+    const JPH::DefaultBroadPhaseLayerFilter broad_phase_filter =
+        system.GetDefaultBroadPhaseLayerFilter(layer_);
+    const JPH::DefaultObjectLayerFilter object_filter = system.GetDefaultLayerFilter(layer_);
+    const JPH::IgnoreSingleBodyFilter body_filter(vehicle_body);
+    const JPH::WheelSettings* settings = constraint.GetWheel(wheel_index)->GetSettings();
+    const float max_length = settings->mSuspensionMaxLength;
+    // Radio de la condición de la rueda, no el de los WheelSettings de Jolt.
+    const float radius = controller_.wheel_radius(static_cast<int>(wheel_index));
+    const float half_width = 0.5f * settings->mWidth;
+
+    // Cilindro con el eje a lo ancho de la rueda (gira alrededor de su y local).
+    JPH::RMat44 start =
+        constraint.GetWheelWorldTransform(wheel_index, JPH::Vec3::sAxisY(), JPH::Vec3::sAxisX());
+    start.SetTranslation(origin);
+    JPH::CylinderShape cylinder(half_width, radius, rmath::min(half_width, radius) * 0.1f);
+    cylinder.SetEmbedded();
+    const JPH::RShapeCast cast(&cylinder, JPH::Vec3::sOne(), start, direction * max_length);
+    JPH::ShapeCastSettings cast_settings;
+    cast_settings.mUseShrunkenShapeAndConvexRadius = true;
+    cast_settings.mReturnDeepestPoint = true;
+    ClosestHit hit(system, cast);
+    system.GetNarrowPhaseQueryNoLock().CastShape(cast, cast_settings,
+                                                 cast.mCenterOfMassStart.GetTranslation(), hit,
+                                                 broad_phase_filter, object_filter, body_filter);
+    if (hit.body == nullptr) {
         return false;
     }
+    out_body = const_cast<JPH::Body*>(hit.body);
+    out_sub_shape = hit.sub_shape;
+    out_normal = hit.normal;
+    out_suspension_length = max_length * hit.fraction;
+
     const auto* material =
         static_cast<const SurfaceMaterial*>(out_body->GetShape()->GetMaterial(out_sub_shape));
     const Surface surface = material->surface();
-    const float radius = constraint.GetWheel(wheel_index)->GetSettings()->mRadius;
     // El cilindro da el punto más profundo del contacto, que en suelo llano salta de un borde
-    // al otro del ancho de la rueda: el brazo de la suspensión, la muestra de h y el ancla
-    // saltarían con él. El contacto se pone bajo el centro de la rueda, en la normal.
+    // al otro del ancho de la rueda: el brazo de la suspensión y la muestra de h saltarían con
+    // él. El contacto se pone bajo el centro de la rueda, en la normal.
     const JPH::RVec3 center = origin + JPH::RVec3(direction * out_suspension_length);
     double h = 0.0;
     if (material->relief() != MicroRelief::None) {
@@ -397,7 +500,6 @@ bool CarWheelTester::Collide(JPH::PhysicsSystem& system, const JPH::VehicleConst
         const JPH::Vec3 forward = rotation * kCarForward;
         const JPH::Vec3 right = rotation * JPH::Vec3(1.0f, 0.0f, 0.0f);
         const float half_length = 0.5f * controller_.car().footprint_length;
-        const float half_width = 0.5f * controller_.car().wheel_width;
         double sum = 0.0;
         for (int a = -1; a <= 1; ++a) {
             for (int b = -1; b <= 1; ++b) {
@@ -416,15 +518,12 @@ bool CarWheelTester::Collide(JPH::PhysicsSystem& system, const JPH::VehicleConst
     return true;
 }
 
-void CarWheelTester::PredictContactProperties(
-    JPH::PhysicsSystem& system, const JPH::VehicleConstraint& constraint, JPH::uint wheel_index,
-    JPH::RVec3Arg origin, JPH::Vec3Arg direction, const JPH::BodyID& vehicle_body,
-    JPH::Body*& io_body, JPH::SubShapeID& io_sub_shape, JPH::RVec3& io_position,
-    JPH::Vec3& io_normal, float& io_suspension_length) const {
+void CarWheelTester::PredictContactProperties(JPH::PhysicsSystem&, const JPH::VehicleConstraint&,
+                                              JPH::uint, JPH::RVec3Arg, JPH::Vec3Arg,
+                                              const JPH::BodyID&, JPH::Body*&, JPH::SubShapeID&,
+                                              JPH::RVec3&, JPH::Vec3&, float&) const {
     // No se usa: las ruedas se prueban en cada paso (SetNumStepsBetweenCollisionTest* = 1).
-    cylinder_->PredictContactProperties(system, constraint, wheel_index, origin, direction,
-                                        vehicle_body, io_body, io_sub_shape, io_position, io_normal,
-                                        io_suspension_length);
+    RALLY_CHECK(false, "CarWheelTester::PredictContactProperties: no se esperaba la llamada");
 }
 
 JPH::BodyCreationSettings car_body_settings(const CarData& car, JPH::RVec3Arg position,
