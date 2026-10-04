@@ -1,6 +1,6 @@
 #include "platform/forest_bench.h"
 
-#include "platform/box_demo.h"
+#include "platform/drive_demo.h"
 #include "platform/forest_layout.h"
 #include "platform/frame_pacer.h"
 #include "platform/perf_counter.h"
@@ -22,9 +22,9 @@ double mb(std::uint64_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1
 
 } // namespace
 
-ForestBench::ForestBench(BoxDemo& demo) { demo.set_forest_mode(kOrder[0]); }
+ForestBench::ForestBench(DriveDemo& demo) { demo.set_forest_mode(kOrder[0]); }
 
-bool ForestBench::update(const PerfCounter& perf, const FramePacer& pacer, BoxDemo& demo) {
+bool ForestBench::update(const PerfCounter& perf, const FramePacer& pacer, DriveDemo& demo) {
     if (mode_ >= kModes) {
         return false;
     }
@@ -59,7 +59,7 @@ bool ForestBench::update(const PerfCounter& perf, const FramePacer& pacer, BoxDe
 }
 
 void ForestBench::write_report(const PerfCounter& perf, const FramePacer& pacer,
-                               const BoxDemo& demo) {
+                               const DriveDemo& demo) {
     int number = 0;
     while (FileExists(TextFormat("%s/rendimiento_%03d.txt", GetApplicationDirectory(), number))) {
         ++number;

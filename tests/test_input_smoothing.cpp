@@ -1,3 +1,4 @@
+#include "car_worlds.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/input_shaping.h"
 #include "sim/input_smoothing.h"
@@ -248,12 +249,7 @@ struct Trajectory {
 // El bucle del juego a `steps_per_frame` (4 a 60 fps, 8 a 30 fps): reloj de paso fijo,
 // entrada leída una vez por fotograma y aplicada a todos sus pasos.
 Trajectory run_script(const std::array<std::int64_t, 3>& frame_cycle, int steps_per_frame) {
-    rally::sim::WorldDesc desc;
-    desc.bodies = {
-        {rally::sim::BodyMotion::Static, 0.0, -0.5, 0.0, 20.0f, 0.5f, 20.0f},
-        {rally::sim::BodyMotion::Dynamic, 0.0, 0.5, 0.0, 0.5f, 0.5f, 0.5f},
-    };
-    desc.controlled = 1;
+    const rally::sim::WorldDesc desc = rally::tests::flat_world(rally::sim::Surface::Asphalt);
     rally::sim::SimWorld world;
     world.build(desc);
     world.seal();

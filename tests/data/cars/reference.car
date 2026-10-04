@@ -1,0 +1,76 @@
+# Copia congelada de data/cars/mid_awd_turbo.car (tarea 2.4) para la huella y los tests.
+# No se toca al ajustar el manejo (2.10); solo la cambian las tareas que cambian el código de
+# la simulación (por ejemplo, al añadir claves).
+# Coche de la 1.0: 4x4 con motor central y turbo, inspirado en el Peugeot 205 T16 Evo 1.
+# Formato: secciones [nombre], "clave = valor", comentarios con #. Unidades SI salvo que la
+# clave diga otra (_deg, _kw). Ejes del coche: adelante -z, derecha +x, arriba +y; el origen
+# está en el suelo, bajo el punto medio entre los ejes, con el coche en equilibrio.
+# Origen de cada valor: "fuente" (datos publicados), "estimado" o "valor de partida". Los
+# estimados y los de partida se ajustan en la tarea 2.10.
+
+[chassis]
+mass = 1100               # kg con dos ocupantes y combustible. Estimado (coche: 940-980 kg, fuente)
+front_weight = 0.45       # reparto de peso delante/detrás 45/55. Fuente
+wheelbase = 2.54          # m. Aproximado, verificar
+track = 1.43              # m. Aproximado, verificar
+cg_height = 0.45          # m sobre el suelo. Estimado
+inertia_yaw = 1350        # kg·m². Estimado
+inertia_pitch = 1250      # kg·m². Estimado
+inertia_roll = 380        # kg·m². Estimado
+box_length = 3.82         # m: caja de colisión de la carrocería. Aproximado
+box_width = 1.70          # m. Aproximado
+box_height = 1.17         # m: 1,35 m de alto total menos la altura libre. Aproximado
+ground_clearance = 0.18   # m del suelo a la caja, en equilibrio. Estimado (grava)
+cda = 0.75                # m². Estimado (sin carga aerodinámica)
+
+[wheels]
+radius = 0.31             # m. Estimado
+width = 0.20              # m. Estimado
+inertia = 1.2             # kg·m²: rueda, freno y palier. Estimado
+footprint_length = 0.18   # m: largo de la huella. Estimado
+
+[suspension]
+travel = 0.20             # m de recorrido total. Estimado (grava)
+frequency_front = 1.6     # Hz. Estimado (grava)
+frequency_rear = 1.8      # Hz. Estimado (grava)
+damping_ratio = 0.35      # fracción del crítico. Estimado
+antiroll_front = 15000    # N/m. Estimado
+antiroll_rear = 10000     # N/m. Estimado
+
+[brakes]
+max_torque = 4400         # N·m total con el freno a fondo. Estimado (~1,3 g en asfalto)
+front_share = 0.60        # fracción al eje delantero. Estimado
+handbrake_torque = 1500   # N·m por rueda trasera. Estimado
+hold_frequency = 4        # Hz: muelle del ancla de parada (ζ = 1). Valor de partida, se ajusta en 2.10
+hold_speed = 0.1          # m/s: por debajo, el freno ancla la rueda. Valor de partida, se ajusta en 2.10
+
+[steering]
+max_steer_deg = 30        # ángulo de la rueda interior. Estimado
+ackermann = 0.5           # fracción de Ackermann. Estimado
+
+# Neumático provisional (lo sustituye la Pacejka de la tarea 2.5): rigideces lineales
+# limitadas por el círculo de fricción, con un μ por superficie. Con estas rigideces la fuerza
+# lateral satura a ~4° con μ = 0,7; en grava, un neumático real llega a su máximo con más
+# ángulo (8-12°). Lo resuelve la Pacejka por superficie de la 2.5: no se compensa aquí.
+[tire]
+long_stiffness = 12       # Cκ / Fz, por unidad de κ. Valor de partida (provisional)
+lat_stiffness = 10        # Cα / Fz, por radián. Valor de partida (provisional)
+mu_asphalt = 1.0          # Valor de partida (provisional)
+mu_dirt = 0.75            # Valor de partida (provisional)
+mu_gravel = 0.7           # Valor de partida (provisional)
+mu_snow = 0.45            # Valor de partida (provisional)
+mu_sand = 0.5             # Valor de partida (provisional)
+rolling_resistance = 0.015 # coeficiente × carga. Valor de partida (provisional)
+min_slip_speed = 3        # m/s: denominador mínimo del deslizamiento. Valor de partida
+low_speed_blend = 2       # m/s: mezcla con el amortiguamiento lateral. Diseño
+
+# Tracción provisional (la sustituyen el motor y la transmisión de la tarea 2.6).
+[drive]
+max_torque = 3000         # N·m total a las ruedas. Valor de partida (provisional)
+max_power_kw = 250        # kW. Valor de partida (provisional)
+front_share = 0.33        # reparto del par 33/67. Fuente (Evo 1)
+
+[driver]
+eye_left = 0.37           # m a la izquierda del eje del coche. Estimado
+eye_height = 1.05         # m sobre el suelo. Estimado
+eye_behind_front_axle = 1.00 # m. Estimado

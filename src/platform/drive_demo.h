@@ -6,6 +6,7 @@
 #include "platform/recording_session.h"
 #include "platform/telemetry_history.h"
 #include "platform/zone_draw.h"
+#include "sim/car_data.h"
 #include "sim/sim_input.h"
 #include "sim/sim_world.h"
 #include "sim/surface.h"
@@ -14,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace rally::platform {
@@ -24,32 +26,36 @@ class FramePacer;
 class PerfCounter;
 struct FrameSteps;
 
-// Demo temporal hasta el coche (tarea 2.4): una caja de Jolt conducida con el teclado o el
-// mando como un coche simplificado y simulada a 240 Hz en SimWorld, en la zona de pruebas de
-// la fase 2 (por defecto) o en el recinto de la fase 1.
+// Demo de conducción (desde la tarea 2.4): el coche del archivo .car simulado a 240 Hz en
+// SimWorld, conducido con el teclado o el mando, en la zona de pruebas de la fase 2 (por
+// defecto) o en el recinto de la fase 1. Sin interior todavía (tarea 2.7).
 //
 // Conducción en platform/input.h (W/S acelerador y freno, A/D, Espacio freno de mano, Q/E
-// marchas, R recolocar, X salto temporal). Retroceso reinicia el mundo, K alterna la zona y
+// selector R – N – adelante, R recolocar). Retroceso reinicia el mundo, K alterna la zona y
 // el recinto, y en el recinto O lo reconstruye a 20 km del origen (o lo devuelve); todos
 // cierran la grabación de la partida y empiezan otra (grabaciones/AAAAMMDD-HHMMSS.rrec junto
-// al exe). En la zona, G cambia la superficie de la pista ciega y M el modo a ciegas: todas
-// las superficies del mismo color, sin h y sin nombres en el overlay; ahí G pasa a la
-// siguiente prueba de la serie de 15 (--blind-seed). Tab cambia la cámara (primera persona,
-// fija o, en la zona, detrás y por encima, y la vista de toda la zona), J dibuja en float del
-// mundo (depuración, para ver el temblor),
+// al exe). F5 relee el archivo del coche y reconstruye el mundo con el coche en el punto de
+// recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo
+// muestra con su línea y sigue el coche anterior. En la zona, G cambia la superficie de la
+// pista ciega y M el modo a ciegas: todas las superficies del mismo color, sin h y sin nombres
+// en el overlay; ahí G pasa a la siguiente prueba de la serie de 15 (--blind-seed). Tab
+// cambia la cámara (ojo del conductor del archivo del coche, persecución y fija en el recinto
+// o toda la zona), J dibuja en float del mundo (depuración, para ver el temblor),
 // F alterna frecuencia del monitor / 30 fps, I la interpolación, V la sincronización
 // vertical, P la pausa, C guarda una captura (captura_NNN.png junto al exe), N activa el
 // ajuste del dt al refresco del monitor, L empieza o acaba el registro de fotogramas
 // (fotogramas_NNN.csv junto al exe), B cambia el modo de la escena de medida del bosque
 // denso y T muestra las gráficas de la telemetría de los últimos 10 s (no en el modo a
 // ciegas). El contador de rendimiento (F1) es aparte: PerfCounter.
-class BoxDemo {
+class DriveDemo {
 public:
-    // Necesita la ventana abierta (fija los planos de recorte de raylib).
-    BoxDemo();
-    ~BoxDemo();
-    BoxDemo(const BoxDemo&) = delete;
-    BoxDemo& operator=(const BoxDemo&) = delete;
+    // Necesita la ventana abierta (fija los planos de recorte de raylib). `car_path`: el archivo
+    // del coche (--car o default_car_path()); si no se puede leer o tiene un error, aborta con
+    // el motivo (RALLY_CHECK).
+    explicit DriveDemo(std::string car_path);
+    ~DriveDemo();
+    DriveDemo(const DriveDemo&) = delete;
+    DriveDemo& operator=(const DriveDemo&) = delete;
 
     void handle_keys(FramePacer& pacer);
 
@@ -86,8 +92,8 @@ public:
     // Antes de los pasos del fotograma: deja sitio en la grabación (fuera del paso).
     void prepare_steps(int count);
 
-    // Un paso de 1/240 s, que queda grabado. Devuelve el impacto de la caja controlada en
-    // ese paso (m/s; 0 en pausa), para la vibración. En pausa no hay paso ni grabación.
+    // Un paso de 1/240 s, que queda grabado. Devuelve el impacto del coche en ese paso (m/s; 0 en
+    // pausa), para la vibración. En pausa no hay paso ni grabación.
     float step(const sim::SimInput& input);
 
     // Dibuja y presenta el fotograma, con el contador encima. input: la entrada aplicada en
@@ -99,7 +105,9 @@ public:
 private:
     // Termina la grabación del mundo actual y construye uno nuevo con su grabación.
     void reset();
-    void read_poses(std::vector<Pose>& poses) const;
+    // F5: relee el archivo del coche y reconstruye el mundo.
+    void reload_car();
+    void read_poses();
     // Descripción del mundo según el modo (zona o recinto) y la superficie de la pista ciega.
     void describe_world();
     void advance_zone_bench(std::int64_t frame_ns);
@@ -113,7 +121,7 @@ private:
     std::uint64_t blind_seed_ = 1;                      // --blind-seed
     std::array<sim::Surface, sim::kBlindTrials> blind_series_{};
     int blind_trial_ = 0; // prueba en curso (0..14)
-    int view_ = 0;        // Tab: 0 primera persona, 1 fija o detrás, 2 toda la zona
+    int view_ = 0;        // Tab: 0 ojo del conductor, 1 persecución, 2 fija o toda la zona
     ZoneDraw zone_draw_;
     // --bench-zone: recorrido de la cámara y tiempo transcurrido.
     bool zone_bench_ = false;
@@ -131,9 +139,22 @@ private:
     };
     std::vector<ZoneBenchFrame> zone_bench_ground_ms_;
     std::unique_ptr<sim::SimWorld> world_;
+    // Coche: archivo, su texto (va a la cabecera de las grabaciones), sus datos y el mensaje
+    // de la última recarga (F5).
+    std::string car_path_;
+    std::string car_text_;
+    sim::CarData car_;
+    std::string car_message_;
+    bool car_message_error_ = false;
     std::vector<Pose> previous_; // por cuerpo, en el orden de la descripción
     std::vector<Pose> current_;
     std::vector<Pose> drawn_; // poses del fotograma (interpoladas o no)
+    // Coche y ruedas en el paso anterior, en el último y en el fotograma.
+    Pose previous_car_;
+    Pose current_car_;
+    Pose drawn_car_;
+    std::array<sim::SimWorld::WheelPose, sim::kWheelCount> previous_wheels_{};
+    std::array<sim::SimWorld::WheelPose, sim::kWheelCount> current_wheels_{};
     bool interpolate_ = true;
     bool paused_ = false;             // P: congela la simulación
     bool capture_requested_ = false;  // C: captura del búfer al final del fotograma
@@ -156,5 +177,9 @@ private:
     int shift_down_presses_ = 0;
     int reset_presses_ = 0;
 };
+
+// Archivo del coche por defecto: data/cars/mid_awd_turbo.car, buscado desde la carpeta del exe
+// hacia arriba (así F5 relee el del repositorio). Vacío si no está.
+std::string default_car_path();
 
 } // namespace rally::platform

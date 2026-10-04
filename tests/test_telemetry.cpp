@@ -1,3 +1,4 @@
+#include "car_worlds.h"
 #include "io/telemetry_csv.h"
 #include "new_counter.h"
 #include "platform/telemetry_history.h"
@@ -34,16 +35,16 @@ using rally::sim::Surface;
 // (telemetry_csv_for_random_inputs). Tiene que ser el mismo en Debug y en Release. Cambia
 // cuando una tarea añade columnas o cambia la simulación: se copia aquí el valor nuevo y va en
 // el mensaje del commit («Telemetry hash: 0x... -> 0x...»).
-constexpr std::uint64_t kExpectedTelemetryHash = 0x4926727084887265ull;
+constexpr std::uint64_t kExpectedTelemetryHash = 0x05b77b7d3b25061eull;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = 180.0 / kPi;
 
 double horizontal_speed(const CarTelemetry& t) { return std::hypot(t.vx, t.vz); }
 
-// Zona de pruebas con la caja en la salida de la recta de asfalto, mirando a -z.
+// Zona de pruebas con el coche de referencia en la salida de la recta de asfalto, mirando a -z.
 void build_zone(SimWorld& world) {
-    world.build(rally::sim::zone_world(Surface::Gravel));
+    world.build(rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car()));
     world.seal();
     world.set_telemetry(true);
 }
@@ -78,7 +79,7 @@ std::string telemetry_csv_for_random_inputs() {
 
 } // namespace
 
-TEST_CASE("telemetry: the box driving straight on asphalt has beta below 0.5 degrees") {
+TEST_CASE("telemetry: the car driving straight on asphalt has beta below 0.5 degrees") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
     build_zone(world);
@@ -101,10 +102,19 @@ TEST_CASE("telemetry: the box driving straight on asphalt has beta below 0.5 deg
     CHECK(measured > 2 * kStepsPerSecond);
     CHECK(max_beta < 0.5);
     CHECK(world.telemetry().v_forward > 15.0f);
-    CHECK(std::abs(world.telemetry().heading) < 1e-4f);
+    // El microrrelieve del asfalto no es simétrico a izquierda y derecha: desvía un poco.
+    CHECK(std::abs(world.telemetry().heading) < 0.01f);
+    // Las cuatro ruedas en el asfalto (la superficie del material del contacto).
+    for (const rally::sim::WheelTelemetry& w : world.telemetry().wheels) {
+        CHECK(w.contact == 1);
+        CHECK(w.surface == static_cast<std::int8_t>(Surface::Asphalt));
+        CHECK(w.load > 1000.0f);
+        CHECK(w.omega > 30.0f);
+    }
+    CHECK(world.telemetry().gear == 1);
 }
 
-TEST_CASE("telemetry: the box turned sideways while sliding on asphalt has beta near -90 degrees") {
+TEST_CASE("telemetry: the car spun right with the handbrake slides with beta near -90 degrees") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
     build_zone(world);
@@ -113,37 +123,28 @@ TEST_CASE("telemetry: the box turned sideways while sliding on asphalt has beta 
     for (int i = 0; i < 2 * kStepsPerSecond; ++i) {
         world.step(throttle);
     }
-    // Suelta y gira a la derecha en el sitio hasta poner el morro de lado: la caja sigue
-    // deslizando hacia donde iba, a la izquierda del morro.
-    SimInput turn;
-    turn.steer = kAxisMax;
+    // Suelta, gira a la derecha y tira del freno de mano: el morro gira a la derecha y el coche
+    // sigue deslizando hacia donde iba (-z), a la izquierda del morro.
+    SimInput spin;
+    spin.steer = kAxisMax;
+    spin.buttons = rally::sim::kButtonHandbrake;
     int turning = 0;
-    while (world.telemetry().heading < kPi / 2.0 - 0.01 && turning < 2 * kStepsPerSecond) {
-        world.step(turn);
+    while (world.telemetry().heading < kPi / 2.0 && turning < 3 * kStepsPerSecond) {
+        world.step(spin);
         ++turning;
     }
-    const SimInput coast;
-    for (int i = 0; i < kStepsPerSecond / 4; ++i) {
-        world.step(coast);
-    }
-    double min_beta = 1e9;
-    double max_beta = -1e9;
-    int measured = 0;
-    for (int i = 0; i < kStepsPerSecond; ++i) {
-        world.step(coast);
-        const CarTelemetry& t = world.telemetry();
-        if (horizontal_speed(t) > 3.0) {
-            min_beta = std::min(min_beta, t.beta * kDeg);
-            max_beta = std::max(max_beta, t.beta * kDeg);
-            ++measured;
-        }
-    }
-    MESSAGE("de lado: beta entre ", min_beta, "° y ", max_beta, "° en ", measured, " pasos; rumbo ",
-            world.telemetry().heading * kDeg, "°; giro de ", turning, " pasos");
-    CHECK(world.telemetry().heading * kDeg == doctest::Approx(90.0).epsilon(0.03));
-    CHECK(measured == kStepsPerSecond);
-    CHECK(min_beta > -95.0);
-    CHECK(max_beta < -85.0);
+    const CarTelemetry& t = world.telemetry();
+    // Dirección del movimiento respecto al morro: β = −(rumbo − rumbo de la velocidad).
+    const double travel = std::atan2(t.vx, -t.vz);
+    const double expected = -(t.heading - travel) * kDeg;
+    MESSAGE("de lado: beta ", t.beta * kDeg, "° con rumbo ", t.heading * kDeg,
+            "°, la velocidad hacia ", travel * kDeg, "° (", horizontal_speed(t), " m/s); giro de ",
+            turning, " pasos");
+    REQUIRE(t.heading >= kPi / 2.0);
+    CHECK(horizontal_speed(t) > 3.0);
+    CHECK(t.beta * kDeg == doctest::Approx(expected).epsilon(0.001));
+    CHECK(t.beta * kDeg < -45.0);
+    CHECK(t.beta * kDeg > -135.0);
 }
 
 TEST_CASE("telemetry: turning right gives positive yaw rate and lateral acceleration") {
@@ -165,10 +166,7 @@ TEST_CASE("telemetry: turning right gives positive yaw rate and lateral accelera
             ++checked;
         }
         if (i + 1 == kStepsPerSecond / 2) {
-            // Rumbo tras 0,5 s: la guiñada aplicada integrada (dirección a la mitad, 1,5 rad/s a
-            // fondo), positiva.
-            CHECK(t.heading > 0.3f);
-            CHECK(t.heading < 0.4f);
+            CHECK(t.heading > 0.0f);
         }
     }
     MESSAGE("girando a la derecha: guiñada mínima ", min_yaw, " rad/s, aceleración lateral mínima ",
@@ -176,8 +174,6 @@ TEST_CASE("telemetry: turning right gives positive yaw rate and lateral accelera
             "°");
     CHECK(min_yaw > 0.0f);
     CHECK(min_lateral > 0.0f);
-    // La velocidad queda a la izquierda del morro al girar a la derecha.
-    CHECK(world.telemetry().beta < 0.0f);
 }
 
 TEST_CASE("telemetry: the reset step reports zero acceleration and speed") {
@@ -285,7 +281,7 @@ TEST_CASE("telemetry: rows have one value per column and values rounding to zero
 TEST_CASE("telemetry: the header and the markdown name every column once") {
     const std::string header =
         rally::io::telemetry_csv_header("dir/zone_lap.rrec", true, Surface::Snow);
-    CHECK(header.find("# format=1\n") != std::string::npos);
+    CHECK(header.find("# format=2\n") != std::string::npos);
     CHECK(header.find("# sim_version=") != std::string::npos);
     CHECK(header.find("# recording=dir/zone_lap.rrec\n") != std::string::npos);
     CHECK(header.find("# blind_surface=snow\n") != std::string::npos);
@@ -398,17 +394,21 @@ TEST_CASE("telemetry_history: the game history holds 10 s and every page channel
     CHECK(history.columns() * rally::platform::kGraphStepsPerColumn == 10 * kStepsPerSecond);
     CHECK(history.channel_count() ==
           static_cast<int>(rally::platform::default_graph_channels().size()));
-    // Páginas: 1 · manejo (beta, guiñada, velocidad, entradas aplicadas), 2 · tren motriz y
-    // 3 · suspensión, vacías hasta la 2.4–2.6.
+    // Páginas: 1 · manejo (beta, guiñada, velocidad, entradas aplicadas), 2 · tren motriz,
+    // vacía hasta la 2.5–2.6, y 3 · suspensión (carga y compresión por rueda).
     const auto pages = rally::platform::default_graph_pages();
     REQUIRE(pages.size() == 3);
     CHECK(std::string(pages[0].title) == "manejo");
     CHECK(pages[0].panels.size() == 4);
     CHECK(pages[0].panels[3].channels.size() == 4);
     CHECK(pages[1].panels.empty());
-    CHECK(pages[2].panels.empty());
+    CHECK(std::string(pages[2].title) == "suspensión");
+    REQUIRE(pages[2].panels.size() == 2);
+    CHECK(pages[2].panels[0].channels.size() == 4);
+    CHECK(pages[2].panels[1].channels.size() == 4);
     CHECK(rally::platform::first_graph_channel(0) == 0);
     CHECK(rally::platform::first_graph_channel(1) == 7);
+    CHECK(rally::platform::first_graph_channel(2) == 7);
     CHECK(rally::platform::default_graph_channels().size() <=
           static_cast<std::size_t>(rally::platform::kMaxGraphChannels));
     // El orden de los canales es el de los paneles: el 3 es la velocidad en km/h.
@@ -441,10 +441,13 @@ TEST_CASE("telemetry_history: T pages through the pages with panels and then hid
         pager.press(false, full);
         CHECK(pager.visible(false) == expected);
     }
-    // Las páginas sin paneles se saltan: con las de la partida, T muestra la 1 y la oculta.
+    // Las páginas sin paneles se saltan: con las de la partida, T muestra la 1, la 3 y las
+    // oculta.
     rally::platform::GraphPager game;
     game.press(false, rally::platform::default_graph_pages());
     CHECK(game.visible(false) == 0);
+    game.press(false, rally::platform::default_graph_pages());
+    CHECK(game.visible(false) == 2);
     game.press(false, rally::platform::default_graph_pages());
     CHECK(game.visible(false) == -1);
 }

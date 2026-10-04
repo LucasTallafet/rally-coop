@@ -2,11 +2,28 @@
 
 #include "sim/sim_input.h"
 
+#include <array>
 #include <cstdint>
 
 namespace rally::sim {
 
-// Telemetría del cuerpo controlado tras un paso (SimWorld::telemetry). Tamaño fijo y solo
+// Telemetría de una rueda tras un paso (sim/car_controller.h, WheelOutput). Ejes del contacto:
+// longitudinal hacia delante y lateral hacia la derecha.
+struct WheelTelemetry {
+    std::uint8_t contact = 0;  // 1 con la rueda en el suelo
+    std::int8_t surface = -1;  // superficie del material del contacto (Surface), -1 en el aire
+    float load = 0.0f;         // N: carga normal (suspensión del paso anterior)
+    float compression = 0.0f;  // m desde la extensión máxima de la suspensión
+    float kappa = 0.0f;        // deslizamiento longitudinal (ω·r − vx) / max(|vx|, mínimo)
+    float alpha = 0.0f;        // rad: ángulo de deriva, > 0 con la rueda yendo a su derecha
+    float fx = 0.0f;           // N: fuerza longitudinal media de los subpasos (adelante +)
+    float fy = 0.0f;           // N: fuerza lateral media de los subpasos (derecha +)
+    float omega = 0.0f;        // rad/s: giro de la rueda (> 0 rodando hacia delante)
+    float brake_torque = 0.0f; // N·m pedido por el freno y el freno de mano
+    float h = 0.0f;            // m: media del microrrelieve sobre la huella
+};
+
+// Telemetría del coche tras un paso (SimWorld::telemetry). Tamaño fijo y solo
 // lectura: la simulación la rellena al final de step() si la captura está encendida y nada la
 // vuelve a leer dentro de la simulación. Unidades SI. Las columnas del CSV, sus unidades y sus
 // signos están en tools/telemetry/columns.md (lo genera rally_replay columns --md).
@@ -67,6 +84,11 @@ struct CarTelemetry {
     std::int64_t lap_steps = -1;
 
     float impact = 0.0f; // m/s (SimWorld::last_impact)
+
+    // Coche (tarea 2.4): selector provisional (-1 R, 0 N, 1 adelante) y ruedas en el orden
+    // FL, FR, RL, RR.
+    std::int8_t gear = 0;
+    std::array<WheelTelemetry, 4> wheels{};
 };
 
 } // namespace rally::sim

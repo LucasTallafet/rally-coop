@@ -4,7 +4,7 @@
 
 namespace rally::sim {
 
-WorldDesc demo_arena(double offset) {
+WorldDesc demo_arena(double offset, const CarData& car) {
     WorldDesc desc;
     desc.bodies = {
         {BodyMotion::Static, 0.0, -0.5, 0.0, 15.0f, 0.5f, 15.0f},
@@ -12,7 +12,6 @@ WorldDesc demo_arena(double offset) {
         {BodyMotion::Static, 0.0, 1.0, 15.5, 16.0f, 1.0f, 0.5f},
         {BodyMotion::Static, -15.5, 1.0, 0.0, 0.5f, 1.0f, 15.0f},
         {BodyMotion::Static, 15.5, 1.0, 0.0, 0.5f, 1.0f, 15.0f},
-        {BodyMotion::Dynamic, 0.0, 0.5, 0.0, 0.5f, 0.5f, 0.5f},
         {BodyMotion::Dynamic, 4.0, 0.5, -3.0, 0.5f, 0.5f, 0.5f},
         {BodyMotion::Dynamic, -5.0, 0.75, 2.0, 0.75f, 0.75f, 0.75f},
     };
@@ -20,26 +19,24 @@ WorldDesc demo_arena(double offset) {
         box.x += offset;
         box.z += offset;
     }
-    desc.controlled = kDemoControlled;
+    desc.car = true;
+    desc.car_spawn.x = offset;
+    desc.car_spawn.z = offset;
+    desc.car_data = car;
     return desc;
 }
 
-} // namespace rally::sim
-
-namespace rally::sim {
-
-WorldDesc zone_world(Surface blind_surface, ZoneStart start_at) {
+WorldDesc zone_world(Surface blind_surface, const CarData& car, ZoneStart start_at) {
     const TestZone zone(blind_surface);
     WorldDesc desc;
     const RespawnPoint& start =
         start_at == ZoneStart::BlindTrack ? zone.blind_start() : zone.start();
-    BoxDesc box;
-    box.motion = BodyMotion::Dynamic;
-    box.x = start.x;
-    box.y = zone.ground_height(start.x, start.z) + box.half_y;
-    box.z = start.z;
-    desc.bodies = {box};
-    desc.controlled = kZoneControlled;
+    desc.car = true;
+    desc.car_spawn.x = start.x;
+    desc.car_spawn.y = zone.ground_height(start.x, start.z);
+    desc.car_spawn.z = start.z;
+    desc.car_spawn.yaw = static_cast<float>(start.yaw);
+    desc.car_data = car;
     desc.test_zone = true;
     desc.blind_surface = blind_surface;
     return desc;

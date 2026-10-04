@@ -5,14 +5,17 @@
 #include "sim/jolt_config.h"
 #include "sim/layers.h"
 #include "sim/rmath.h"
+#include "sim/surface_material.h"
 
 #include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/StateRecorderImpl.h>
 
@@ -28,22 +31,7 @@ constexpr JPH::uint kMaxBodyPairs = 1024;
 constexpr JPH::uint kMaxContactConstraints = 1024;
 constexpr std::size_t kTempAllocatorBytes = 4 * 1024 * 1024;
 
-constexpr float kMoveAcceleration = 10.0f; // m/s² con el acelerador a fondo
-constexpr float kTurnRate = 1.5f;          // rad/s alrededor de Y con la dirección a fondo
-constexpr float kJumpSpeed = 5.0f;         // m/s hacia arriba que suma el impulso de salto
-
 enum class State : std::uint8_t { Empty, Built, Sealed };
-
-// Material del suelo de la zona: lleva su superficie (el neumático la leerá en la 2.4).
-class SurfaceMaterial final : public JPH::PhysicsMaterial {
-public:
-    explicit SurfaceMaterial(Surface surface) : surface_(surface) {}
-    const char* GetDebugName() const override { return surface_key(surface_); }
-    Surface surface() const { return surface_; }
-
-private:
-    Surface surface_;
-};
 
 // Bloques de 4 × 4 muestras con 8 bits por muestra: en la rampa (la zona más inclinada) el
 // error de altura es de ~1,5 mm.
@@ -67,13 +55,17 @@ struct SimWorld::Impl {
     JPH::PhysicsSystem system;
 
     std::vector<JPH::BodyID> bodies; // en el orden de la descripción
-    JPH::BodyID controlled;          // inválido si no hay cuerpo controlado
-    float controlled_mass = 0.0f;
-    float controlled_damping = 0.0f; // amortiguamiento lineal, para last_impact
-    // Salida del cuerpo controlado (recolocar). En doubles y no en RVec3, que está alineado
-    // a 32 bytes y rellenaría Impl.
-    double spawn[3] = {0.0, 0.0, 0.0};
-    float controlled_half_y = 0.0f; // para apoyar la caja en el suelo al recolocar
+
+    // Coche. La restricción la poseen el PhysicsSystem y esta referencia.
+    JPH::BodyID car; // inválido si no hay coche
+    JPH::Ref<JPH::VehicleConstraint> car_constraint;
+    CarController* car_controller = nullptr; // lo posee la restricción
+    JPH::Ref<CarWheelTester> car_tester;
+    float car_mass = 0.0f;
+    CarSpawn car_spawn;
+    // Bandas de ruido de h para las losas de los tests (MicroRelief::Noise).
+    std::unique_ptr<TestZone> noise;
+
     // Mandos aplicados y botones del paso anterior. Es estado de la simulación que no está
     // en el SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
     ControlState controls;
@@ -94,6 +86,8 @@ struct SimWorld::Impl {
 
     // Rellena `telemetry` al final de un paso. Solo lee.
     void capture_telemetry(const SimInput& input, JPH::Vec3Arg before_velocity, bool reset);
+    // Recolocar: mueve el coche, pone sus velocidades y el controlador a cero.
+    void reset_car();
 };
 
 SimWorld::SimWorld() : impl_(std::make_unique<Impl>()) {}
@@ -104,19 +98,15 @@ void SimWorld::build(const WorldDesc& desc) {
     Impl& w = *impl_;
     RALLY_CHECK(w.state == State::Empty,
                 "SimWorld::build: el mundo ya está construido (tras seal() no se añaden cuerpos)");
-    RALLY_CHECK(desc.bodies.size() + (desc.test_zone ? 1 + kWallCount : 0) <= kMaxBodies,
+    RALLY_CHECK(desc.bodies.size() + (desc.test_zone ? 1 + kWallCount : 0) + 1 <= kMaxBodies,
                 "SimWorld::build: demasiados cuerpos");
+    RALLY_CHECK(!desc.car || desc.car_data.mass > 0.0f,
+                "SimWorld::build: el coche no tiene datos (WorldDesc::car_data)");
     const int count = static_cast<int>(desc.bodies.size());
-    RALLY_CHECK(desc.controlled >= -1 && desc.controlled < count,
-                "SimWorld::build: índice de cuerpo controlado fuera de rango");
-    RALLY_CHECK(desc.controlled == -1 ||
-                    desc.bodies[static_cast<std::size_t>(desc.controlled)].motion ==
-                        BodyMotion::Dynamic,
-                "SimWorld::build: el cuerpo controlado tiene que ser dinámico");
 
     JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
-    // Lote de cuerpos en el orden de creación: el suelo y los muros (si hay zona) y la
-    // descripción.
+    // Lote de cuerpos en el orden de creación: el suelo y los muros (si hay zona), la
+    // descripción y el coche.
     std::vector<JPH::BodyID> batch;
     if (desc.test_zone) {
         w.zone = std::make_unique<TestZone>(desc.blind_surface);
@@ -128,7 +118,7 @@ void SimWorld::build(const WorldDesc& desc) {
         w.zone_hash = sim::zone_hash(heights, surfaces, *w.zone);
         JPH::PhysicsMaterialList materials;
         for (int s = 0; s < kSurfaceCount; ++s) {
-            materials.push_back(new SurfaceMaterial(static_cast<Surface>(s)));
+            materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), MicroRelief::Zone));
         }
         JPH::HeightFieldShapeSettings ground_settings(
             heights.data(),
@@ -154,7 +144,9 @@ void SimWorld::build(const WorldDesc& desc) {
             const JPH::BodyCreationSettings wall_settings(
                 new JPH::BoxShape(JPH::Vec3(static_cast<float>(wall.half_x),
                                             static_cast<float>(wall.half_y),
-                                            static_cast<float>(wall.half_z))),
+                                            static_cast<float>(wall.half_z)),
+                                  JPH::cDefaultConvexRadius,
+                                  new SurfaceMaterial(Surface::Asphalt, MicroRelief::None)),
                 JPH::RVec3(wall.cx, wall.cy, wall.cz), JPH::Quat::sIdentity(),
                 JPH::EMotionType::Static, layers::kStatic);
             const JPH::Body* wall_body = bodies.CreateBody(wall_settings);
@@ -166,40 +158,53 @@ void SimWorld::build(const WorldDesc& desc) {
     for (int i = 0; i < count; ++i) {
         const BoxDesc& box = desc.bodies[static_cast<std::size_t>(i)];
         const bool dynamic = box.motion == BodyMotion::Dynamic;
-        JPH::BodyCreationSettings settings(
-            new JPH::BoxShape(JPH::Vec3(box.half_x, box.half_y, box.half_z)),
-            JPH::RVec3(box.x, box.y, box.z), JPH::Quat::sIdentity(),
+        if (box.micro && !w.noise) {
+            w.noise = std::make_unique<TestZone>();
+        }
+        const JPH::BodyCreationSettings settings(
+            new JPH::BoxShape(JPH::Vec3(box.half_x, box.half_y, box.half_z),
+                              JPH::cDefaultConvexRadius,
+                              new SurfaceMaterial(box.surface, box.micro ? MicroRelief::Noise
+                                                                         : MicroRelief::None)),
+            JPH::RVec3(box.x, box.y, box.z), JPH::Quat::sRotation(JPH::Vec3::sAxisX(), box.pitch),
             dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
             dynamic ? layers::kMoving : layers::kStatic);
-        if (i == desc.controlled) {
-            // Como un coche simplificado: se traslada en los tres ejes y solo gira alrededor
-            // de la vertical. No vuelca ni cabecea.
-            settings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX |
-                                    JPH::EAllowedDOFs::TranslationY |
-                                    JPH::EAllowedDOFs::TranslationZ | JPH::EAllowedDOFs::RotationY;
-        }
         const JPH::Body* body = bodies.CreateBody(settings);
         RALLY_CHECK(body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
         w.bodies.push_back(body->GetID());
-        if (i == desc.controlled) {
-            w.controlled = body->GetID();
-            w.controlled_mass = settings.GetMassProperties().mMass;
-            w.controlled_damping = settings.mLinearDamping;
-            w.spawn[0] = box.x;
-            w.spawn[1] = box.y;
-            w.spawn[2] = box.z;
-            w.controlled_half_y = box.half_y;
-        }
     }
 
     // AddBodiesPrepare reordena el array por capas: se le pasa una copia para conservar el
     // orden de la descripción en `bodies`.
     batch.insert(batch.end(), w.bodies.begin(), w.bodies.end());
+    JPH::Body* car_body = nullptr;
+    if (desc.car) {
+        const CarSpawn& spawn = desc.car_spawn;
+        car_body = bodies.CreateBody(
+            car_body_settings(desc.car_data, JPH::RVec3(spawn.x, spawn.y, spawn.z),
+                              JPH::Quat::sRotation(JPH::Vec3::sAxisY(), spawn.yaw), spawn.speed));
+        RALLY_CHECK(car_body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
+        w.car = car_body->GetID();
+        w.car_mass = desc.car_data.mass;
+        w.car_spawn = spawn;
+        batch.push_back(w.car);
+    }
     if (!batch.empty()) {
         const int batch_count = static_cast<int>(batch.size());
         const JPH::BodyInterface::AddState add_state =
             bodies.AddBodiesPrepare(batch.data(), batch_count);
         bodies.AddBodiesFinalize(batch.data(), batch_count, add_state, JPH::EActivation::Activate);
+    }
+    if (car_body != nullptr) {
+        w.car_constraint = make_car_constraint(*car_body, desc.car_data,
+                                               -w.system.GetGravity().GetY(), desc.explicit_wheels);
+        w.car_controller = static_cast<CarController*>(w.car_constraint->GetController());
+        w.car_tester = new CarWheelTester(
+            layers::kMoving, ReliefSource{w.zone.get(), w.noise.get()}, *w.car_controller);
+        w.car_constraint->SetVehicleCollisionTester(w.car_tester);
+        w.car_controller->set_rolling(desc.car_spawn.speed);
+        w.system.AddConstraint(w.car_constraint);
+        w.system.AddStepListener(w.car_constraint);
     }
     w.state = State::Built;
 }
@@ -223,46 +228,29 @@ void SimWorld::step(const SimInput& input) {
     if (reset_pressed) {
         w.controls.zero_axes();
     }
-    // Velocidad que tendría el cuerpo controlado tras el paso sin contactos, para el impacto.
-    JPH::Vec3 expected_velocity = JPH::Vec3::sZero();
-    // Posición antes del paso, para el cronómetro.
+    // Posición y velocidad antes del paso, para el cronómetro, el impacto y la telemetría.
     double before_x = 0.0;
     double before_z = 0.0;
-    // Velocidad antes del paso, para la aceleración de la telemetría.
     JPH::Vec3 before_velocity = JPH::Vec3::sZero();
-    if (!w.controlled.IsInvalid()) {
+    if (w.car_controller != nullptr) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
-        const JPH::RVec3 before = bodies.GetPosition(w.controlled);
+        const JPH::RVec3 before = bodies.GetPosition(w.car);
         before_x = before.GetX();
         before_z = before.GetZ();
-        if (w.telemetry_enabled) {
-            before_velocity = bodies.GetLinearVelocity(w.controlled);
-        }
+        before_velocity = bodies.GetLinearVelocity(w.car);
         constexpr float kAxisScale = 1.0f / kAxisMax;
-        const float throttle = rmath::clamp(
-            static_cast<float>(w.controls.throttle.applied - w.controls.brake.applied) * kAxisScale,
-            -1.0f, 1.0f);
-        const float steer =
+        CarControls controls;
+        controls.steer =
             rmath::clamp(static_cast<float>(w.controls.steer.applied) * kAxisScale, -1.0f, 1.0f);
-        // Adelante es -z local. Con la rotación limitada a Y, el empuje queda horizontal.
-        JPH::Vec3 input_acceleration = JPH::Vec3::sZero();
-        if (throttle != 0.0f) {
-            const JPH::Vec3 forward = bodies.GetRotation(w.controlled) * JPH::Vec3(0, 0, -1);
-            input_acceleration = forward * (throttle * kMoveAcceleration);
-            bodies.AddForce(w.controlled, input_acceleration * w.controlled_mass);
-        }
-        // La dirección fija la velocidad de giro en cada paso (también a 0): sin dirección no
-        // gira, aunque un choque lo empuje de lado. Un giro positivo alrededor de +y lleva -z
-        // hacia -x: girar a la derecha es negativo.
-        bodies.SetAngularVelocity(w.controlled, JPH::Vec3(0.0f, -steer * kTurnRate, 0.0f));
-        if ((w.controls.pressed & kButtonJump) != 0) {
-            bodies.AddImpulse(w.controlled, JPH::Vec3(0.0f, w.controlled_mass * kJumpSpeed, 0.0f));
-        }
-        // Como integra Jolt (MotionProperties::ApplyForceTorqueAndDragInternal): gravedad y
-        // fuerzas, y después el amortiguamiento. El impulso de salto ya está en la velocidad.
-        expected_velocity = (bodies.GetLinearVelocity(w.controlled) +
-                             (w.system.GetGravity() + input_acceleration) * kStepSeconds) *
-                            rmath::max(0.0f, 1.0f - w.controlled_damping * kStepSeconds);
+        controls.throttle =
+            rmath::clamp(static_cast<float>(w.controls.throttle.applied) * kAxisScale, 0.0f, 1.0f);
+        controls.brake =
+            rmath::clamp(static_cast<float>(w.controls.brake.applied) * kAxisScale, 0.0f, 1.0f);
+        controls.handbrake =
+            rmath::clamp(static_cast<float>(w.controls.handbrake) * kAxisScale, 0.0f, 1.0f);
+        controls.shift_up = (w.controls.pressed & kButtonShiftUp) != 0;
+        controls.shift_down = (w.controls.pressed & kButtonShiftDown) != 0;
+        w.car_controller->set_controls(controls);
     }
 
     const JPH::EPhysicsUpdateError error =
@@ -270,31 +258,22 @@ void SimWorld::step(const SimInput& input) {
     RALLY_CHECK(error == JPH::EPhysicsUpdateError::None,
                 "SimWorld::step: Jolt devolvió un error en Update");
 
-    if (!w.controlled.IsInvalid()) {
+    if (w.car_controller != nullptr) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
         if (reset_pressed) {
-            // Mover y poner a cero, nunca quitar y añadir. Un traslado no es un impacto.
-            JPH::RVec3 target(w.spawn[0], w.spawn[1], w.spawn[2]);
-            JPH::Quat rotation = JPH::Quat::sIdentity();
-            if (w.zone) {
-                const JPH::RVec3 at = bodies.GetPosition(w.controlled);
-                const RespawnPoint& r = w.zone->respawns()[static_cast<std::size_t>(
-                    w.zone->nearest_respawn(at.GetX(), at.GetZ()))];
-                target =
-                    JPH::RVec3(r.x, w.zone->ground_height(r.x, r.z) + w.controlled_half_y, r.z);
-                rotation = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), static_cast<float>(r.yaw));
-            }
-            bodies.SetPositionAndRotation(w.controlled, target, rotation,
-                                          JPH::EActivation::Activate);
-            bodies.SetLinearAndAngularVelocity(w.controlled, JPH::Vec3::sZero(),
-                                               JPH::Vec3::sZero());
+            w.reset_car();
             w.last_impact = 0.0f;
         } else {
-            const JPH::Vec3 velocity = bodies.GetLinearVelocity(w.controlled);
-            w.last_impact = (velocity - expected_velocity).Length();
+            // Lo que explican la gravedad y las fuerzas propias (el coche no tiene
+            // amortiguamiento de Jolt).
+            const JPH::Vec3 expected =
+                before_velocity +
+                (w.system.GetGravity() + w.car_controller->applied_force() / w.car_mass) *
+                    kStepSeconds;
+            w.last_impact = (bodies.GetLinearVelocity(w.car) - expected).Length();
         }
         if (w.lap) {
-            const JPH::RVec3 after = bodies.GetPosition(w.controlled);
+            const JPH::RVec3 after = bodies.GetPosition(w.car);
             w.lap->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
         }
     }
@@ -304,6 +283,26 @@ void SimWorld::step(const SimInput& input) {
     }
 }
 
+void SimWorld::Impl::reset_car() {
+    Impl& w = *this;
+    JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();
+    // Mover y poner a cero, nunca quitar y añadir. Un traslado no es un impacto.
+    JPH::RVec3 target(w.car_spawn.x, w.car_spawn.y, w.car_spawn.z);
+    JPH::Quat rotation = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), w.car_spawn.yaw);
+    if (w.zone) {
+        const JPH::RVec3 at = body_interface.GetPosition(w.car);
+        const RespawnPoint& r = w.zone->respawns()[static_cast<std::size_t>(
+            w.zone->nearest_respawn(at.GetX(), at.GetZ()))];
+        // El origen del coche está en el suelo.
+        target = JPH::RVec3(r.x, w.zone->ground_height(r.x, r.z), r.z);
+        rotation = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), static_cast<float>(r.yaw));
+    }
+    body_interface.SetPositionAndRotation(w.car, target, rotation, JPH::EActivation::Activate);
+    body_interface.SetLinearAndAngularVelocity(w.car, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+    w.car_controller->reset();
+    w.car_constraint->ResetWarmStart();
+}
+
 void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg before_velocity,
                                        bool reset) {
     Impl& w = *this;
@@ -311,15 +310,15 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
     t = CarTelemetry{};
     t.step = w.steps;
     t.target = input;
-    if (w.controlled.IsInvalid()) {
+    if (w.car_controller == nullptr) {
         return;
     }
     const JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();
-    const JPH::RVec3 com = body_interface.GetCenterOfMassPosition(w.controlled);
-    const JPH::Quat rotation = body_interface.GetRotation(w.controlled);
+    const JPH::RVec3 com = body_interface.GetCenterOfMassPosition(w.car);
+    const JPH::Quat rotation = body_interface.GetRotation(w.car);
     JPH::Vec3 v;
     JPH::Vec3 omega;
-    body_interface.GetLinearAndAngularVelocity(w.controlled, v, omega);
+    body_interface.GetLinearAndAngularVelocity(w.car, v, omega);
     const JPH::Vec3 forward = rotation * JPH::Vec3(0.0f, 0.0f, -1.0f);
     const JPH::Vec3 right = rotation * JPH::Vec3(1.0f, 0.0f, 0.0f);
     const JPH::Vec3 up = rotation * JPH::Vec3(0.0f, 1.0f, 0.0f);
@@ -361,6 +360,23 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
         t.lap_steps = lap_state.current();
     }
     t.impact = w.last_impact;
+    const CarController& controller = *w.car_controller;
+    t.gear = static_cast<std::int8_t>(controller.gear());
+    for (int i = 0; i < kWheelCount; ++i) {
+        const WheelOutput& out = controller.wheel(i);
+        WheelTelemetry& wt = t.wheels[static_cast<std::size_t>(i)];
+        wt.contact = out.contact ? 1 : 0;
+        wt.surface = out.contact ? static_cast<std::int8_t>(out.surface) : -1;
+        wt.load = out.load;
+        wt.compression = out.compression;
+        wt.kappa = out.kappa;
+        wt.alpha = out.alpha;
+        wt.fx = out.fx;
+        wt.fy = out.fy;
+        wt.omega = out.omega;
+        wt.brake_torque = out.brake_torque;
+        wt.h = out.h;
+    }
 }
 
 void SimWorld::set_telemetry(bool enabled) { impl_->telemetry_enabled = enabled; }
@@ -372,6 +388,64 @@ const CarTelemetry& SimWorld::telemetry() const { return impl_->telemetry; }
 const ControlState& SimWorld::controls() const { return impl_->controls; }
 
 float SimWorld::last_impact() const { return impl_->last_impact; }
+
+bool SimWorld::has_car() const { return impl_->car_controller != nullptr; }
+
+BodyPose SimWorld::car_pose() const {
+    RALLY_CHECK(has_car(), "SimWorld::car_pose: el mundo no tiene coche");
+    JPH::RVec3 position;
+    JPH::Quat rotation;
+    impl_->system.GetBodyInterfaceNoLock().GetPositionAndRotation(impl_->car, position, rotation);
+    return BodyPose{position.GetX(), position.GetY(), position.GetZ(), rotation.GetX(),
+                    rotation.GetY(), rotation.GetZ(), rotation.GetW()};
+}
+
+BodyPose SimWorld::car_center_of_mass() const {
+    BodyPose pose = car_pose();
+    const JPH::RVec3 com =
+        impl_->system.GetBodyInterfaceNoLock().GetCenterOfMassPosition(impl_->car);
+    pose.x = com.GetX();
+    pose.y = com.GetY();
+    pose.z = com.GetZ();
+    return pose;
+}
+
+BodyVelocity SimWorld::car_velocity() const {
+    RALLY_CHECK(has_car(), "SimWorld::car_velocity: el mundo no tiene coche");
+    JPH::Vec3 linear;
+    JPH::Vec3 angular;
+    impl_->system.GetBodyInterfaceNoLock().GetLinearAndAngularVelocity(impl_->car, linear, angular);
+    return BodyVelocity{linear.GetX(),  linear.GetY(),  linear.GetZ(),
+                        angular.GetX(), angular.GetY(), angular.GetZ()};
+}
+
+float SimWorld::car_mass() const {
+    RALLY_CHECK(has_car(), "SimWorld::car_mass: el mundo no tiene coche");
+    const JPH::BodyLockRead lock(impl_->system.GetBodyLockInterfaceNoLock(), impl_->car);
+    return 1.0f / lock.GetBody().GetMotionProperties()->GetInverseMass();
+}
+
+const CarController& SimWorld::car_controller() const {
+    RALLY_CHECK(has_car(), "SimWorld::car_controller: el mundo no tiene coche");
+    return *impl_->car_controller;
+}
+
+SimWorld::WheelPose SimWorld::car_wheel(int index) const {
+    RALLY_CHECK(has_car() && index >= 0 && index < kWheelCount,
+                "SimWorld::car_wheel: sin coche o rueda fuera de rango");
+    const JPH::Wheel* wheel = impl_->car_constraint->GetWheel(static_cast<JPH::uint>(index));
+    const JPH::WheelSettings* settings = wheel->GetSettings();
+    WheelPose pose;
+    pose.attach_x = settings->mPosition.GetX();
+    pose.attach_y = settings->mPosition.GetY();
+    pose.attach_z = settings->mPosition.GetZ();
+    pose.suspension_length = wheel->GetSuspensionLength();
+    pose.steer = wheel->GetSteerAngle();
+    pose.rotation = wheel->GetRotationAngle();
+    pose.radius = settings->mRadius;
+    pose.width = settings->mWidth;
+    return pose;
+}
 
 int SimWorld::body_count() const { return static_cast<int>(impl_->bodies.size()); }
 
@@ -434,6 +508,16 @@ std::string SimWorld::save_state() const {
     JPH::StateRecorderImpl recorder;
     impl_->system.SaveState(recorder);
     return recorder.GetData();
+}
+
+void SimWorld::restore_state(const std::string& state, const ControlState& controls) {
+    Impl& w = *impl_;
+    RALLY_CHECK(w.state == State::Sealed, "SimWorld::restore_state: el mundo no está sellado");
+    JPH::StateRecorderImpl recorder;
+    recorder.WriteBytes(state.data(), state.size());
+    RALLY_CHECK(w.system.RestoreState(recorder),
+                "SimWorld::restore_state: Jolt no pudo restaurar el estado");
+    w.controls = controls;
 }
 
 namespace {

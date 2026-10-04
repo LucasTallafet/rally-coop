@@ -17,7 +17,9 @@ from pathlib import Path
 STEPS_PER_SECOND = 240
 
 # Columnas que no son números.
-TEXT_COLUMNS = {"surface"}
+# Columnas de texto: la superficie bajo el centro de masas y la del contacto de cada rueda
+# (desde el formato 2, tarea 2.4).
+TEXT_COLUMNS = {"surface", "surface_fl", "surface_fr", "surface_rl", "surface_rr"}
 
 # Conversión para mostrar: (factor, unidad). Lo que no está aquí se muestra tal cual.
 _RAD = (180.0 / math.pi, "°")

@@ -9,7 +9,7 @@
 
 namespace rally::platform {
 
-class BoxDemo;
+class DriveDemo;
 class FramePacer;
 class PerfCounter;
 
@@ -26,14 +26,14 @@ public:
     static constexpr int kModes = 4;
 
     // Pone la demo en el primer modo.
-    explicit ForestBench(BoxDemo& demo);
+    explicit ForestBench(DriveDemo& demo);
 
     // Una vez por fotograma, después de PerfCounter::begin_frame. Devuelve false cuando ha
     // terminado y ha escrito el informe.
-    bool update(const PerfCounter& perf, const FramePacer& pacer, BoxDemo& demo);
+    bool update(const PerfCounter& perf, const FramePacer& pacer, DriveDemo& demo);
 
 private:
-    void write_report(const PerfCounter& perf, const FramePacer& pacer, const BoxDemo& demo);
+    void write_report(const PerfCounter& perf, const FramePacer& pacer, const DriveDemo& demo);
 
     int mode_ = 0;
     std::int64_t elapsed_ns_ = 0; // en el modo actual

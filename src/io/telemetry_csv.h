@@ -15,7 +15,8 @@ namespace rally::io {
 // entradas). Una sola tabla de columnas genera el CSV y su documentación
 // (tools/telemetry/columns.md, rally_replay columns --md): no pueden ir por separado.
 
-inline constexpr int kTelemetryFormatVersion = 1;
+// Versiones: 1 (tarea 2.3); 2 (tarea 2.4): el coche (selector y 11 columnas por rueda).
+inline constexpr int kTelemetryFormatVersion = 2;
 
 enum class ColumnKind : std::uint8_t {
     Integer, // número entero

@@ -23,7 +23,7 @@ target_link_libraries(rally_loop PRIVATE rally_sim rally_warnings)
 # SDL se usa directamente para el intervalo de presentación, la frecuencia del monitor y los
 # mandos (platform/gamepad).
 add_library(rally_platform STATIC
-    box_demo.cpp
+    drive_demo.cpp
     forest_bench.cpp
     forest_scene.cpp
     frame_graph.cpp

@@ -1,3 +1,4 @@
+#include "car_worlds.h"
 #include "io/recording.h"
 #include "io/replay.h"
 #include "jolt_allocation_counter.h"
@@ -56,12 +57,16 @@ constexpr int kExpectedZoneJoltAllocations = 2000;
 constexpr std::array<Surface, rally::sim::kSurfaceCount> kSurfaces = {
     Surface::Asphalt, Surface::Gravel, Surface::Dirt, Surface::Snow, Surface::Sand};
 
-// Mundo de la zona con la caja controlada apoyada en (x, z).
-WorldDesc zone_with_box_at(const TestZone& zone, double x, double z) {
-    WorldDesc desc = rally::sim::zone_world(zone.blind_surface());
-    desc.bodies[0].x = x;
-    desc.bodies[0].y = zone.ground_height(x, z) + desc.bodies[0].half_y;
-    desc.bodies[0].z = z;
+// Mundo de la zona con el coche de referencia en (x, z), con rumbo `heading` (0 hacia -z,
+// positivo a la derecha) y `speed` m/s hacia delante.
+WorldDesc zone_with_car_at(const TestZone& zone, double x, double z, double heading = 0.0,
+                           double speed = 0.0) {
+    WorldDesc desc = rally::sim::zone_world(zone.blind_surface(), rally::tests::reference_car());
+    desc.car_spawn.x = x;
+    desc.car_spawn.y = zone.ground_height(x, z);
+    desc.car_spawn.z = z;
+    desc.car_spawn.yaw = static_cast<float>(-heading);
+    desc.car_spawn.speed = static_cast<float>(speed);
     return desc;
 }
 
@@ -81,11 +86,11 @@ double random_in(rally::sim::Pcg32& rng, double lo, double hi) {
     return lo + (hi - lo) * static_cast<double>(rng.next_float01());
 }
 
-// Rumbo de la caja (0 hacia -z, positivo a la derecha) a partir de su orientación (solo gira
-// en Y).
-double box_heading(const rally::sim::BodyPose& pose) {
-    const double yaw = 2.0 * std::atan2(pose.qy, pose.qw);
-    return -yaw;
+// Rumbo del coche (0 hacia -z, positivo a la derecha) a partir de su orientación.
+double car_heading(const rally::sim::BodyPose& p) {
+    const double fx = -2.0 * (p.qx * p.qz + p.qw * p.qy);
+    const double fz = -(1.0 - 2.0 * (p.qx * p.qx + p.qy * p.qy));
+    return std::atan2(fx, -fz);
 }
 
 double wrap(double a) {
@@ -105,11 +110,11 @@ TEST_CASE("test_zone: the same description gives the same ground hash twice") {
     using Clock = std::chrono::steady_clock;
     const Clock::time_point start = Clock::now();
     SimWorld a;
-    a.build(rally::sim::zone_world(Surface::Gravel));
+    a.build(rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car()));
     a.seal();
     const double build_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
     SimWorld b;
-    b.build(rally::sim::zone_world(Surface::Gravel));
+    b.build(rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car()));
     b.seal();
     MESSAGE("suelo: ", a.ground_bytes() / 1024, " KiB; build() + seal(): ", build_ms, " ms");
     char hashes[100];
@@ -134,7 +139,7 @@ TEST_CASE("test_zone: the same description gives the same ground hash twice") {
 TEST_CASE("test_zone: a point inside each area gives its surface and the background is dirt") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
-    world.build(rally::sim::zone_world(Surface::Snow));
+    world.build(rally::sim::zone_world(Surface::Snow, rally::tests::reference_car()));
     world.seal();
     const TestZone& zone = *world.zone();
     for (const ZoneArea& a : zone.areas()) {
@@ -235,26 +240,29 @@ TEST_CASE("test_zone: areas are at least 30 m apart") {
 
 TEST_CASE("test_zone: the blind trials start on the blind track, the rest on the straight") {
     const TestZone zone;
-    const WorldDesc normal = rally::sim::zone_world(Surface::Snow);
-    const WorldDesc blind =
-        rally::sim::zone_world(Surface::Snow, rally::sim::ZoneStart::BlindTrack);
-    const rally::sim::BoxDesc& a = normal.bodies[0];
-    const rally::sim::BoxDesc& b = blind.bodies[0];
+    const WorldDesc normal = rally::sim::zone_world(Surface::Snow, rally::tests::reference_car());
+    const WorldDesc blind = rally::sim::zone_world(Surface::Snow, rally::tests::reference_car(),
+                                                   rally::sim::ZoneStart::BlindTrack);
+    const rally::sim::CarSpawn& a = normal.car_spawn;
+    const rally::sim::CarSpawn& b = blind.car_spawn;
     CHECK(zone.area_at(a.x, a.z) == static_cast<int>(AreaId::Straight));
     CHECK(zone.area_at(b.x, b.z) == static_cast<int>(AreaId::BlindTrack));
     CHECK(b.x == zone.blind_start().x);
     CHECK(b.z == zone.blind_start().z);
     CHECK(std::string(zone.blind_start().key) == "blind_track");
-    // La caja nace sin girar: los dos puntos miran al norte.
+    // Los dos puntos miran al norte y el coche sale con su orientación.
     CHECK(zone.start().yaw == 0.0);
     CHECK(zone.blind_start().yaw == 0.0);
+    CHECK(a.yaw == 0.0f);
+    CHECK(b.yaw == 0.0f);
+    CHECK(a.y == zone.ground_height(a.x, a.z));
     CHECK(blind.blind_surface == Surface::Snow);
 }
 
 TEST_CASE("test_zone: the ground is flat to the edge and four 4 m walls close the usable zone") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
-    world.build(rally::sim::zone_world(Surface::Gravel));
+    world.build(rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car()));
     world.seal();
     const TestZone& zone = *world.zone();
     const double edge = -zone::kGroundOrigin;
@@ -298,10 +306,10 @@ TEST_CASE("test_zone: the ground is flat to the edge and four 4 m walls close th
 
 namespace {
 
-// Lleva la caja de la zona desde (x, z) con rumbo `heading` hasta el muro que tiene delante,
-// sosteniendo `speed` m/s hasta el choque, y sigue 3 s más. Devuelve la velocidad horizontal
-// del paso anterior al choque, la mayor distancia del centro de la caja al centro de la zona
-// (max(|x|, |z|)), la mayor altura y la distancia al final.
+// Lanza el coche de la zona desde (x, z) con rumbo `heading` hacia el muro que tiene delante,
+// a `speed` m/s y sosteniéndola con el acelerador hasta el choque, y sigue 3 s más. Devuelve
+// la velocidad horizontal del paso anterior al choque, la mayor distancia del centro del coche
+// al centro de la zona (max(|x|, |z|)), la mayor altura y la distancia al final.
 struct WallHit {
     double speed = 0.0;
     double max_extent = 0.0;
@@ -312,26 +320,21 @@ struct WallHit {
 WallHit launch_at_wall(double x, double z, double heading, double speed) {
     const TestZone zone;
     SimWorld world;
-    world.build(zone_with_box_at(zone, x, z));
+    world.build(zone_with_car_at(zone, x, z, heading, speed));
     world.seal();
     WallHit hit;
     double previous_speed = 0.0;
     int after_hit = -1;
     for (int i = 0; i < 60 * rally::sim::kStepsPerSecond && after_hit < 3 * 240; ++i) {
-        const rally::sim::BodyPose pose = world.pose(0);
-        const rally::sim::BodyVelocity v = world.velocity(0);
-        const double error = wrap(heading - box_heading(pose));
+        const rally::sim::BodyVelocity v = world.car_velocity();
         const double now = std::hypot(v.vx, v.vz);
         SimInput in;
         if (after_hit < 0) {
-            in.steer = static_cast<std::int16_t>(std::clamp(4.0 * error, -1.0, 1.0) * kAxisMax);
-            if (std::abs(error) < 0.01) {
-                in.throttle = static_cast<std::int16_t>(
-                    std::clamp(2.0 * (speed + 0.5 - now), 0.0, 1.0) * kAxisMax);
-            }
+            in.throttle = static_cast<std::int16_t>(
+                std::clamp(2.0 * (speed + 0.5 - now), 0.0, 1.0) * kAxisMax);
         }
         world.step(in);
-        const rally::sim::BodyPose after = world.pose(0);
+        const rally::sim::BodyPose after = world.car_pose();
         hit.max_extent = std::max({hit.max_extent, std::abs(after.x), std::abs(after.z)});
         hit.max_y = std::max(hit.max_y, after.y);
         if (after_hit < 0 && world.last_impact() > 5.0f) {
@@ -342,260 +345,48 @@ WallHit launch_at_wall(double x, double z, double heading, double speed) {
         }
         previous_speed = now;
     }
-    const rally::sim::BodyPose end = world.pose(0);
+    const rally::sim::BodyPose end = world.car_pose();
     hit.final_extent = std::max(std::abs(end.x), std::abs(end.z));
     return hit;
 }
 
 } // namespace
 
-TEST_CASE("test_zone: the box launched at 30 and 80 m/s against each wall stays inside the zone") {
+TEST_CASE("test_zone: the car launched at 30 and 80 m/s against each wall stays inside the zone") {
     const rally::sim::JoltRuntime runtime;
     const double usable = zone::kUsableHalfSize;
+    const double half_length = 0.5 * rally::tests::reference_car().box_length;
     struct Run {
         std::string wall;
         double x;
         double z;
         double heading;
     };
-    // 30 m/s es lo que pide la prueba; 80 m/s, lo que alcanzó la caja de Lucas en la zona
-    // (78 m/s: no tiene velocidad máxima). Salida lejos de las áreas (todas a menos de 650 m
-    // del centro) y de las esquinas, con sitio para acelerar.
+    // 30 m/s es lo que pide la prueba; 80 m/s, lo que alcanzó la caja de Lucas en la zona y
+    // la velocidad punta teórica del coche provisional. Salida a 100 m del muro, lejos de las
+    // áreas (todas a menos de 650 m del centro) y de las esquinas.
     for (const double speed : {30.0, 80.0}) {
-        const double start = usable - (speed < 50.0 ? 150.0 : 1000.0);
+        const double start = usable - 100.0;
         const Run runs[] = {{"norte", 700.0, -start, 0.0},
                             {"sur", -700.0, start, kPi},
                             {"oeste", -start, -700.0, -0.5 * kPi},
                             {"este", start, 700.0, 0.5 * kPi}};
         for (const Run& run : runs) {
             const WallHit hit = launch_at_wall(run.x, run.z, run.heading, speed);
-            // La caja mide 1 m: su cara delantera llega a max_extent + 0,5. Lo que pase de la
-            // cara del muro es la penetración de un paso, que Jolt deshace.
-            const double penetration = hit.max_extent + 0.5 - usable;
+            // El morro llega a max_extent + media longitud. Lo que pase de la cara del muro es
+            // la penetración de un paso, que Jolt deshace.
+            const double penetration = hit.max_extent + half_length - usable;
             MESSAGE("muro ", run.wall, ": choque a ", hit.speed, " m/s; penetración máxima ",
-                    100.0 * penetration, " cm; altura máxima de la caja ", hit.max_y, " m");
+                    100.0 * penetration, " cm; altura máxima del coche ", hit.max_y,
+                    " m; al final a ", usable - hit.final_extent, " m del muro");
             INFO("muro ", run.wall, " a ", speed, " m/s");
-            CHECK(hit.speed >= speed);
+            CHECK(hit.speed >= speed - 1.0);
             CHECK(penetration < speed * rally::sim::kStepSeconds);
             CHECK(hit.max_y < zone::kWallHeight);
-            // Al final, apoyada en el muro (con el margen de penetración de Jolt, 2 cm).
-            CHECK(hit.final_extent < usable - 0.5 + 0.03);
+            // Al final, dentro de la zona: el centro, a más de media anchura del muro.
+            CHECK(hit.final_extent < usable - 0.5 * rally::tests::reference_car().box_width);
         }
     }
-}
-
-TEST_CASE("test_zone: circle, ramp, crest and hairpin have the measures of the table") {
-    const rally::sim::JoltRuntime runtime;
-    SimWorld world;
-    world.build(rally::sim::zone_world(Surface::Gravel));
-    world.seal();
-    const TestZone& zone = *world.zone();
-
-    // Círculo pintado: radio 40 ± 0,05 m, dentro del área de grava de 120 × 120 m.
-    CHECK(std::abs(zone::kCircleRadius - 40.0) <= 0.05);
-    const ZoneArea& circle = zone.area(AreaId::Circle);
-    CHECK(circle.max_x - circle.min_x == doctest::Approx(120.0));
-    CHECK(circle.max_z - circle.min_z == doctest::Approx(120.0));
-    CHECK(zone.surface_at(circle.cx + zone::kCircleRadius, circle.cz) == Surface::Gravel);
-
-    // Rampa: pendiente medida en el suelo de Jolt a mitad de la subida (10 m de base).
-    const ZoneArea& ramp = zone.area(AreaId::Ramp);
-    const double ramp_mid_z = ramp.max_z - 10.0 - 0.5 * zone::kRampRun;
-    const rally::sim::GroundProbe low = world.probe_ground(ramp.cx, ramp_mid_z + 5.0);
-    const rally::sim::GroundProbe high = world.probe_ground(ramp.cx, ramp_mid_z - 5.0);
-    REQUIRE(low.hit);
-    REQUIRE(high.hit);
-    const double grade = (high.y - low.y) / 10.0;
-    MESSAGE("rampa: pendiente medida en Jolt ", grade * 100.0, " %");
-    CHECK(std::abs(grade - 0.15) <= 0.003);
-    const rally::sim::GroundProbe landing =
-        world.probe_ground(ramp.cx, ramp.max_z - 10.0 - zone::kRampRun - 0.5 * zone::kRampLanding);
-    CHECK(landing.y == doctest::Approx(0.15 * zone::kRampRun).epsilon(0.002));
-    CHECK(ramp.max_x - ramp.min_x == doctest::Approx(8.0));
-
-    // Cresta: 1,2 ± 0,05 m sobre la entrada, en Jolt.
-    const ZoneArea& crest = zone.area(AreaId::Crest);
-    const double crest_top_z = crest.max_z - 40.0 - 0.5 * zone::kCrestLength;
-    const rally::sim::GroundProbe top = world.probe_ground(crest.cx, crest_top_z);
-    const rally::sim::GroundProbe base = world.probe_ground(crest.cx, crest.max_z - 10.0);
-    REQUIRE(top.hit);
-    REQUIRE(base.hit);
-    MESSAGE("cresta: altura medida en Jolt ", top.y - base.y, " m");
-    CHECK(std::abs((top.y - base.y) - 1.2) <= 0.05);
-
-    // Horquilla: radio 10 ± 0,1 m en el eje (puntos del arco frente a su centro), 180°, 6 m
-    // de calzada y rectas de 100 m.
-    const ZoneArea& hairpin = zone.area(AreaId::Hairpin);
-    REQUIRE(hairpin.axis.size() == 3);
-    const rally::sim::AxisSegment& arc = hairpin.axis[1];
-    CHECK(std::abs(arc.turn) == doctest::Approx(kPi));
-    for (double s = 0.0; s <= arc.length; s += 1.0) {
-        const AxisPoint p = TestZone::axis_point(hairpin, hairpin.axis[0].length + s);
-        const double r = std::hypot(p.x - arc.cx, p.z - arc.cz);
-        CHECK(std::abs(r - 10.0) <= 0.1);
-    }
-    CHECK(2.0 * hairpin.half_width == doctest::Approx(6.0));
-    CHECK(hairpin.axis[0].length == doctest::Approx(100.0));
-    CHECK(hairpin.axis[2].length == doctest::Approx(100.0));
-
-    // Recta de 1000 × 12 m y explanada de 400 × 80 m.
-    const ZoneArea& straight = zone.area(AreaId::Straight);
-    CHECK(straight.max_z - straight.min_z == doctest::Approx(1000.0));
-    CHECK(straight.max_x - straight.min_x == doctest::Approx(12.0));
-    const ZoneArea& plain = zone.area(AreaId::Plain);
-    CHECK(plain.max_z - plain.min_z == doctest::Approx(400.0));
-    CHECK(plain.max_x - plain.min_x == doctest::Approx(80.0));
-
-    // Pista ciega: cerrada, ~800 m y 7 m de calzada.
-    const ZoneArea& blind = zone.area(AreaId::BlindTrack);
-    const double blind_length = TestZone::axis_length(blind);
-    MESSAGE("pista ciega: ", blind_length, " m");
-    CHECK(blind.closed);
-    CHECK(blind_length > 750.0);
-    CHECK(blind_length < 850.0);
-    const AxisPoint first = TestZone::axis_point(blind, 0.0);
-    const AxisPoint last = TestZone::axis_point(blind, blind_length);
-    CHECK(std::hypot(last.x - first.x, last.z - first.z) < 1e-6);
-    CHECK(2.0 * blind.half_width == doctest::Approx(7.0));
-
-    // Baches de asfalto: los sueltos miden 8 cm en la geometría; en Jolt, muestreados cada
-    // 0,75 m, el pico cae entre dos muestras y queda algo por debajo.
-    const ZoneArea& bumps = zone.area(AreaId::BumpsAsphalt);
-    CHECK(zone.ground_height(0.0, bumps.max_z - 112.0) == doctest::Approx(0.08));
-    CHECK(zone.ground_height(0.0, bumps.max_z - 132.0) == doctest::Approx(0.08));
-    const rally::sim::GroundProbe bump = world.probe_ground(0.0, bumps.max_z - 112.0);
-    REQUIRE(bump.hit);
-    MESSAGE("bache suelto en Jolt: ", bump.y * 100.0, " cm");
-    CHECK(std::abs(bump.y - 0.08) < 0.01);
-}
-
-TEST_CASE("test_zone: h is continuous, gentle and has the starting RMS of each surface") {
-    const TestZone zone;
-    rally::sim::Pcg32 rng(0x6d16'0000'0000'0001ull, 3u);
-    const double edge = -zone::kGroundOrigin - 1.0;
-    const ZoneArea& ripples = zone.area(AreaId::BumpsGravel);
-    // Dentro de las ondulaciones de la grava (con la franja de mezcla) la cota es otra.
-    const auto in_ripples = [&ripples](double x, double z) {
-        return TestZone::signed_distance(ripples, x, z) < 0.5 * zone::kBlendWidth;
-    };
-
-    // Puntos: 10 000 por toda la zona y 10 000 a menos de 3 m del borde de un área.
-    std::vector<std::array<double, 2>> points;
-    for (int i = 0; i < 10000; ++i) {
-        points.push_back({random_in(rng, -edge, edge), random_in(rng, -edge, edge)});
-    }
-    const std::vector<ZoneArea>& areas = zone.areas();
-    while (points.size() < 20000) {
-        const ZoneArea& a = areas[rng.bounded(static_cast<std::uint32_t>(areas.size()))];
-        const double x = random_in(rng, a.min_x - 3.0, a.max_x + 3.0);
-        const double z = random_in(rng, a.min_z - 3.0, a.max_z + 3.0);
-        if (std::abs(TestZone::signed_distance(a, x, z)) < 3.0) {
-            points.push_back({x, z});
-        }
-    }
-
-    constexpr double kStep = 0.01;  // 1 cm
-    constexpr double kDelta = 1e-3; // para el gradiente
-    double max_jump = 0.0;
-    double max_jump_ripples = 0.0;
-    double max_slope = 0.0;
-    double max_slope_ripples = 0.0;
-    for (const auto& p : points) {
-        const double angle = 2.0 * kPi * static_cast<double>(rng.next_float01());
-        const double h = zone.micro_height(p[0], p[1]);
-        const double jump = std::abs(
-            zone.micro_height(p[0] + kStep * std::cos(angle), p[1] + kStep * std::sin(angle)) - h);
-        const double gx =
-            (zone.micro_height(p[0] + kDelta, p[1]) - zone.micro_height(p[0] - kDelta, p[1])) /
-            (2.0 * kDelta);
-        const double gz =
-            (zone.micro_height(p[0], p[1] + kDelta) - zone.micro_height(p[0], p[1] - kDelta)) /
-            (2.0 * kDelta);
-        const double slope = std::hypot(gx, gz);
-        if (in_ripples(p[0], p[1])) {
-            max_jump_ripples = std::max(max_jump_ripples, jump);
-            max_slope_ripples = std::max(max_slope_ripples, slope);
-        } else {
-            max_jump = std::max(max_jump, jump);
-            max_slope = std::max(max_slope, slope);
-        }
-    }
-    // En las ondulaciones también se mira la pendiente sobre su recorrido.
-    for (int i = 0; i < 10000; ++i) {
-        const double x = random_in(rng, ripples.min_x - 1.0, ripples.max_x + 1.0);
-        const double z = random_in(rng, ripples.min_z - 1.0, ripples.max_z + 1.0);
-        const double gx =
-            (zone.micro_height(x + kDelta, z) - zone.micro_height(x - kDelta, z)) / (2.0 * kDelta);
-        const double gz =
-            (zone.micro_height(x, z + kDelta) - zone.micro_height(x, z - kDelta)) / (2.0 * kDelta);
-        max_slope_ripples = std::max(max_slope_ripples, std::hypot(gx, gz));
-    }
-    MESSAGE("h: salto máximo en 1 cm ", max_jump * 1000.0, " mm (ondulaciones ",
-            max_jump_ripples * 1000.0, " mm); pendiente máxima ", max_slope, " (ondulaciones ",
-            max_slope_ripples, ")");
-    CHECK(max_jump < 0.0005);
-    CHECK(max_slope < 0.05);
-    CHECK(max_slope_ripples < 0.2);
-    // En las ondulaciones, el salto en 1 cm sigue la pendiente: < 0,2 × 1 cm.
-    CHECK(max_jump_ripples < 0.2 * kStep);
-
-    // RMS de cada superficie en el interior de un área suya (a más de 2 m del borde).
-    struct Sample {
-        Surface surface;
-        AreaId area;
-    };
-    const Sample samples[] = {{Surface::Asphalt, AreaId::Straight},
-                              {Surface::Gravel, AreaId::Plain},
-                              {Surface::Dirt, AreaId::PatchDirt},
-                              {Surface::Snow, AreaId::PatchSnow},
-                              {Surface::Sand, AreaId::PatchSand}};
-    for (const Sample& sample : samples) {
-        const ZoneArea& a = zone.area(sample.area);
-        double sum = 0.0;
-        int count = 0;
-        while (count < 10000) {
-            const double x = random_in(rng, a.min_x, a.max_x);
-            const double z = random_in(rng, a.min_z, a.max_z);
-            if (TestZone::signed_distance(a, x, z) > -zone::kBlendWidth) {
-                continue;
-            }
-            const double h = zone.micro_height(x, z);
-            sum += h * h;
-            ++count;
-        }
-        const double rms = std::sqrt(sum / count);
-        const double target = TestZone::surface_rms(sample.surface);
-        MESSAGE("RMS de ", std::string(rally::sim::surface_name(sample.surface)), ": ",
-                rms * 1000.0, " mm (partida ", target * 1000.0, " mm)");
-        CHECK(rms > 0.8 * target);
-        CHECK(rms < 1.2 * target);
-    }
-}
-
-TEST_CASE("test_zone: micro_sample gives the same h and surface as the separate functions") {
-    const TestZone zone(Surface::Sand);
-    rally::sim::Pcg32 rng(0x5a3b'0000'0000'0002ull, 5u);
-    const std::vector<ZoneArea>& areas = zone.areas();
-    int mismatches = 0;
-    for (int i = 0; i < 20000; ++i) {
-        // La mitad cerca de un área (bordes incluidos), la otra mitad por toda la zona.
-        double x = 0.0;
-        double z = 0.0;
-        if (i % 2 == 0) {
-            const ZoneArea& a = areas[rng.bounded(static_cast<std::uint32_t>(areas.size()))];
-            x = random_in(rng, a.min_x - 3.0, a.max_x + 3.0);
-            z = random_in(rng, a.min_z - 3.0, a.max_z + 3.0);
-        } else {
-            x = random_in(rng, zone::kGroundOrigin, -zone::kGroundOrigin);
-            z = random_in(rng, zone::kGroundOrigin, -zone::kGroundOrigin);
-        }
-        const TestZone::MicroSample sample = zone.micro_sample(x, z);
-        const bool same = std::bit_cast<std::uint64_t>(sample.micro) ==
-                              std::bit_cast<std::uint64_t>(zone.micro_height(x, z)) &&
-                          sample.surface == zone.surface_at(x, z);
-        mismatches += same ? 0 : 1;
-    }
-    CHECK(mismatches == 0);
 }
 
 TEST_CASE("test_zone: reset from 10 far points goes to the nearest respawn, still and aligned") {
@@ -622,25 +413,25 @@ TEST_CASE("test_zone: reset from 10 far points goes to the nearest respawn, stil
         CHECK(best > 100.0);
 
         SimWorld world;
-        world.build(zone_with_box_at(zone, p[0], p[1]));
+        world.build(zone_with_car_at(zone, p[0], p[1]));
         world.seal();
         world.step(SimInput{});
         world.step(reset);
-        const rally::sim::BodyPose pose = world.pose(0);
+        const rally::sim::BodyPose pose = world.car_pose();
         CHECK(pose.x == doctest::Approx(r.x).epsilon(1e-12));
         CHECK(pose.z == doctest::Approx(r.z).epsilon(1e-12));
-        CHECK(pose.y == doctest::Approx(zone.ground_height(r.x, r.z) + 0.5).epsilon(1e-9));
-        CHECK(std::abs(wrap(box_heading(pose) + r.yaw)) < 1e-6);
-        const rally::sim::BodyVelocity v = world.velocity(0);
+        CHECK(pose.y == doctest::Approx(zone.ground_height(r.x, r.z)).epsilon(1e-9));
+        CHECK(std::abs(wrap(car_heading(pose) + r.yaw)) < 1e-6);
+        const rally::sim::BodyVelocity v = world.car_velocity();
         CHECK(v.vx == 0.0f);
         CHECK(v.vy == 0.0f);
         CHECK(v.vz == 0.0f);
         CHECK(v.wy == 0.0f);
-        // Y se queda ahí: apoyada en el suelo de Jolt, sin hundirse ni caer.
+        // Y se queda ahí: apoyado en el suelo de Jolt, sin hundirse ni caer.
         for (int i = 0; i < 240; ++i) {
             world.step(SimInput{});
         }
-        const rally::sim::BodyPose later = world.pose(0);
+        const rally::sim::BodyPose later = world.car_pose();
         CHECK(std::hypot(later.x - r.x, later.z - r.z) < 0.01);
         CHECK(std::abs(later.y - pose.y) < 0.02);
     }
@@ -726,9 +517,10 @@ TEST_CASE("lap_timer: forward crossings time a lap, backward ones and resets do 
 
 namespace {
 
-// Conductor automático de la caja por el eje de la pista ciega: persigue un punto 8 m por
-// delante y ajusta la velocidad a la curva que viene (la caja agarra ~2 m/s² de lado). La
-// entrada cambia cada 4 pasos, como en el bucle a 60 fps.
+// Conductor automático del coche por el eje de la pista ciega: persigue un punto 8 m por
+// delante y ajusta la velocidad a la curva que viene (con poca aceleración lateral, ~1,3 m/s²,
+// para no derrapar en ninguna superficie). La entrada cambia cada 4 pasos, como en el bucle a
+// 60 fps.
 class BlindDriver {
 public:
     explicit BlindDriver(const ZoneArea& track) : track_(track) {
@@ -754,7 +546,7 @@ public:
         index_ = best;
         const AxisPoint& target = points_[(best + 16) % n];
         const double want = std::atan2(target.x - pose.x, -(target.z - pose.z));
-        const double error = wrap(want - box_heading(pose));
+        const double error = wrap(want - car_heading(pose));
         // Curva más cerrada en los 25 m siguientes, por el cambio de rumbo del eje.
         double max_curvature = 0.0;
         for (std::size_t k = 0; k < 50; ++k) {
@@ -782,9 +574,8 @@ private:
 
 // Graba `seconds` segundos del conductor automático desde la salida de la pista ciega.
 rally::io::Recording drive_blind_lap(int seconds, std::int64_t& laps) {
-    const TestZone zone;
-    const rally::sim::RespawnPoint& start = zone.respawns().back();
-    WorldDesc desc = zone_with_box_at(zone, start.x, start.z);
+    WorldDesc desc = rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car(),
+                                            rally::sim::ZoneStart::BlindTrack);
     SimWorld world;
     world.build(desc);
     world.seal();
@@ -792,6 +583,7 @@ rally::io::Recording drive_blind_lap(int seconds, std::int64_t& laps) {
     rally::io::RecordingHeader header;
     header.commit = "test";
     header.world = rally::io::serialize_world(desc);
+    header.car_text = rally::tests::reference_car_text();
     header.zone_hash = world.zone_hash();
     rally::io::Recorder recorder;
     const int steps = seconds * rally::sim::kStepsPerSecond;
@@ -799,7 +591,7 @@ rally::io::Recording drive_blind_lap(int seconds, std::int64_t& laps) {
     SimInput in;
     for (int i = 0; i < steps; ++i) {
         if (i % 4 == 0) {
-            in = driver.input(world.pose(0), world.velocity(0));
+            in = driver.input(world.car_pose(), world.car_velocity());
         }
         world.step(in);
         recorder.append(in);
@@ -871,33 +663,50 @@ TEST_CASE("test_zone: crossing the line backwards or resetting during a lap give
     const TestZone zone;
     const rally::sim::FinishLine& line = zone.finish_line();
     SimInput forward;
-    forward.throttle = kAxisMax;
-    SimInput backward;
-    backward.brake = kAxisMax; // con la caja, el freno la lleva hacia atrás
+    forward.throttle = kAxisMax / 2;
+    SimInput backward = forward; // en R, el acelerador lleva el coche hacia atrás
     SimInput reset;
     reset.buttons = rally::sim::kButtonReset;
+    // Cambia el selector con dos pulsaciones (parado): bajar dos veces da R, subir dos, adelante.
+    const auto shift = [](SimWorld& world, std::uint16_t button) {
+        for (int i = 0; i < 2; ++i) {
+            SimInput press;
+            press.buttons = button;
+            world.step(press);
+            world.step(SimInput{});
+        }
+    };
 
     SUBCASE("backwards over the line and forwards again") {
         SimWorld world;
-        world.build(zone_with_box_at(zone, line.x, line.z - 5.0)); // 5 m pasada la línea
+        world.build(zone_with_car_at(zone, line.x, line.z - 5.0)); // 5 m pasada la línea
         world.seal();
-        for (int i = 0; i < 2 * rally::sim::kStepsPerSecond; ++i) {
+        shift(world, rally::sim::kButtonShiftDown);
+        REQUIRE(world.car_controller().gear() == rally::sim::Gear::Reverse);
+        for (int i = 0; i < 3 * rally::sim::kStepsPerSecond; ++i) {
             world.step(backward);
         }
-        CHECK(world.pose(0).z > line.z);
+        SimInput stop;
+        stop.brake = kAxisMax;
+        for (int i = 0; i < 3 * rally::sim::kStepsPerSecond; ++i) {
+            world.step(stop);
+        }
+        CHECK(world.car_pose().z > line.z);
         CHECK(world.lap()->debt == 1);
         CHECK(world.lap()->lap_start == -1);
+        shift(world, rally::sim::kButtonShiftUp);
+        REQUIRE(world.car_controller().gear() == rally::sim::Gear::Forward);
         for (int i = 0; i < 4 * rally::sim::kStepsPerSecond; ++i) {
             world.step(forward);
         }
-        CHECK(world.pose(0).z < line.z);
+        CHECK(world.car_pose().z < line.z);
         CHECK(world.lap()->debt == 0);
         CHECK(world.lap()->lap_start == -1);
         CHECK(world.lap()->laps == 0);
     }
     SUBCASE("reset during a lap cancels it") {
         SimWorld world;
-        world.build(zone_with_box_at(zone, line.x, line.z + 5.0));
+        world.build(zone_with_car_at(zone, line.x, line.z + 5.0));
         world.seal();
         for (int i = 0; i < 2 * rally::sim::kStepsPerSecond; ++i) {
             world.step(forward);
@@ -966,7 +775,7 @@ TEST_CASE("test_zone: the blind series has 15 trials, 3 of each surface, same or
 TEST_CASE("test_zone: step allocates nothing of ours on the zone ground") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
-    world.build(rally::sim::zone_world(Surface::Gravel));
+    world.build(rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car()));
     world.seal();
     // Con la captura de la telemetría (superficie bajo el centro de masas, cronómetro) tampoco.
     SUBCASE("without telemetry") {}

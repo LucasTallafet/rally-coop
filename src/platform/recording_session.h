@@ -24,7 +24,7 @@ public:
     RecordingSession& operator=(const RecordingSession&) = delete;
 
     // Con el mundo ya construido a partir de `desc` (de él sale el hash de la zona).
-    void start(const sim::WorldDesc& desc, const sim::SimWorld& world);
+    void start(const sim::WorldDesc& desc, const sim::SimWorld& world, const std::string& car_text);
     // Antes de los pasos del fotograma.
     void prepare(int steps) { recorder_.ensure_capacity(steps); }
     // Tras cada paso simulado, con su entrada.

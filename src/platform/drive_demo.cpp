@@ -1,5 +1,6 @@
-#include "platform/box_demo.h"
+#include "platform/drive_demo.h"
 
+#include "io/recording.h"
 #include "platform/camera_space.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/forest_layout.h"
@@ -9,6 +10,7 @@
 #include "platform/perf_counter.h"
 #include "platform/screenshot.h"
 #include "platform/telemetry_graphs.h"
+#include "sim/check.h"
 #include "sim/demo_world.h"
 
 #include <SDL3/SDL_video.h>
@@ -20,6 +22,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <filesystem>
+#include <string>
+#include <utility>
 
 namespace rally::platform {
 
@@ -33,9 +38,6 @@ static_assert(sim::kStepsPerSecond == kStepsPerSecond, "la simulación y el bucl
 constexpr float kFovYDegrees = 55.0f;
 constexpr double kNearPlane = 0.05;
 constexpr double kFarPlane = 2000.0;
-// Ojo respecto al centro de la caja: dentro de ella, a 0,9 m del suelo. Sus caras quedan de
-// espaldas y no se dibujan.
-constexpr Vec3d kEyeOffset{0.0, 0.4, 0.0};
 
 // Cámara fija en diagonal, respecto al centro del recinto.
 constexpr float kFixedFovYDegrees = 45.0f;
@@ -45,18 +47,20 @@ constexpr Vec3d kFixedTarget{0.0, 0.0, 2.0};
 // O: el mundo se reconstruye a esta distancia del origen en x y z.
 constexpr double kFarOffset = 20000.0;
 
-// Zona: cámara detrás y por encima de la caja (en sus ejes) y vista de toda la zona.
-constexpr Vec3d kChaseOffset{0.0, 7.0, 14.0};
+// Cámara de persecución: detrás y por encima del coche (en sus ejes), mirando a 1 m sobre su
+// origen. Vista de toda la zona.
+constexpr Vec3d kChaseOffset{0.0, 2.2, 6.5};
 constexpr Vec3d kOverviewEye{0.0, 900.0, 700.0};
 constexpr Vec3d kOverviewTarget{0.0, 0.0, -60.0};
 // --bench-zone: velocidad de la cámara por la pista ciega y altura del ojo.
 constexpr double kZoneBenchSpeed = 100.0 / 3.6;
 constexpr double kZoneBenchEyeHeight = 1.1;
 
+constexpr Color kCarColor{230, 160, 60, 255};
+constexpr Color kTireColor{38, 40, 44, 255};
+constexpr Color kRimColor{200, 204, 210, 255};
+
 Color body_color(const sim::WorldDesc& desc, std::size_t index) {
-    if (static_cast<int>(index) == desc.controlled) {
-        return Color{230, 160, 60, 255};
-    }
     if (desc.bodies[index].motion == sim::BodyMotion::Dynamic) {
         return Color{90, 140, 200, 255};
     }
@@ -183,26 +187,144 @@ Pose to_pose(const sim::BodyPose& body) {
     return pose;
 }
 
+Vec3d add(const Vec3d& a, const Vec3d& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+Vec3d scale(const Vec3d& a, double s) { return {a.x * s, a.y * s, a.z * s}; }
+
+// Ángulo en (-π, π].
+double wrap_angle(double a) {
+    constexpr double kTwoPi = 6.283185307179586;
+    a = std::fmod(a + 3.141592653589793, kTwoPi);
+    return (a <= 0.0 ? a + kTwoPi : a) - 3.141592653589793;
+}
+
+// Rueda interpolada entre dos pasos (el giro, por el camino corto).
+sim::SimWorld::WheelPose interpolate_wheel(const sim::SimWorld::WheelPose& a,
+                                           const sim::SimWorld::WheelPose& b, double alpha) {
+    sim::SimWorld::WheelPose w = b;
+    const auto lerp = [alpha](float x, float y) { return static_cast<float>(x + (y - x) * alpha); };
+    w.suspension_length = lerp(a.suspension_length, b.suspension_length);
+    w.steer = lerp(a.steer, b.steer);
+    w.rotation = static_cast<float>(a.rotation + wrap_angle(b.rotation - a.rotation) * alpha);
+    return w;
+}
+
+// Coche en low-poly: la caja de la carrocería y cada rueda como un cilindro de 12 lados con
+// una marca en la llanta que gira con ella (para ver el giro y el bloqueo).
+void draw_car(const Pose& car_pose, const sim::CarData& car,
+              const std::array<sim::SimWorld::WheelPose, sim::kWheelCount>& wheels,
+              const Vec3d& origin) {
+    sim::BoxDesc body;
+    body.half_x = 0.5f * car.box_width;
+    body.half_y = 0.5f * car.box_height;
+    body.half_z = 0.5f * car.box_length;
+    const Pose body_pose =
+        attach(car_pose, Vec3d{0.0, car.ground_clearance + 0.5 * car.box_height, 0.0});
+    draw_box(body_pose, body, kCarColor, origin);
+    for (const sim::SimWorld::WheelPose& w : wheels) {
+        // Centro de la rueda en ejes del coche y sus ejes tras el giro de la dirección (Jolt:
+        // positivo a la izquierda, alrededor de +y).
+        const Vec3d hub_local{w.attach_x, w.attach_y - w.suspension_length, w.attach_z};
+        const double c = std::cos(w.steer);
+        const double s = std::sin(w.steer);
+        const Vec3d axle = rotate(car_pose.rotation, Vec3d{c, 0.0, -s});
+        const Vec3d forward = rotate(car_pose.rotation, Vec3d{-s, 0.0, -c});
+        const Vec3d up = rotate(car_pose.rotation, Vec3d{0.0, 1.0, 0.0});
+        const Vec3d hub = attach(car_pose, hub_local).position;
+        const Vec3d half_axle = scale(axle, 0.5 * w.width);
+        const Vec3d inner = add(hub, scale(half_axle, -1.0));
+        const Vec3d outer = add(hub, half_axle);
+        DrawCylinderEx(to_vector(relative_to_camera(inner, origin)),
+                       to_vector(relative_to_camera(outer, origin)), w.radius, w.radius, 12,
+                       kTireColor);
+        // Marca en la llanta, por fuera de la cara exterior: arriba al girar 0 y hacia
+        // delante al rodar hacia delante.
+        const Vec3d rim = add(add(outer, scale(half_axle, 0.05)),
+                              add(scale(up, 0.7 * w.radius * std::cos(w.rotation)),
+                                  scale(forward, 0.7 * w.radius * std::sin(w.rotation))));
+        DrawSphere(to_vector(relative_to_camera(rim, origin)), 0.045f, kRimColor);
+    }
+}
+
 } // namespace
 
-BoxDemo::BoxDemo() {
+std::string default_car_path() {
+    std::error_code error;
+    std::filesystem::path folder = std::filesystem::path(GetApplicationDirectory());
+    for (int up = 0; up < 8 && !folder.empty(); ++up) {
+        const std::filesystem::path candidate = folder / "data" / "cars" / "mid_awd_turbo.car";
+        if (std::filesystem::exists(candidate, error)) {
+            const std::u8string text = candidate.u8string();
+            return std::string(text.begin(), text.end());
+        }
+        const std::filesystem::path parent = folder.parent_path();
+        if (parent == folder) {
+            break;
+        }
+        folder = parent;
+    }
+    return {};
+}
+
+DriveDemo::DriveDemo(std::string car_path) : car_path_(std::move(car_path)) {
     rlSetClipPlanes(kNearPlane, kFarPlane);
+    static std::string message; // vive hasta el abort
+    message = "no se puede leer el coche '" + car_path_ +
+              "' (por defecto se busca data/cars/mid_awd_turbo.car desde la carpeta del exe "
+              "hacia arriba; o --car <archivo>)";
+    std::string error;
+    RALLY_CHECK(!car_path_.empty() && io::read_file(car_path_, car_text_, error), message.c_str());
+    car_ = sim::load_car_or_abort(car_text_, car_path_);
+    car_message_ = "coche: " + car_path_;
     describe_world();
     reset();
 }
 
-void BoxDemo::describe_world() {
+void DriveDemo::describe_world() {
     if (zone_mode_) {
         // A ciegas, cada prueba sale en la pista ciega; si no, al principio de la recta.
         desc_ = blind_mode_ ? sim::zone_world(blind_series_[static_cast<std::size_t>(blind_trial_)],
-                                              sim::ZoneStart::BlindTrack)
-                            : sim::zone_world(blind_surface_);
+                                              car_, sim::ZoneStart::BlindTrack)
+                            : sim::zone_world(blind_surface_, car_);
     } else {
-        desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0);
+        desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0, car_);
     }
 }
 
-void BoxDemo::use_arena() {
+void DriveDemo::reload_car() {
+    std::string text;
+    std::string error;
+    if (!io::read_file(car_path_, text, error)) {
+        car_message_ = "F5: no se puede leer " + car_path_ + ": " + error;
+        car_message_error_ = true;
+        return;
+    }
+    const sim::CarParseResult parsed = sim::parse_car(text);
+    if (!parsed.ok) {
+        car_message_ = "F5: " + car_path_ + ", " + parsed.error + " (sigue el coche anterior)";
+        car_message_error_ = true;
+        return;
+    }
+    // El coche nuevo sale parado en el punto de recolocación más cercano (en el recinto, en
+    // su salida).
+    const Vec3d at = current_car_.position;
+    car_text_ = std::move(text);
+    car_ = parsed.car;
+    describe_world();
+    if (const sim::TestZone* zone = world_->zone(); zone != nullptr && !zone_bench_) {
+        const sim::RespawnPoint& r =
+            zone->respawns()[static_cast<std::size_t>(zone->nearest_respawn(at.x, at.z))];
+        desc_.car_spawn.x = r.x;
+        desc_.car_spawn.y = zone->ground_height(r.x, r.z);
+        desc_.car_spawn.z = r.z;
+        desc_.car_spawn.yaw = static_cast<float>(r.yaw);
+    }
+    reset();
+    car_message_ = "F5: coche recargado de " + car_path_ + " (" +
+                   std::to_string(static_cast<int>(car_.mass)) + " kg)";
+    car_message_error_ = false;
+}
+
+void DriveDemo::use_arena() {
     zone_mode_ = false;
     blind_mode_ = false;
     view_ = 0;
@@ -210,14 +332,14 @@ void BoxDemo::use_arena() {
     reset();
 }
 
-BoxDemo::~BoxDemo() {
+DriveDemo::~DriveDemo() {
     recording_.finish(*world_);
     if (target_.id != 0) {
         UnloadRenderTexture(target_);
     }
 }
 
-void BoxDemo::set_render_size(int width, int height) {
+void DriveDemo::set_render_size(int width, int height) {
     if (target_.id != 0) {
         UnloadRenderTexture(target_);
     }
@@ -225,15 +347,15 @@ void BoxDemo::set_render_size(int width, int height) {
     SetTextureFilter(target_.texture, TEXTURE_FILTER_BILINEAR);
 }
 
-int BoxDemo::render_width() const {
+int DriveDemo::render_width() const {
     return target_.id != 0 ? target_.texture.width : GetScreenWidth();
 }
 
-int BoxDemo::render_height() const {
+int DriveDemo::render_height() const {
     return target_.id != 0 ? target_.texture.height : GetScreenHeight();
 }
 
-void BoxDemo::reset() {
+void DriveDemo::reset() {
     if (world_) {
         recording_.finish(*world_);
     }
@@ -245,22 +367,28 @@ void BoxDemo::reset() {
     if (world_->zone() != nullptr) {
         zone_draw_.build(*world_->zone(), blind_mode_);
     }
-    recording_.start(desc_, *world_);
+    recording_.start(desc_, *world_, car_text_);
     shift_up_presses_ = 0;
     shift_down_presses_ = 0;
     reset_presses_ = 0;
-    read_poses(current_);
+    read_poses();
     previous_ = current_;
+    previous_car_ = current_car_;
+    previous_wheels_ = current_wheels_;
 }
 
-void BoxDemo::read_poses(std::vector<Pose>& poses) const {
-    poses.resize(static_cast<std::size_t>(world_->body_count()));
-    for (std::size_t i = 0; i < poses.size(); ++i) {
-        poses[i] = to_pose(world_->pose(static_cast<int>(i)));
+void DriveDemo::read_poses() {
+    current_.resize(static_cast<std::size_t>(world_->body_count()));
+    for (std::size_t i = 0; i < current_.size(); ++i) {
+        current_[i] = to_pose(world_->pose(static_cast<int>(i)));
+    }
+    current_car_ = to_pose(world_->car_pose());
+    for (int i = 0; i < sim::kWheelCount; ++i) {
+        current_wheels_[static_cast<std::size_t>(i)] = world_->car_wheel(i);
     }
 }
 
-void BoxDemo::handle_keys(FramePacer& pacer) {
+void DriveDemo::handle_keys(FramePacer& pacer) {
     if (IsKeyPressed(KEY_F)) {
         pacer.set_target(pacer.target() == FrameTarget::MonitorRate ? FrameTarget::Fps30
                                                                     : FrameTarget::MonitorRate);
@@ -278,7 +406,10 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
         capture_requested_ = true;
     }
     if (IsKeyPressed(KEY_TAB)) {
-        view_ = (view_ + 1) % (zone_mode_ ? 3 : 2);
+        view_ = (view_ + 1) % 3;
+    }
+    if (IsKeyPressed(KEY_F5)) {
+        reload_car();
     }
     if (IsKeyPressed(KEY_H)) {
         overlay_visible_ = !overlay_visible_;
@@ -340,13 +471,13 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     }
 }
 
-void BoxDemo::prepare_steps(int count) {
+void DriveDemo::prepare_steps(int count) {
     if (!paused_) {
         recording_.prepare(count);
     }
 }
 
-float BoxDemo::step(const sim::SimInput& input) {
+float DriveDemo::step(const sim::SimInput& input) {
     if (paused_) {
         return 0.0f;
     }
@@ -358,27 +489,36 @@ float BoxDemo::step(const sim::SimInput& input) {
     shift_down_presses_ += (pressed & sim::kButtonShiftDown) != 0 ? 1 : 0;
     reset_presses_ += (pressed & sim::kButtonReset) != 0 ? 1 : 0;
     previous_.swap(current_);
-    read_poses(current_);
+    previous_car_ = current_car_;
+    previous_wheels_ = current_wheels_;
+    read_poses();
     return world_->last_impact();
 }
 
-void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
-                   const FixedStepClock& clock, const DriverInput& driver,
-                   const sim::SimInput& input, float frame_impact, PerfCounter& perf) {
+void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
+                     const FixedStepClock& clock, const DriverInput& driver,
+                     const sim::SimInput& input, float frame_impact, PerfCounter& perf) {
     if (frame_impact > kImpactThreshold) {
         last_rumble_impact_ = frame_impact;
     }
     frame_log_.write(frame_ns, steps, clock.debt(), clock.snap_period(), pacer.frame_period());
 
     // En pausa se dibuja siempre el mismo estado: todos los fotogramas son idénticos.
+    const bool blend = interpolate_ && !paused_;
     drawn_.resize(current_.size());
     for (std::size_t i = 0; i < current_.size(); ++i) {
-        drawn_[i] = interpolate_ && !paused_ ? interpolate(previous_[i], current_[i], steps.alpha)
-                                             : current_[i];
+        drawn_[i] = blend ? interpolate(previous_[i], current_[i], steps.alpha) : current_[i];
+    }
+    drawn_car_ = blend ? interpolate(previous_car_, current_car_, steps.alpha) : current_car_;
+    std::array<sim::SimWorld::WheelPose, sim::kWheelCount> drawn_wheels = current_wheels_;
+    if (blend) {
+        for (std::size_t i = 0; i < drawn_wheels.size(); ++i) {
+            drawn_wheels[i] =
+                interpolate_wheel(previous_wheels_[i], current_wheels_[i], steps.alpha);
+        }
     }
 
     // Ojo y orientación de la cámara en el mundo, en doble.
-    const auto controlled = static_cast<std::size_t>(desc_.controlled);
     Vec3d eye;
     Vec3d forward;
     Vec3d up{0.0, 1.0, 0.0};
@@ -393,20 +533,25 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
         eye = {p.x, world_->zone()->ground_height(p.x, p.z) + kZoneBenchEyeHeight, p.z};
         forward = {std::sin(p.psi), -0.05, -std::cos(p.psi)};
     } else if (view_ == 0) {
-        const Pose head = attach(drawn_[controlled], kEyeOffset);
+        // Ojo del conductor del archivo del coche: a la izquierda, a su altura sobre el suelo y
+        // detrás del eje delantero (en z = -batalla/2). Dentro de la caja: sus caras quedan de
+        // espaldas y no se dibujan.
+        const Vec3d eye_offset{-car_.eye_left, car_.eye_height,
+                               -0.5 * car_.wheelbase + car_.eye_behind_front_axle};
+        const Pose head = attach(drawn_car_, eye_offset);
         eye = head.position;
         forward = rotate(head.rotation, {0.0, 0.0, -1.0});
         up = rotate(head.rotation, {0.0, 1.0, 0.0});
+    } else if (view_ == 1) {
+        // Persecución: detrás y por encima del coche, girando con él.
+        eye = attach(drawn_car_, kChaseOffset).position;
+        forward = {drawn_car_.position.x - eye.x, drawn_car_.position.y + 1.0 - eye.y,
+                   drawn_car_.position.z - eye.z};
     } else if (!zone_mode_) {
         const Vec3d world_offset{desc_.bodies[0].x, 0.0, desc_.bodies[0].z};
         eye = {world_offset.x + kFixedEye.x, kFixedEye.y, world_offset.z + kFixedEye.z};
         forward = {kFixedTarget.x - kFixedEye.x, kFixedTarget.y - kFixedEye.y,
                    kFixedTarget.z - kFixedEye.z};
-    } else if (view_ == 1) {
-        // Detrás y por encima de la caja, girando con ella.
-        const Pose& box = drawn_[controlled];
-        eye = attach(box, kChaseOffset).position;
-        forward = {box.position.x - eye.x, box.position.y + 1.0 - eye.y, box.position.z - eye.z};
     } else {
         eye = kOverviewEye;
         forward = {kOverviewTarget.x - eye.x, kOverviewTarget.y - eye.y, kOverviewTarget.z - eye.z};
@@ -424,7 +569,7 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                             camera_position.z + static_cast<float>(forward.z)};
     camera.up =
         Vector3{static_cast<float>(up.x), static_cast<float>(up.y), static_cast<float>(up.z)};
-    camera.fovy = view_ == 0 || zone_bench_ ? kFovYDegrees : kFixedFovYDegrees;
+    camera.fovy = view_ != 2 || zone_bench_ ? kFovYDegrees : kFixedFovYDegrees;
     camera.projection = CAMERA_PERSPECTIVE;
 
     constexpr Color kSky{40, 44, 52, 255};
@@ -440,6 +585,7 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
         for (std::size_t i = 0; i < drawn_.size(); ++i) {
             draw_box(drawn_[i], desc_.bodies[i], body_color(desc_, i), origin);
         }
+        draw_car(drawn_car_, car_, drawn_wheels, origin);
     } else {
         for (std::size_t i = 0; i < drawn_.size(); ++i) {
             draw_box(drawn_[i], desc_.bodies[i], body_color(desc_, i), origin);
@@ -447,6 +593,7 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                 draw_floor_grid(desc_.bodies[0], origin);
             }
         }
+        draw_car(drawn_car_, car_, drawn_wheels, origin);
         draw_posts(desc_.bodies[0], origin);
         // El bosque rodea el recinto: su centro es el del suelo.
         forest_.draw(forest_mode_,
@@ -464,12 +611,14 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                        Vector2{0.0f, 0.0f}, 0.0f, WHITE);
     }
 
-    // Velocidad horizontal de la caja controlada en el último paso.
-    const Vec3d& now = current_[controlled].position;
-    const Vec3d& before = previous_[controlled].position;
-    const double speed = std::sqrt((now.x - before.x) * (now.x - before.x) +
-                                   (now.z - before.z) * (now.z - before.z)) *
-                         kStepsPerSecond;
+    // Velocidad del coche y selector tras el último paso.
+    const sim::BodyVelocity car_velocity = world_->car_velocity();
+    const double speed = std::sqrt(
+        static_cast<double>(car_velocity.vx * car_velocity.vx + car_velocity.vz * car_velocity.vz));
+    const sim::Gear gear = world_->car_controller().gear();
+    const char* gear_name = gear == sim::Gear::Reverse   ? "R"
+                            : gear == sim::Gear::Neutral ? "N"
+                                                         : "adelante";
 
     // H oculta el texto para mirar la escena; en la zona quedan las vueltas (y la prueba a
     // ciegas).
@@ -513,9 +662,9 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                             target_.id != 0 ? " en RenderTexture, escalado a la ventana" : ""),
                  16, 146, 20, text);
         const char* view_name = zone_bench_   ? "medida del suelo"
-                                : view_ == 0  ? "primera persona"
+                                : view_ == 0  ? "ojo del conductor"
+                                : view_ == 1  ? "persecución"
                                 : !zone_mode_ ? "fija"
-                                : view_ == 1  ? "detrás y por encima"
                                               : "toda la zona";
         DrawText(TextFormat("cámara: %s   mundo: %s   render: %s", view_name,
                             zone_mode_         ? "zona de pruebas"
@@ -523,8 +672,8 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                                                : "recinto en el origen",
                             world_float_ ? "FLOAT DEL MUNDO (depuración)" : "relativo a la cámara"),
                  16, 172, 20, text);
-        DrawText(TextFormat("ojo: %.3f, %.3f, %.3f m   velocidad: %.1f km/h", eye.x, eye.y, eye.z,
-                            speed * 3.6),
+        DrawText(TextFormat("ojo: %.3f, %.3f, %.3f m   velocidad: %.1f km/h   selector: %s", eye.x,
+                            eye.y, eye.z, speed * 3.6, gear_name),
                  16, 198, 20, text);
         const Gamepads& pads = driver.gamepads();
         if (pads.active_name() != nullptr) {
@@ -566,14 +715,16 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                                 ? ""
                                 : TextFormat("   ERROR: %s", recording_.error().c_str())),
                  16, 334, 20, text);
+        DrawText(car_message_.c_str(), 16, 360, 20,
+                 car_message_error_ ? Color{255, 110, 90, 255} : text);
         if (zone_mode_) {
-            draw_zone_overlay(360);
+            draw_zone_overlay(386);
         }
         const Color help = Color{150, 156, 168, 255};
         DrawText("W/S o gatillos: acelerar/frenar   A/D o stick: girar   Espacio o abajo: freno de "
-                 "mano   Q/E o hombros: marchas   R o arriba: recolocar",
+                 "mano   Q/E o hombros: R – N – adelante   R o arriba: recolocar",
                  16, GetScreenHeight() - 140, 20, help);
-        DrawText("X: saltar (temporal)   Retroceso: reiniciar el mundo   K: zona/recinto   "
+        DrawText("F5: recargar el coche   Retroceso: reiniciar el mundo   K: zona/recinto   "
                  "G: superficie de la pista ciega (a ciegas: siguiente prueba)   M: modo a ciegas",
                  16, GetScreenHeight() - 114, 20, help);
         DrawText(
@@ -602,7 +753,7 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
     perf.end_present();
 }
 
-void BoxDemo::draw_zone_overlay(int y) const {
+void DriveDemo::draw_zone_overlay(int y) const {
     const Color text = Color{220, 223, 228, 255};
     const Color strong = Color{250, 200, 90, 255};
     const sim::TestZone& zone = *world_->zone();
@@ -626,11 +777,11 @@ void BoxDemo::draw_zone_overlay(int y) const {
         DrawText(TextFormat("MODO A CIEGAS   Prueba %d/%d", blind_trial_ + 1, sim::kBlindTrials),
                  16, y, 24, strong);
     } else {
-        const Pose& box = current_[static_cast<std::size_t>(desc_.controlled)];
-        const int area = zone.area_at(box.position.x, box.position.z);
+        const Pose& car = current_car_;
+        const int area = zone.area_at(car.position.x, car.position.z);
         const char* where = area < 0 ? "fondo" : zone.areas()[static_cast<std::size_t>(area)].name;
         DrawText(TextFormat("zona: %s (%s)   pista ciega (G): %s", where,
-                            sim::surface_name(zone.surface_at(box.position.x, box.position.z)),
+                            sim::surface_name(zone.surface_at(car.position.x, car.position.z)),
                             sim::surface_name(zone.blind_surface())),
                  16, y, 20, text);
     }
@@ -646,7 +797,7 @@ void BoxDemo::draw_zone_overlay(int y) const {
              16, y + 58, 20, text);
 }
 
-void BoxDemo::start_zone_bench() {
+void DriveDemo::start_zone_bench() {
     if (!zone_mode_ || blind_mode_) {
         zone_mode_ = true;
         blind_mode_ = false;
@@ -659,7 +810,7 @@ void BoxDemo::start_zone_bench() {
     zone_bench_ground_ms_.reserve(static_cast<std::size_t>(kZoneBenchMeasureNs / 1'000'000));
 }
 
-void BoxDemo::advance_zone_bench(std::int64_t frame_ns) {
+void DriveDemo::advance_zone_bench(std::int64_t frame_ns) {
     if (zone_bench_done_) {
         return;
     }
@@ -686,7 +837,7 @@ void BoxDemo::advance_zone_bench(std::int64_t frame_ns) {
     }
 }
 
-void BoxDemo::write_zone_bench_report() const {
+void DriveDemo::write_zone_bench_report() const {
     int number = 1;
     while (
         FileExists(TextFormat("%s/rendimiento_zona_%03d.txt", GetApplicationDirectory(), number))) {

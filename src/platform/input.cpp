@@ -20,7 +20,6 @@ struct KeyBindings {
     KeyboardKey shift_down = KEY_Q;
     KeyboardKey shift_up = KEY_E;
     KeyboardKey reset = KEY_R;
-    KeyboardKey jump = KEY_X; // temporal: la caja hasta la 2.4
 };
 constexpr KeyBindings kDriverKeys{};
 
@@ -29,7 +28,7 @@ bool down(const KeyboardKey (&keys)[2]) { return IsKeyDown(keys[0]) || IsKeyDown
 // Botones que se retienen en los fotogramas sin pasos: los que actúan al pulsar. Los bits
 // digitales y el freno de mano describen el fotograma y no se retienen.
 constexpr std::uint16_t kPressButtons =
-    sim::kButtonShiftUp | sim::kButtonShiftDown | sim::kButtonReset | sim::kButtonJump;
+    sim::kButtonShiftUp | sim::kButtonShiftDown | sim::kButtonReset;
 
 // IsKeyPressed recoge también una pulsación que empieza y acaba dentro del fotograma.
 bool down_or_pressed(KeyboardKey key) { return IsKeyDown(key) || IsKeyPressed(key); }
@@ -46,7 +45,6 @@ sim::SimInput DriverInput::read(int step_count) {
     keys.shift_down = down_or_pressed(kDriverKeys.shift_down);
     keys.shift_up = down_or_pressed(kDriverKeys.shift_up);
     keys.reset = down_or_pressed(kDriverKeys.reset);
-    keys.jump = down_or_pressed(kDriverKeys.jump);
 
     sim::SimInput input = combine_inputs(keys, gamepads_.read());
     const std::uint16_t pressed = latch_.apply(input.buttons & kPressButtons, step_count);

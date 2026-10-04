@@ -29,6 +29,12 @@ const char* surface_text(const CarTelemetry& t) {
     return t.surface < 0 ? "none" : sim::surface_key(static_cast<sim::Surface>(t.surface));
 }
 
+template <int W>
+const char* wheel_surface_text(const CarTelemetry& t) {
+    const std::int8_t surface = t.wheels[W].surface;
+    return surface < 0 ? "none" : sim::surface_key(static_cast<sim::Surface>(surface));
+}
+
 using C = TelemetryColumn;
 constexpr ColumnKind kInt = ColumnKind::Integer;
 constexpr ColumnKind kReal = ColumnKind::Real;
@@ -36,12 +42,15 @@ constexpr ColumnKind kReal = ColumnKind::Real;
 // Precisión: posición, velocidad e impacto a 0,1 mm(/s); ángulos a 1e-5 rad (0,0006°);
 // aceleración a 1 mm/s²; entradas a 1e-5 (el paso de un eje es 3e-5); tiempo a 1 µs.
 // clang-format off
+// Columnas de una rueda W (0 FL, 1 FR, 2 RL, 3 RR) con el sufijo de su nombre.
+#define RALLY_WHEEL_COLUMNS(W, SUFFIX)                                                                 C{"contact_" SUFFIX, "", "0 o 1", "Rueda en el suelo", kInt, 0,                                      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].contact); }, nullptr},       C{"surface_" SUFFIX, "", "texto", "Superficie del material del contacto (la que usa el neumático); none en el aire",       ColumnKind::Text, 0, nullptr, wheel_surface_text<W>},                                           C{"load_" SUFFIX, "N", "≥ 0", "Carga normal (suspensión, barra y tope del paso anterior)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].load); }, nullptr},          C{"compression_" SUFFIX, "m", "≥ 0", "Compresión de la suspensión desde la extensión máxima", kReal, 4,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].compression); }, nullptr},     C{"kappa_" SUFFIX, "", "+ la rueda gira más rápido que el suelo", "Deslizamiento longitudinal (ω·r − vx) / max(|vx|, min_slip_speed)", kReal, 5,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].kappa); }, nullptr},         C{"alpha_" SUFFIX, "rad", "+ la rueda va hacia su derecha", "Ángulo de deriva atan2(vy, max(|vx|, min_slip_speed))", kReal, 5,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].alpha); }, nullptr},         C{"fx_" SUFFIX, "N", "+ hacia delante de la rueda", "Fuerza longitudinal del neumático (media de los subpasos)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fx); }, nullptr},            C{"fy_" SUFFIX, "N", "+ hacia la derecha de la rueda", "Fuerza lateral del neumático (media de los subpasos)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fy); }, nullptr},            C{"omega_" SUFFIX, "rad/s", "+ rodando hacia delante", "Giro de la rueda al final del paso", kReal, 4,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].omega); }, nullptr},         C{"brake_torque_" SUFFIX, "N·m", "≥ 0", "Par de freno pedido (freno y freno de mano)", kReal, 1,       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].brake_torque); }, nullptr},     C{"h_" SUFFIX, "m", "+ arriba", "Media del microrrelieve h sobre la huella", kReal, 5,               [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].h); }, nullptr}
+
 constexpr std::array kColumns = {
     C{"step", "", "", "Paso desde que se construyó el mundo (1 tras el primero)", kInt, 0,
       [](const CarTelemetry& t) { return static_cast<double>(t.step); }, nullptr},
     C{"time", "s", "", "step / 240", kReal, 6,
       [](const CarTelemetry& t) { return static_cast<double>(t.step) / sim::kStepsPerSecond; }, nullptr},
-    C{"x", "m", "", "Centro de masas en el mundo", kReal, 4,
+    C{"x", "m", "", "Centro de masas del coche en el mundo", kReal, 4,
       [](const CarTelemetry& t) { return t.x; }, nullptr},
     C{"y", "m", "+ arriba", "Centro de masas en el mundo", kReal, 4,
       [](const CarTelemetry& t) { return t.y; }, nullptr},
@@ -103,9 +112,16 @@ constexpr std::array kColumns = {
       [](const CarTelemetry& t) {
           return t.lap_steps < 0 ? -1.0 : static_cast<double>(t.lap_steps) / sim::kStepsPerSecond;
       }, nullptr},
-    C{"impact", "m/s", "≥ 0", "Cambio de velocidad del paso que causan los contactos (SimWorld::last_impact)", kReal, 4,
+    C{"impact", "m/s", "≥ 0", "Cambio de velocidad del paso que no explican la gravedad ni las fuerzas propias: suspensión y contactos de la carrocería (SimWorld::last_impact)", kReal, 4,
       [](const CarTelemetry& t) { return static_cast<double>(t.impact); }, nullptr},
+    C{"gear", "", "−1 R, 0 N, 1 adelante", "Selector provisional (tarea 2.6 lo sustituye)", kInt, 0,
+      [](const CarTelemetry& t) { return static_cast<double>(t.gear); }, nullptr},
+    RALLY_WHEEL_COLUMNS(0, "fl"),
+    RALLY_WHEEL_COLUMNS(1, "fr"),
+    RALLY_WHEEL_COLUMNS(2, "rl"),
+    RALLY_WHEEL_COLUMNS(3, "rr"),
 };
+#undef RALLY_WHEEL_COLUMNS
 // clang-format on
 
 // Escribe `value` con `precision` decimales; sin signo si redondea a 0.
@@ -205,8 +221,13 @@ std::string telemetry_columns_markdown() {
           "se escribe sin signo.\n"
           "- Mundo: +y arriba. Coche: adelante = −z local, derecha = +x local, arriba = +y "
           "local.\n"
-          "- Posición y velocidad son las del centro de masas del cuerpo (en la caja coincide "
-          "con su centro; en el coche, desde la 2.4, no coincide con el origen del cuerpo).\n"
+          "- Posición y velocidad son las del centro de masas del coche (no coincide con el "
+          "origen del cuerpo, que está en el suelo entre los ejes).\n"
+          "- Ruedas (sufijos `_fl`, `_fr`, `_rl`, `_rr`: delante izquierda, delante derecha, "
+          "detrás izquierda, detrás derecha): ejes del contacto, longitudinal hacia delante de "
+          "la rueda y lateral hacia su derecha. La carga es la de la suspensión del paso "
+          "anterior; las fuerzas, la media de los 4 subpasos. En el aire, `contact` = 0, "
+          "`surface` = none y lo demás a 0 salvo `omega` y `brake_torque`.\n"
           "- Rumbo: 0 mirando a −z del mundo y crece girando a la derecha (como `psi` de la "
           "zona de pruebas).\n"
           "- Guiñada > 0 girando a la derecha, como `SimInput::steer` > 0.\n"
@@ -218,8 +239,8 @@ std::string telemetry_columns_markdown() {
           "quieto, 0). Lateral > 0 hacia la derecha: girando a la derecha es > 0. En el paso "
           "que recoloca, 0.\n"
           "- Bits de `buttons` y `pressed`: 0 freno de mano, 1 subir marcha, 2 bajar marcha, 3 "
-          "recolocar, 4 dirección digital, 5 acelerador digital, 6 freno digital, 7 salto "
-          "(temporal).\n\n"
+          "recolocar, 4 dirección digital, 5 acelerador digital, 6 freno digital, 7 reservado "
+          "(era el salto de la caja).\n\n"
           "## Columnas\n\n"
           "| Columna | Unidad | Signo o rango | Descripción |\n"
           "| --- | --- | --- | --- |\n";

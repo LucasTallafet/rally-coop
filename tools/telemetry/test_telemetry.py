@@ -3,7 +3,7 @@
     python test_telemetry.py synthetic
         drift_check con CSV sintéticos generados aquí (criterio 5 de la tarea 2.3)
     python test_telemetry.py recording <telemetría.csv> <zona.json>
-        carga un CSV de rally_replay y drift_check sobre él (la caja no hace maniobras)
+        carga un CSV de rally_replay y drift_check sobre él (la vuelta automática no hace maniobras)
 """
 
 from __future__ import annotations
@@ -216,9 +216,11 @@ class Recording(unittest.TestCase):
     csv_path = ""
     zone_path = ""
 
-    def test_loads_and_finds_no_maneuvers_with_the_box(self):
+    def test_loads_and_finds_no_maneuvers_on_the_blind_lap(self):
         tel = load(self.csv_path)
-        self.assertEqual(tel.meta["format"], "1")
+        self.assertEqual(tel.meta["format"], "2")
+        # Las ruedas del coche en la pista ciega de grava (columnas de texto por rueda).
+        self.assertIn("gravel", tel["surface_fl"])
         self.assertIn("recording", tel.meta)
         self.assertGreater(len(tel), 0)
         self.assertEqual(len(tel.names), len(set(tel.names)))

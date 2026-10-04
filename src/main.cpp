@@ -1,5 +1,5 @@
 #include "io/crash_save.h"
-#include "platform/box_demo.h"
+#include "platform/drive_demo.h"
 #include "platform/fatal_error.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/forest_bench.h"
@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <string>
 #include <system_error>
 
 // Piden la gráfica dedicada en PCs con dos gráficas (AMD PowerXpress y NVIDIA Optimus).
@@ -46,7 +47,17 @@ int main(int argc, char** argv) {
     rally::platform::FramePacer pacer;
     rally::platform::FixedStepClock clock;
     rally::platform::PerfCounter perf;
-    rally::platform::BoxDemo demo;
+    // --car <archivo> antes de crear la demo; por defecto, el coche del repositorio.
+    std::string car_path;
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (std::strcmp(argv[i], "--car") == 0) {
+            car_path = argv[i + 1];
+        }
+    }
+    if (car_path.empty()) {
+        car_path = rally::platform::default_car_path();
+    }
+    rally::platform::DriveDemo demo(car_path);
     rally::platform::DriverInput driver;
     std::optional<rally::platform::ForestBench> bench;
     for (int i = 1; i < argc; ++i) {
@@ -71,6 +82,8 @@ int main(int argc, char** argv) {
             window.toggle_fullscreen();
             perf.set_visible(true);
             demo.start_zone_bench();
+        } else if (std::strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
+            ++i; // ya leído
         } else if (std::strcmp(argv[i], "--blind-seed") == 0 && i + 1 < argc) {
             // Semilla de la serie de pruebas a ciegas (M en la zona).
             const char* text = argv[++i];

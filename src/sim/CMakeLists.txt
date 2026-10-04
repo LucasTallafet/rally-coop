@@ -1,6 +1,8 @@
 # Biblioteca de simulación: enlaza Jolt y NUNCA raylib ni SDL (lo comprueba
 # cmake/CheckBuildRules.cmake). Las definiciones JPH_* llegan solo desde Jolt (PUBLIC).
 add_library(rally_sim STATIC
+    car_controller.cpp
+    car_data.cpp
     check.cpp
     demo_world.cpp
     fp_guard.cpp

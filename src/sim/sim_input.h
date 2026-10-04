@@ -8,7 +8,7 @@ namespace rally::sim {
 inline constexpr std::int16_t kAxisMax = 32767;
 
 // Bits de SimInput::buttons. Los de mantener (freno de mano) actúan mientras están; los de
-// pulsación (marchas, recolocar, salto) actúan en el paso en que pasan de 0 a 1
+// pulsación (marchas, recolocar) actúan en el paso en que pasan de 0 a 1
 // (ControlState::pressed).
 inline constexpr std::uint16_t kButtonHandbrake = 1u << 0;
 inline constexpr std::uint16_t kButtonShiftUp = 1u << 1;
@@ -22,8 +22,10 @@ inline constexpr std::uint16_t kButtonSteerDigital = 1u << 4;
 // o 1): la simulación los sube y los baja con un limitador. Sin el bit, tal cual.
 inline constexpr std::uint16_t kButtonThrottleDigital = 1u << 5;
 inline constexpr std::uint16_t kButtonBrakeDigital = 1u << 6;
-// Salto de la caja de la demo. Temporal: desaparece con el coche (tarea 2.4).
-inline constexpr std::uint16_t kButtonJump = 1u << 7;
+// Reservado: era el salto de la caja de la demo (tareas 2.1–2.3). La simulación lo ignora. No
+// se reutiliza ni se renumera: las grabaciones de los formatos 1 y 2 lo llevan y se siguen
+// leyendo igual.
+inline constexpr std::uint16_t kButtonReserved7 = 1u << 7;
 
 // Entrada de un paso de simulación. Solo enteros, tamaño fijo y sin relleno: la grabación
 // por paso (io/recording.h) la guarda campo a campo y la repite exacta. La traducción desde

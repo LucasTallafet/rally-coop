@@ -17,6 +17,14 @@ float steer(const sim::CarTelemetry& t) { return t.steer; }
 float throttle(const sim::CarTelemetry& t) { return t.throttle; }
 float brake(const sim::CarTelemetry& t) { return t.brake; }
 float handbrake(const sim::CarTelemetry& t) { return t.handbrake; }
+template <int W>
+float load_kn(const sim::CarTelemetry& t) {
+    return t.wheels[W].load * 0.001f;
+}
+template <int W>
+float compression_cm(const sim::CarTelemetry& t) {
+    return t.wheels[W].compression * 100.0f;
+}
 
 // Página 1 · Manejo. Nombres sin β: la fuente por defecto de raylib no lo tiene. La 2.5 añade
 // al panel de beta el ángulo de deriva medio del eje delantero y del trasero (subviraje y
@@ -38,13 +46,35 @@ constexpr std::array kHandlingPanels = {
     GraphPanel{"entradas", "", -1.0f, 1.0f, kInputChannels}, // aplicadas (ControlState)
 };
 
+// Página 3 · Suspensión (tarea 2.4): carga y compresión de la suspensión por rueda (desde la
+// extensión máxima). Un color por rueda, el mismo en los dos paneles.
+constexpr std::uint32_t kFrontLeftColor = 0x60c0ffffu;
+constexpr std::uint32_t kFrontRightColor = 0x60e060ffu;
+constexpr std::uint32_t kRearLeftColor = 0xffa040ffu;
+constexpr std::uint32_t kRearRightColor = 0xff5050ffu;
+constexpr std::array kLoadChannels = {
+    GraphChannel{"DI", load_kn<0>, kFrontLeftColor},
+    GraphChannel{"DD", load_kn<1>, kFrontRightColor},
+    GraphChannel{"TI", load_kn<2>, kRearLeftColor},
+    GraphChannel{"TD", load_kn<3>, kRearRightColor},
+};
+constexpr std::array kCompressionChannels = {
+    GraphChannel{"DI", compression_cm<0>, kFrontLeftColor},
+    GraphChannel{"DD", compression_cm<1>, kFrontRightColor},
+    GraphChannel{"TI", compression_cm<2>, kRearLeftColor},
+    GraphChannel{"TD", compression_cm<3>, kRearRightColor},
+};
+constexpr std::array kSuspensionPanels = {
+    GraphPanel{"carga", "kN", 0.0f, 8.0f, kLoadChannels},
+    GraphPanel{"compresión", "cm", 0.0f, 20.0f, kCompressionChannels},
+};
+
 // Página 2 · Tren motriz: RPM y marcha, presión del turbo y deslizamiento longitudinal por
-// rueda (tareas 2.5 y 2.6). Página 3 · Suspensión: carga y recorrido de la suspensión por
-// rueda (tarea 2.4). Vacías hasta entonces: T las salta.
+// rueda (tareas 2.5 y 2.6). Vacía hasta entonces: T la salta.
 constexpr std::array kPages = {
     GraphPage{"manejo", kHandlingPanels},
     GraphPage{"tren motriz", {}},
-    GraphPage{"suspensión", {}},
+    GraphPage{"suspensión", kSuspensionPanels},
 };
 
 constexpr int count_channels() {

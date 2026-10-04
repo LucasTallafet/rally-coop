@@ -101,7 +101,6 @@ struct KeyboardState {
     bool shift_up = false;
     bool shift_down = false;
     bool reset = false;
-    bool jump = false; // solo teclado: temporal hasta el coche (2.4)
 };
 
 // Mezcla teclado y mando activo: en cada eje (dirección, acelerador y freno, por separado)

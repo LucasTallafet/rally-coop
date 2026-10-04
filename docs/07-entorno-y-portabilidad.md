@@ -185,25 +185,25 @@ Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cier
 
 ## 8. Referencia rápida de la demo actual
 
-Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambiará con el coche (tarea 2.4). Arranca en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración.
+Válido desde la tarea 2.4 de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) sustituye a la caja. Arranca en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración.
 
 | Tecla / mando | Acción |
 | --- | --- |
 | W o ↑ · gatillo derecho | Acelerador |
-| S o ↓ · gatillo izquierdo | Freno (con la caja, la lleva hacia atrás hasta la 2.4) |
+| S o ↓ · gatillo izquierdo | Freno |
 | A/D o ←/→ · stick izquierdo | Girar |
-| Espacio · botón de abajo de la cara derecha (A Xbox, ✕ PlayStation, B Nintendo) | Freno de mano (sin efecto en la caja hasta la 2.6) |
-| Q · hombro izquierdo (LB, L1, L) | Bajar marcha (sin efecto hasta la 2.6) |
-| E · hombro derecho (RB, R1, R) | Subir marcha (sin efecto hasta la 2.6) |
+| Espacio · botón de abajo de la cara derecha (A Xbox, ✕ PlayStation, B Nintendo) | Freno de mano (ruedas traseras; mientras se tira, sin par motor) |
+| Q · hombro izquierdo (LB, L1, L) | Selector provisional (hasta la 2.6): parado, de adelante a N y de N a R |
+| E · hombro derecho (RB, R1, R) | Selector provisional: de R a N y de N a adelante |
 | R · botón de arriba de la cara derecha (Y Xbox, △ PlayStation, X Nintendo) | Recolocar: en la zona, al punto de recolocación más cercano, parado y con su orientación; en el recinto, a la salida mirando al frente |
-| X | Saltar (temporal, solo la caja; desaparece en la 2.4) |
+| F5 | Releer el archivo del coche y reconstruir el mundo con el coche en el punto de recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo muestra con su línea y sigue el coche anterior |
 | Retroceso | Reiniciar el mundo (cierra la grabación y empieza otra) |
-| Tab | Cámara: primera persona → fija (recinto) o detrás y por encima (zona) → toda la zona |
+| Tab | Cámara: ojo del conductor (del archivo del coche) → persecución → fija (recinto) o toda la zona |
 | K | Zona de pruebas / recinto de la fase 1 (reconstruye el mundo y empieza otra grabación) |
 | G | Zona: siguiente superficie de la pista ciega (reconstruye); a ciegas, siguiente prueba de la serie |
 | M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15»; cada prueba sale en la pista ciega) |
 | H | Ocultar / mostrar el texto (quedan las vueltas) |
-| T | Gráficas de la telemetría de los últimos 10 s, por páginas: 1 · manejo (β, guiñada, velocidad y entradas aplicadas) → 2 · tren motriz → 3 · suspensión → ocultas. Las páginas sin canales se saltan: hasta la 2.4, T muestra la 1 y la oculta. Con F1, a su izquierda. En el modo a ciegas no hace nada |
+| T | Gráficas de la telemetría de los últimos 10 s, por páginas: 1 · manejo (β, guiñada, velocidad y entradas aplicadas) → 2 · tren motriz → 3 · suspensión (carga y compresión por rueda) → ocultas. Las páginas sin canales se saltan: hasta la 2.5, T muestra la 1, la 3 y las oculta. Con F1, a su izquierda. En el modo a ciegas no hace nada |
 | O | Recinto: mundo a 20 km del origen (y de vuelta) |
 | J | Dibujar en float del mundo (depuración del render relativo) |
 | F | Frecuencia del monitor / 30 fps |
@@ -220,6 +220,7 @@ Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambia
 
 | Opción de arranque | Qué hace |
 | --- | --- |
+| `--car <archivo>` | Coche que se carga (por defecto, `data/cars/mid_awd_turbo.car`, buscado desde la carpeta del exe hacia arriba); F5 relee ese archivo |
 | `--fullscreen` | Arranca en pantalla completa sin bordes |
 | `--frame-log` | Graba el registro por fotograma desde el inicio |
 | `--bench-forest` | Mide los cuatro modos del bosque en el recinto a 1920×1080 sin sincronización vertical, escribe `rendimiento_NNN.txt` junto al exe y se cierra |
@@ -231,7 +232,9 @@ Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junt
 - `run <archivo>`: «hash OK» o el primer problema, y la mejor vuelta cronometrada.
 - `run <archivo> --telemetry <salida.csv>`: CSV por paso; columnas en `tools/telemetry/columns.md`.
 - `run <archivo> --bench N`: ms por paso, sin y con la captura de la telemetría, alternando las dos en cada repetición, con los 5 pasos más lentos (repetición y paso). Si los pasos más lentos cambian de una repetición a otra, son ruido del sistema y no de la simulación.
+- `run tests/data/recordings/bench_lap.rrec --bench 10`: la medida de referencia del coste por paso (120 s del coche congelado en la zona; presupuesto ≤ 0,5 ms de media en Release).
 - `rewrite <archivo>`: solo para grabaciones sintéticas de tests.
+- `synth <salida.rrec> --car <archivo.car>`: genera `bench_lap.rrec` (120 s de entradas sintéticas deterministas en la zona).
 - `zone --json <archivo> [--blind <superficie>]`: trazado de la zona de pruebas para los scripts de Python.
 - `columns --md [<archivo>]`: la tabla de columnas.
 

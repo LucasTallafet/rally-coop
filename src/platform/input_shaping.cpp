@@ -152,7 +152,6 @@ sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad) {
     set(keys.shift_up || pad.shift_up, sim::kButtonShiftUp);
     set(keys.shift_down || pad.shift_down, sim::kButtonShiftDown);
     set(keys.reset || pad.reset, sim::kButtonReset);
-    set(keys.jump, sim::kButtonJump);
     set(keyboard_steers, sim::kButtonSteerDigital);
     set(keyboard_throttles || (pad.active && pad.throttle_digital), sim::kButtonThrottleDigital);
     set(keyboard_brakes || (pad.active && pad.brake_digital), sim::kButtonBrakeDigital);

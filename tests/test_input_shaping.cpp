@@ -16,7 +16,6 @@ using rally::platform::shape_trigger;
 using rally::platform::to_axis;
 using rally::sim::kAxisMax;
 using rally::sim::kButtonBrakeDigital;
-using rally::sim::kButtonJump;
 using rally::sim::kButtonSteerDigital;
 using rally::sim::kButtonThrottleDigital;
 
@@ -298,11 +297,6 @@ TEST_CASE("input shaping: buttons come from either the keyboard or the gamepad")
         pad_state.*c.pad = true;
         CHECK(combine_inputs(KeyboardState{}, pad_state).buttons == c.bit);
     }
-    // El salto (temporal) solo va en el teclado: nada de depuración en el mando.
-    KeyboardState keys;
-    keys.jump = true;
-    CHECK(combine_inputs(keys, PadState{}).buttons == kButtonJump);
-
     // Los botones del mando llegan desde la lectura cruda.
     PadTracker tracker;
     PadReading reading = pad(9);

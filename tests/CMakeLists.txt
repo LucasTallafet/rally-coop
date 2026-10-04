@@ -4,6 +4,7 @@ add_executable(rally_tests
     test_main.cpp
     new_counter.cpp
     test_button_latch.cpp
+    test_car.cpp
     test_camera_space.cpp
     test_fixed_step_clock.cpp
     test_forest_layout.cpp
@@ -44,6 +45,8 @@ set_tests_properties(sim_world.build_after_seal_aborts PROPERTIES
 set(_abort_rrec ${CMAKE_CURRENT_BINARY_DIR}/abort_recording.rrec)
 add_executable(rally_abort_recording abort_recording.cpp)
 target_link_libraries(rally_abort_recording PRIVATE rally_io rally_sim rally_warnings)
+target_compile_definitions(rally_abort_recording PRIVATE
+    RALLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_test(NAME recording.abort_cleanup COMMAND ${CMAKE_COMMAND} -E rm -f ${_abort_rrec})
 add_test(NAME recording.abort_saves_incomplete COMMAND rally_abort_recording ${_abort_rrec})
 set_tests_properties(recording.abort_cleanup PROPERTIES FIXTURES_SETUP abort_recording)
@@ -108,6 +111,26 @@ set_tests_properties(replay.zone_changed PROPERTIES
     PASS_REGULAR_EXPRESSION "aviso: la zona ha cambiado"
     FAIL_REGULAR_EXPRESSION "FALLO|hash OK")
 
+# Grabación sintética del coche (tarea 2.4): 120 s en la zona con el coche congelado
+# (rally_replay synth). La repetición da el mismo hash; --bench mide con ella (a mano).
+add_test(NAME replay.bench_lap
+    COMMAND rally_replay run ${CMAKE_CURRENT_SOURCE_DIR}/data/recordings/bench_lap.rrec)
+set_tests_properties(replay.bench_lap PROPERTIES
+    PASS_REGULAR_EXPRESSION "pasos: 28800 .*hash OK"
+    FAIL_REGULAR_EXPRESSION "FALLO|aviso")
+# synth es determinista: lo que escribe ahora es lo mismo que la guardada.
+set(_bench_synth ${CMAKE_CURRENT_BINARY_DIR}/bench_lap_synth.rrec)
+add_test(NAME replay.bench_lap_synth
+    COMMAND rally_replay synth ${_bench_synth} --car ${CMAKE_CURRENT_SOURCE_DIR}/data/cars/reference.car)
+set_tests_properties(replay.bench_lap_synth PROPERTIES
+    FIXTURES_SETUP bench_synth
+    PASS_REGULAR_EXPRESSION "grabación sintética escrita: ")
+add_test(NAME replay.bench_lap_synth_matches
+    COMMAND rally_replay run ${_bench_synth})
+set_tests_properties(replay.bench_lap_synth_matches PROPERTIES
+    FIXTURES_REQUIRED bench_synth
+    PASS_REGULAR_EXPRESSION "hash OK")
+
 # Telemetría (tarea 2.3). La tabla de columnas generada coincide con tools/telemetry/columns.md
 # (sin mirar los finales de línea: git puede dejarlo con CRLF).
 set(_columns_md ${CMAKE_CURRENT_BINARY_DIR}/columns.md)
@@ -129,7 +152,7 @@ foreach(_run first second)
                 ${CMAKE_CURRENT_BINARY_DIR}/telemetry_${_run}.csv)
     set_tests_properties(replay.telemetry_${_run} PROPERTIES
         FIXTURES_SETUP telemetry_csv
-        PASS_REGULAR_EXPRESSION "telemetría: .*33 columnas.*hash OK"
+        PASS_REGULAR_EXPRESSION "telemetría: .*78 columnas.*hash OK"
         FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 endforeach()
 add_test(NAME replay.telemetry_twice_identical

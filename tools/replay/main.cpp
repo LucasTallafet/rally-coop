@@ -6,6 +6,9 @@
 //                                            repeticiones y ms por paso, sin y con la captura
 //                                            de la telemetría
 //   rally_replay rewrite <archivo>           pie con la versión actual (solo tests)
+//   rally_replay synth <salida.rrec> --car <archivo.car>
+//                                            120 s de entradas sintéticas deterministas en la
+//                                            zona (tests/data/recordings/bench_lap.rrec)
 //   rally_replay zone --json <archivo> [--blind <superficie>]
 //                                            trazado de la zona de pruebas en JSON
 //   rally_replay columns --md [<archivo>]    tabla de columnas de la telemetría en Markdown
@@ -17,7 +20,10 @@
 #include "io/recording.h"
 #include "io/replay.h"
 #include "io/telemetry_csv.h"
+#include "sim/car_data.h"
+#include "sim/demo_world.h"
 #include "sim/jolt_runtime.h"
+#include "sim/pcg32.h"
 #include "sim/sim_version.h"
 #include "sim/sim_world.h"
 #include "sim/surface.h"
@@ -27,6 +33,7 @@
 #include <charconv>
 #include <chrono>
 #include <cinttypes>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -45,6 +52,7 @@ int usage() {
                "  rally_replay info <archivo.rrec>\n"
                "  rally_replay run <archivo.rrec> [--telemetry <salida.csv>] [--bench N]\n"
                "  rally_replay rewrite <archivo.rrec>\n"
+               "  rally_replay synth <salida.rrec> --car <archivo.car>\n"
                "  rally_replay zone --json <archivo.json> [--blind <superficie>]\n"
                "  rally_replay columns --md [<archivo.md>]\n",
                stderr);
@@ -94,8 +102,8 @@ int info(const char* path) {
     std::printf("commit:              %s (este: %s)\n", h.commit.c_str(),
                 rally::io::build_commit());
     if (world_ok) {
-        std::printf("mundo:               %zu cuerpos, controlado %d\n", desc.bodies.size(),
-                    desc.controlled);
+        std::printf("mundo:               %zu cuerpos, %s\n", desc.bodies.size(),
+                    desc.car ? "con coche" : "sin coche");
         if (desc.test_zone) {
             // La superficie real: en las pruebas a ciegas solo se ve aquí.
             std::printf("zona de pruebas:     sí, pista ciega de %s\n",
@@ -329,6 +337,122 @@ int rewrite(const char* path) {
     return 0;
 }
 
+// Entrada del paso `step` de la grabación sintética de 120 s (bench_lap.rrec). Cambia cada
+// 4 pasos, como el bucle a 60 fps:
+//   0–20 s   recta a fondo 12 s y frenada a fondo 8 s;
+//   20–40 s  eslalon: dirección senoidal (periodo 2 s, la mitad del giro) con medio acelerador;
+//   40–56 s  giros con freno de mano: acelerador al 70 % y cada 2,5 s un giro a fondo,
+//            alternando el lado, con el freno de mano 0,5 s;
+//   56–60 s  frenada, R (bajar dos veces), atrás 1 s, frenada y adelante (subir dos veces);
+//   60–120 s tramos al azar de 0,5 s con PCG32 (semilla fija).
+// Recoloca a los 20, 40, 60, 80 y 100 s para no quedarse contra un muro.
+class SynthInputs {
+public:
+    rally::sim::SimInput at(int step) {
+        constexpr int kSecond = rally::sim::kStepsPerSecond;
+        constexpr std::int16_t kMax = rally::sim::kAxisMax;
+        const auto axis = [](double v) {
+            return static_cast<std::int16_t>(std::clamp(v, -1.0, 1.0) * kMax);
+        };
+        if (step % 4 != 0) {
+            return current_;
+        }
+        rally::sim::SimInput in;
+        const double t = static_cast<double>(step) / kSecond;
+        if (t < 12.0) {
+            in.throttle = kMax;
+        } else if (t < 20.0) {
+            in.brake = kMax;
+        } else if (t < 40.0) {
+            in.throttle = kMax / 2;
+            in.steer = axis(0.5 * std::sin(2.0 * 3.141592653589793 * (t - 20.0) / 2.0));
+        } else if (t < 56.0) {
+            in.throttle = axis(0.7);
+            const double phase = std::fmod(t - 40.0, 2.5);
+            if (phase < 0.8) {
+                const bool right = static_cast<int>((t - 40.0) / 2.5) % 2 == 0;
+                in.steer = right ? kMax : static_cast<std::int16_t>(-kMax);
+                if (phase < 0.5) {
+                    in.buttons |= rally::sim::kButtonHandbrake;
+                }
+            }
+        } else if (t < 60.0) {
+            const int s = step - 56 * kSecond;
+            if (s < 2 * kSecond) {
+                in.brake = kMax;
+            } else if (s < 2 * kSecond + 32) {
+                // Dos pulsaciones de bajar, separadas: adelante → N → R.
+                in.buttons = (s / 8) % 2 == 0 ? rally::sim::kButtonShiftDown : 0;
+            } else if (s < 3 * kSecond + 32) {
+                in.throttle = kMax / 2; // en R, hacia atrás
+            } else if (s < 3 * kSecond + 160) {
+                in.brake = kMax;
+            } else if (s < 3 * kSecond + 192) {
+                in.buttons = (s / 8) % 2 == 0 ? rally::sim::kButtonShiftUp : 0;
+            }
+        } else {
+            if (step % (kSecond / 2) == 0) {
+                random_.steer = axis(static_cast<double>(rng_.next_float01()) * 2.0 - 1.0);
+                random_.throttle = rng_.bounded(3) == 0 ? 0 : axis(rng_.next_float01());
+                random_.brake = rng_.bounded(4) == 0 ? axis(rng_.next_float01()) : 0;
+                random_.buttons = rng_.bounded(6) == 0 ? rally::sim::kButtonHandbrake : 0;
+            }
+            in = random_;
+        }
+        if (step > 0 && step % (20 * kSecond) == 0) {
+            in.buttons |= rally::sim::kButtonReset;
+        }
+        current_ = in;
+        return in;
+    }
+
+private:
+    rally::sim::Pcg32 rng_{0xbe2c'4a90'2026'1004ull, 5u};
+    rally::sim::SimInput random_;
+    rally::sim::SimInput current_;
+};
+
+int synth(const char* out_path, const char* car_path) {
+    std::string car_text;
+    std::string error;
+    if (!rally::io::read_file(car_path, car_text, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 2;
+    }
+    const rally::sim::CarParseResult car = rally::sim::parse_car(car_text);
+    if (!car.ok) {
+        std::fprintf(stderr, "error: %s: %s\n", car_path, car.error.c_str());
+        return 2;
+    }
+    const rally::sim::WorldDesc desc = rally::sim::zone_world(rally::sim::Surface::Gravel, car.car);
+    rally::sim::SimWorld world;
+    world.build(desc);
+    world.seal();
+    rally::io::RecordingHeader header;
+    header.commit = rally::io::build_commit();
+    header.world = rally::io::serialize_world(desc);
+    header.car_text = car_text;
+    header.zone_hash = world.zone_hash();
+    constexpr int kSteps = 120 * rally::sim::kStepsPerSecond;
+    rally::io::Recorder recorder;
+    recorder.begin(std::move(header), kSteps);
+    SynthInputs inputs;
+    for (int step = 0; step < kSteps; ++step) {
+        const rally::sim::SimInput in = inputs.at(step);
+        world.step(in);
+        recorder.append(in);
+    }
+    const Recording recording = recorder.finish(world.state_hash(), rally::io::timed_steps(world));
+    if (!rally::io::write_file(out_path, rally::io::serialize(recording), error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 2;
+    }
+    std::printf(
+        "grabación sintética escrita: %s (%" PRIu64 " pasos, %zu tramos, hash 0x%016" PRIx64 ")\n",
+        out_path, recording.footer.total_steps, recording.runs.size(), recording.footer.final_hash);
+    return 0;
+}
+
 // Trazado de la zona de pruebas en JSON. Sin --blind, la pista ciega es de grava.
 int zone_json(const char* path, const char* blind) {
     rally::sim::Surface surface = rally::sim::Surface::Gravel;
@@ -405,6 +529,9 @@ int main(int argc, char** argv) {
     }
     if (std::strcmp(command, "rewrite") == 0 && argc == 3) {
         return rewrite(path);
+    }
+    if (std::strcmp(command, "synth") == 0 && argc == 5 && std::strcmp(argv[3], "--car") == 0) {
+        return synth(path, argv[4]);
     }
     if (std::strcmp(command, "run") == 0) {
         int repetitions = 0;

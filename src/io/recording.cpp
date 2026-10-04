@@ -264,8 +264,16 @@ std::string serialize_world(const sim::WorldDesc& desc) {
         w.f32(box.half_x);
         w.f32(box.half_y);
         w.f32(box.half_z);
+        w.f32(box.pitch);
+        w.u8(static_cast<std::uint8_t>(box.surface));
+        w.u8(box.micro ? 1 : 0);
     }
-    w.i32(desc.controlled);
+    w.u8(desc.car ? 1 : 0);
+    w.f64(desc.car_spawn.x);
+    w.f64(desc.car_spawn.y);
+    w.f64(desc.car_spawn.z);
+    w.f32(desc.car_spawn.yaw);
+    w.f32(desc.car_spawn.speed);
     w.u8(desc.test_zone ? 1 : 0);
     w.u8(static_cast<std::uint8_t>(desc.blind_surface));
     return out;
@@ -273,12 +281,17 @@ std::string serialize_world(const sim::WorldDesc& desc) {
 
 bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& error,
                  std::uint32_t format_version) {
-    constexpr std::size_t kBodyBytes = 1 + 3 * 8 + 3 * 4;
-    // Desde la versión 2 del formato, la zona de pruebas y la superficie de la pista ciega.
-    const std::size_t tail_bytes = format_version >= 2 ? 4 + 2 : 4;
+    // Hasta la versión 2, cada cuerpo son 37 bytes y detrás va el índice del cuerpo
+    // controlado (la caja de las tareas 2.1–2.3), que se comprueba y se ignora: esas
+    // grabaciones no tienen coche. Desde la 3, cada cuerpo lleva además su giro, su superficie
+    // y su h, y detrás va el coche.
+    const bool v3 = format_version >= 3;
+    const std::size_t body_bytes = 1 + 3 * 8 + 3 * 4 + (v3 ? 4 + 1 + 1 : 0);
+    const std::size_t car_bytes = 1 + 3 * 8 + 2 * 4;
+    const std::size_t tail_bytes = (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0);
     Reader r(bytes);
     const std::uint32_t count = r.u32();
-    if (!r.ok() || static_cast<std::uint64_t>(count) * kBodyBytes + tail_bytes != r.remaining()) {
+    if (!r.ok() || static_cast<std::uint64_t>(count) * body_bytes + tail_bytes != r.remaining()) {
         error = "descripción del mundo con un tamaño que no cuadra";
         return false;
     }
@@ -297,13 +310,38 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
         box.half_x = r.f32();
         box.half_y = r.f32();
         box.half_z = r.f32();
+        if (v3) {
+            box.pitch = r.f32();
+            const std::uint8_t surface = r.u8();
+            const std::uint8_t micro = r.u8();
+            if (surface >= sim::kSurfaceCount || micro > 1) {
+                error = "descripción del mundo: superficie o h de una caja no válidos";
+                return false;
+            }
+            box.surface = static_cast<sim::Surface>(surface);
+            box.micro = micro == 1;
+        }
     }
-    desc.controlled = r.i32();
-    if (desc.controlled < -1 || desc.controlled >= static_cast<std::int32_t>(count) ||
-        (desc.controlled >= 0 && desc.bodies[static_cast<std::size_t>(desc.controlled)].motion !=
-                                     sim::BodyMotion::Dynamic)) {
-        error = "descripción del mundo: cuerpo controlado no válido";
-        return false;
+    if (v3) {
+        const std::uint8_t car = r.u8();
+        if (car > 1) {
+            error = "descripción del mundo: coche no válido";
+            return false;
+        }
+        desc.car = car == 1;
+        desc.car_spawn.x = r.f64();
+        desc.car_spawn.y = r.f64();
+        desc.car_spawn.z = r.f64();
+        desc.car_spawn.yaw = r.f32();
+        desc.car_spawn.speed = r.f32();
+    } else {
+        const std::int32_t controlled = r.i32();
+        if (controlled < -1 || controlled >= static_cast<std::int32_t>(count) ||
+            (controlled >= 0 && desc.bodies[static_cast<std::size_t>(controlled)].motion !=
+                                    sim::BodyMotion::Dynamic)) {
+            error = "descripción del mundo: cuerpo controlado no válido";
+            return false;
+        }
     }
     if (format_version >= 2) {
         const std::uint8_t zone = r.u8();

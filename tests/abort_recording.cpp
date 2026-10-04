@@ -4,6 +4,7 @@
 //   rally_abort_recording <archivo.rrec>
 // Escribe NO_ABORT si el programa sigue tras la llamada prohibida.
 
+#include "car_worlds.h"
 #include "io/crash_save.h"
 #include "io/recording.h"
 #include "sim/check.h"
@@ -29,7 +30,7 @@ int main(int argc, char** argv) {
     rally::sim::set_check_handler([](const char*) { rally::io::save_crash_recording(); });
 
     const rally::sim::JoltRuntime runtime;
-    const rally::sim::WorldDesc desc = rally::sim::demo_arena(0.0);
+    const rally::sim::WorldDesc desc = rally::sim::demo_arena(0.0, rally::tests::reference_car());
     rally::sim::SimWorld world;
     world.build(desc);
     world.seal();
@@ -37,6 +38,7 @@ int main(int argc, char** argv) {
     rally::io::RecordingHeader header;
     header.commit = "test";
     header.world = rally::io::serialize_world(desc);
+    header.car_text = rally::tests::reference_car_text();
     rally::io::Recorder recorder;
     recorder.begin(header, kStepsBeforeAbort);
     rally::io::set_crash_recording(&recorder, argv[1]);
