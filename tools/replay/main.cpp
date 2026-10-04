@@ -1,15 +1,22 @@
 // rally_replay: repite una grabación (.rrec) sin ventana, comprueba el hash final y mide.
 //   rally_replay info <archivo>              cabecera y pie
-//   rally_replay run <archivo> [--bench N]   repite y dice "hash OK" o el primer problema;
-//                                            con --bench, N repeticiones y ms por paso
+//   rally_replay run <archivo> [--telemetry <salida.csv>] [--bench N]
+//                                            repite y dice "hash OK" o el primer problema;
+//                                            con --telemetry, CSV por paso; con --bench, N
+//                                            repeticiones y ms por paso, sin y con la captura
+//                                            de la telemetría
 //   rally_replay rewrite <archivo>           pie con la versión actual (solo tests)
 //   rally_replay zone --json <archivo> [--blind <superficie>]
 //                                            trazado de la zona de pruebas en JSON
+//   rally_replay columns --md [<archivo>]    tabla de columnas de la telemetría en Markdown
+//                                            (tools/telemetry/columns.md); sin archivo, a la
+//                                            salida estándar
 // Códigos de salida: 0 bien, 1 el hash no cuadra, 2 error de uso o de archivo.
 
 #include "io/build_info.h"
 #include "io/recording.h"
 #include "io/replay.h"
+#include "io/telemetry_csv.h"
 #include "sim/jolt_runtime.h"
 #include "sim/sim_version.h"
 #include "sim/sim_world.h"
@@ -36,9 +43,10 @@ using rally::io::Recording;
 int usage() {
     std::fputs("uso:\n"
                "  rally_replay info <archivo.rrec>\n"
-               "  rally_replay run <archivo.rrec> [--bench N]\n"
+               "  rally_replay run <archivo.rrec> [--telemetry <salida.csv>] [--bench N]\n"
                "  rally_replay rewrite <archivo.rrec>\n"
-               "  rally_replay zone --json <archivo.json> [--blind <superficie>]\n",
+               "  rally_replay zone --json <archivo.json> [--blind <superficie>]\n"
+               "  rally_replay columns --md [<archivo.md>]\n",
                stderr);
     return 2;
 }
@@ -125,8 +133,9 @@ struct BenchStats {
     double max_ms = 0.0;
 };
 
-// N repeticiones midiendo cada paso. Los tiempos se guardan en memoria reservada antes.
-bool bench(const Recording& recording, int repetitions, BenchStats& stats) {
+// N repeticiones midiendo cada paso. Los tiempos se guardan en memoria reservada antes. Con
+// `telemetry`, el mundo captura la telemetría en cada paso (lo que cuesta capturarla).
+bool bench(const Recording& recording, int repetitions, bool telemetry, BenchStats& stats) {
     using Clock = std::chrono::steady_clock;
     std::vector<double> step_ms;
     step_ms.reserve(static_cast<std::size_t>(recording.footer.total_steps) *
@@ -138,6 +147,7 @@ bool bench(const Recording& recording, int repetitions, BenchStats& stats) {
             std::fprintf(stderr, "error: %s\n", error.c_str());
             return false;
         }
+        world.set_telemetry(telemetry);
         for (const rally::io::InputRun& run : recording.runs) {
             for (std::uint32_t i = 0; i < run.count; ++i) {
                 const Clock::time_point start = Clock::now();
@@ -163,16 +173,65 @@ bool bench(const Recording& recording, int repetitions, BenchStats& stats) {
     return true;
 }
 
-int run(const char* path, int bench_repetitions) {
+// Escribe la telemetría de cada paso de la repetición en el CSV.
+class CsvObserver final : public rally::io::StepObserver {
+public:
+    explicit CsvObserver(rally::io::TelemetryCsvWriter& writer) : writer_(writer) {}
+    void after_step(const rally::sim::SimWorld& world) override {
+        writer_.append(world.telemetry());
+    }
+
+private:
+    rally::io::TelemetryCsvWriter& writer_;
+};
+
+// Nombre del archivo sin la ruta.
+std::string_view file_name(std::string_view path) {
+    const std::size_t slash = path.find_last_of("/\\");
+    return slash == std::string_view::npos ? path : path.substr(slash + 1);
+}
+
+int run(const char* path, int bench_repetitions, const char* telemetry_path) {
     std::string bytes;
     Recording recording;
     if (!load(path, bytes, recording)) {
         return 2;
     }
-    const rally::io::ReplayResult result = rally::io::replay(recording);
+    rally::io::TelemetryCsvWriter writer;
+    CsvObserver observer(writer);
+    if (telemetry_path != nullptr) {
+        rally::sim::WorldDesc desc;
+        std::string error;
+        if (!rally::io::parse_world(recording.header.world, desc, error,
+                                    recording.header.format_version)) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 2;
+        }
+        const std::string header =
+            rally::io::telemetry_csv_header(file_name(path), desc.test_zone, desc.blind_surface);
+        if (!writer.open(telemetry_path, header, error)) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 2;
+        }
+    }
+    const rally::io::ReplayResult result =
+        rally::io::replay(recording, telemetry_path != nullptr ? &observer : nullptr);
     if (!result.ran) {
         std::fprintf(stderr, "error: %s\n", result.problem.c_str());
         return 2;
+    }
+    if (telemetry_path != nullptr) {
+        std::string error;
+        if (!writer.close(error)) {
+            std::fprintf(stderr, "error: %s\n", error.c_str());
+            return 2;
+        }
+        const double minutes =
+            static_cast<double>(result.steps) / rally::sim::kStepsPerSecond / 60.0;
+        std::printf("telemetría: %s (%zu columnas, %" PRIu64 " bytes, %.2f MB por minuto)\n",
+                    telemetry_path, rally::io::telemetry_columns().size(), writer.bytes_written(),
+                    minutes > 0.0 ? static_cast<double>(writer.bytes_written()) / 1e6 / minutes
+                                  : 0.0);
     }
     std::printf("pasos: %" PRIu64 " (%.2f s)   hash: 0x%016" PRIx64 "\n", result.steps,
                 static_cast<double>(result.steps) / rally::sim::kStepsPerSecond, result.hash);
@@ -190,12 +249,18 @@ int run(const char* path, int bench_repetitions) {
 #ifndef NDEBUG
         std::puts("aviso: build de Debug; las cifras de Release son las que cuentan");
 #endif
-        BenchStats stats;
-        if (!bench(recording, bench_repetitions, stats)) {
+        BenchStats plain;
+        BenchStats captured;
+        if (!bench(recording, bench_repetitions, false, plain) ||
+            !bench(recording, bench_repetitions, true, captured)) {
             return 2;
         }
         std::printf("bench: %d repeticiones, ms por paso: media %.4f   p99 %.4f   máximo %.4f\n",
-                    bench_repetitions, stats.mean_ms, stats.p99_ms, stats.max_ms);
+                    bench_repetitions, plain.mean_ms, plain.p99_ms, plain.max_ms);
+        std::printf("bench con telemetría: media %.4f   p99 %.4f   máximo %.4f   "
+                    "captura: %.2f µs por paso\n",
+                    captured.mean_ms, captured.p99_ms, captured.max_ms,
+                    (captured.mean_ms - plain.mean_ms) * 1000.0);
     }
     return code;
 }
@@ -251,6 +316,22 @@ int zone_json(const char* path, const char* blind) {
     return 0;
 }
 
+// Tabla de columnas de la telemetría en Markdown, a un archivo o a la salida estándar.
+int columns_md(const char* path) {
+    const std::string md = rally::io::telemetry_columns_markdown();
+    if (path == nullptr) {
+        std::fwrite(md.data(), 1, md.size(), stdout);
+        return 0;
+    }
+    std::string error;
+    if (!rally::io::write_file(path, md, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 2;
+    }
+    std::printf("columnas escritas: %s (%zu)\n", path, rally::io::telemetry_columns().size());
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -275,6 +356,9 @@ int main(int argc, char** argv) {
         }
         return usage();
     }
+    if (std::strcmp(command, "columns") == 0 && std::strcmp(argv[2], "--md") == 0 && argc <= 4) {
+        return columns_md(argc == 4 ? argv[3] : nullptr);
+    }
     const char* path = argv[2];
     if (std::strcmp(command, "info") == 0 && argc == 3) {
         return info(path);
@@ -284,17 +368,25 @@ int main(int argc, char** argv) {
     }
     if (std::strcmp(command, "run") == 0) {
         int repetitions = 0;
-        if (argc == 5 && std::strcmp(argv[3], "--bench") == 0) {
-            const char* text = argv[4];
-            const std::from_chars_result parsed =
-                std::from_chars(text, text + std::strlen(text), repetitions);
-            if (parsed.ec != std::errc{} || *parsed.ptr != '\0' || repetitions < 1) {
+        const char* telemetry = nullptr;
+        for (int i = 3; i < argc; i += 2) {
+            if (i + 1 >= argc) {
                 return usage();
             }
-        } else if (argc != 3) {
-            return usage();
+            if (std::strcmp(argv[i], "--bench") == 0 && repetitions == 0) {
+                const char* text = argv[i + 1];
+                const std::from_chars_result parsed =
+                    std::from_chars(text, text + std::strlen(text), repetitions);
+                if (parsed.ec != std::errc{} || *parsed.ptr != '\0' || repetitions < 1) {
+                    return usage();
+                }
+            } else if (std::strcmp(argv[i], "--telemetry") == 0 && telemetry == nullptr) {
+                telemetry = argv[i + 1];
+            } else {
+                return usage();
+            }
         }
-        return run(path, repetitions);
+        return run(path, repetitions, telemetry);
     }
     return usage();
 }

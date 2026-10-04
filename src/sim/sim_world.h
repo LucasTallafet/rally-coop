@@ -4,6 +4,7 @@
 #include "sim/lap_timer.h"
 #include "sim/sim_input.h"
 #include "sim/surface.h"
+#include "sim/telemetry.h"
 #include "sim/test_zone.h"
 
 #include <cstddef>
@@ -107,6 +108,15 @@ public:
 
     // Mandos aplicados y pulsaciones del último paso.
     const ControlState& controls() const;
+
+    // Captura de la telemetría del cuerpo controlado (sim/telemetry.h), apagada al construir.
+    // Encendida, step() la rellena al final del paso; solo lee y no reserva memoria: no
+    // cambia la simulación (misma huella). Se puede encender en cualquier momento: no usa
+    // pasos anteriores (la aceleración sale de la velocidad al empezar el mismo paso).
+    void set_telemetry(bool enabled);
+    bool telemetry_enabled() const;
+    // Telemetría del último paso con la captura encendida (a cero sin cuerpo controlado).
+    const CarTelemetry& telemetry() const;
 
     // Impacto del cuerpo controlado en el último paso, en m/s: el cambio de velocidad lineal
     // que no explican la gravedad, el amortiguamiento ni la entrada (empuje y salto). Lo

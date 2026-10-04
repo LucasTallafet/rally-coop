@@ -33,8 +33,9 @@ Espera mi visto bueno si la tarea toca más de un módulo (casi todas). No empie
 
 - El test de huella (`sim_world: state fingerprint...`) usa desde la 2.4 el coche congelado `tests/data/cars/reference.car`, nunca los de `data/cars/`. Ese archivo no se toca al ajustar el manejo (2.10). Solo lo cambian las tareas que cambian el código de la simulación (por ejemplo, al añadir claves nuevas), y entonces la huella cambia de todos modos.
 - Si tu tarea cambia el resultado de la simulación **a propósito**: actualiza `kExpectedFingerprint` y `kExpectedJoltAllocations` y sube en 1 `kSimVersion` (constante que crea la 2.1). En el commit, una línea: `Fingerprint: 0x... -> 0x...; Jolt allocations: N -> M; sim version: A -> B`.
-- Si la huella cambia **sin querer**, no la actualices: busca la causa.
-- La huella tiene que ser igual en Debug y en Release.
+- **Hash de la telemetría:** `kExpectedTelemetryHash` (`tests/test_telemetry.cpp`) es el FNV-1a del CSV de 10 s de entradas pseudoaleatorias en la zona. Cambia cada vez que una tarea añade columnas a la telemetría o cambia la simulación. Se actualiza como la huella, y en el commit va en la misma línea: `Fingerprint: ...; Telemetry hash: 0x... -> 0x...`.
+- Si la huella o el hash de la telemetría cambian **sin querer**, no los actualices: busca la causa.
+- La huella y el hash de la telemetría tienen que ser iguales en Debug y en Release.
 
 ## 5. Datos, telemetría y grabaciones
 

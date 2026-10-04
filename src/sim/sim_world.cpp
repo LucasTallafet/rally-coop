@@ -78,6 +78,10 @@ struct SimWorld::Impl {
     // en el SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
     ControlState controls;
     float last_impact = 0.0f; // salida de diagnóstico; no es estado de la simulación
+    // Telemetría (solo lectura; no es estado de la simulación).
+    bool telemetry_enabled = false;
+    std::int64_t steps = 0; // pasos desde build, para la telemetría
+    CarTelemetry telemetry;
     State state = State::Empty;
 
     // Zona de pruebas (si la descripción la pide).
@@ -87,6 +91,9 @@ struct SimWorld::Impl {
     std::uint64_t ground_hash = 0;
     std::uint64_t zone_hash = 0;
     std::size_t ground_bytes = 0;
+
+    // Rellena `telemetry` al final de un paso. Solo lee.
+    void capture_telemetry(const SimInput& input, JPH::Vec3Arg before_velocity, bool reset);
 };
 
 SimWorld::SimWorld() : impl_(std::make_unique<Impl>()) {}
@@ -221,11 +228,16 @@ void SimWorld::step(const SimInput& input) {
     // Posición antes del paso, para el cronómetro.
     double before_x = 0.0;
     double before_z = 0.0;
+    // Velocidad antes del paso, para la aceleración de la telemetría.
+    JPH::Vec3 before_velocity = JPH::Vec3::sZero();
     if (!w.controlled.IsInvalid()) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
         const JPH::RVec3 before = bodies.GetPosition(w.controlled);
         before_x = before.GetX();
         before_z = before.GetZ();
+        if (w.telemetry_enabled) {
+            before_velocity = bodies.GetLinearVelocity(w.controlled);
+        }
         constexpr float kAxisScale = 1.0f / kAxisMax;
         const float throttle = rmath::clamp(
             static_cast<float>(w.controls.throttle.applied - w.controls.brake.applied) * kAxisScale,
@@ -286,7 +298,76 @@ void SimWorld::step(const SimInput& input) {
             w.lap->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
         }
     }
+    ++w.steps;
+    if (w.telemetry_enabled) {
+        w.capture_telemetry(input, before_velocity, reset_pressed);
+    }
 }
+
+void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg before_velocity,
+                                       bool reset) {
+    Impl& w = *this;
+    CarTelemetry& t = w.telemetry;
+    t = CarTelemetry{};
+    t.step = w.steps;
+    t.target = input;
+    if (w.controlled.IsInvalid()) {
+        return;
+    }
+    const JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();
+    const JPH::RVec3 com = body_interface.GetCenterOfMassPosition(w.controlled);
+    const JPH::Quat rotation = body_interface.GetRotation(w.controlled);
+    JPH::Vec3 v;
+    JPH::Vec3 omega;
+    body_interface.GetLinearAndAngularVelocity(w.controlled, v, omega);
+    const JPH::Vec3 forward = rotation * JPH::Vec3(0.0f, 0.0f, -1.0f);
+    const JPH::Vec3 right = rotation * JPH::Vec3(1.0f, 0.0f, 0.0f);
+    const JPH::Vec3 up = rotation * JPH::Vec3(0.0f, 1.0f, 0.0f);
+
+    t.x = com.GetX();
+    t.y = com.GetY();
+    t.z = com.GetZ();
+    t.vx = v.GetX();
+    t.vy = v.GetY();
+    t.vz = v.GetZ();
+    t.v_forward = v.Dot(forward);
+    t.v_right = v.Dot(right);
+    t.v_up = v.Dot(up);
+    t.speed = v.Length();
+    t.heading = rmath::atan2(forward.GetX(), -forward.GetZ());
+    t.yaw_rate = -omega.Dot(up);
+    t.beta = rmath::atan2(t.v_right, t.v_forward);
+    // Recolocar es un traslado, no una aceleración.
+    const JPH::Vec3 a = reset ? JPH::Vec3::sZero() : (v - before_velocity) / kStepSeconds;
+    t.ax = a.GetX();
+    t.ay = a.GetY();
+    t.az = a.GetZ();
+    t.a_forward = a.Dot(forward);
+    t.a_right = a.Dot(right);
+
+    constexpr float kAxisScale = 1.0f / kAxisMax;
+    const ControlState& c = w.controls;
+    t.steer = static_cast<float>(c.steer.applied) * kAxisScale;
+    t.throttle = static_cast<float>(c.throttle.applied) * kAxisScale;
+    t.brake = static_cast<float>(c.brake.applied) * kAxisScale;
+    t.handbrake = static_cast<float>(c.handbrake) * kAxisScale;
+    t.pressed = c.pressed;
+    if (w.zone) {
+        t.surface = static_cast<std::int8_t>(w.zone->surface_at(t.x, t.z));
+    }
+    if (w.lap) {
+        const LapState& lap_state = w.lap->state();
+        t.laps = lap_state.laps;
+        t.lap_steps = lap_state.current();
+    }
+    t.impact = w.last_impact;
+}
+
+void SimWorld::set_telemetry(bool enabled) { impl_->telemetry_enabled = enabled; }
+
+bool SimWorld::telemetry_enabled() const { return impl_->telemetry_enabled; }
+
+const CarTelemetry& SimWorld::telemetry() const { return impl_->telemetry; }
 
 const ControlState& SimWorld::controls() const { return impl_->controls; }
 

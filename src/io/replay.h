@@ -36,7 +36,19 @@ struct ReplayResult {
     bool hash_ok = false;
 };
 
-ReplayResult replay(const Recording& recording);
+// Recibe el mundo tras cada paso de una repetición (por ejemplo, para escribir la telemetría).
+// Solo lee.
+class StepObserver {
+public:
+    virtual void after_step(const sim::SimWorld& world) = 0;
+
+protected:
+    ~StepObserver() = default;
+};
+
+// Con `observer`, la repetición enciende la captura de la telemetría (no cambia el resultado)
+// y lo llama tras cada paso.
+ReplayResult replay(const Recording& recording, StepObserver* observer = nullptr);
 
 // Repite la grabación y le pone la versión actual de la simulación y el pie que da (pasos,
 // hash y completa). Solo para grabaciones sintéticas de tests: una grabación real de otra

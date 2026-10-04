@@ -142,11 +142,13 @@ struct RunResult {
     double max_distance = 0.0; // distancia horizontal máxima de la caja controlada al centro
 };
 
-RunResult run_random_inputs() {
+// `telemetry`: con la captura de la telemetría encendida (solo lee: misma huella).
+RunResult run_random_inputs(bool telemetry = false) {
     const std::vector<SimInput> inputs = random_inputs(kSecondsOfInput);
     SimWorld world;
     world.build(arena());
     world.seal();
+    world.set_telemetry(telemetry);
 
     RunResult result;
     double max_distance_sq = 0.0;
@@ -383,12 +385,20 @@ TEST_CASE("sim_world: state fingerprint after 60 s of random inputs matches the 
     CHECK(fingerprint == kExpectedFingerprint);
 }
 
+TEST_CASE("sim_world: capturing telemetry leaves the fingerprint unchanged") {
+    const rally::sim::JoltRuntime runtime;
+    CHECK(run_random_inputs(true).hash == kExpectedFingerprint);
+}
+
 TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blocks") {
     const rally::sim::JoltRuntime runtime;
     const std::vector<SimInput> inputs = random_inputs(5);
     SimWorld world;
     world.build(arena());
     world.seal();
+    // Con la captura de la telemetría, lo mismo: solo lee y no reserva.
+    SUBCASE("without telemetry") {}
+    SUBCASE("with telemetry") { world.set_telemetry(true); }
 
     std::size_t next = 0;
     for (int i = 0; i < kWarmupSteps; ++i) {

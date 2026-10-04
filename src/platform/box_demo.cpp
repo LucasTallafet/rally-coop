@@ -8,6 +8,7 @@
 #include "platform/input_shaping.h"
 #include "platform/perf_counter.h"
 #include "platform/screenshot.h"
+#include "platform/telemetry_graphs.h"
 #include "sim/demo_world.h"
 
 #include <SDL3/SDL_video.h>
@@ -239,6 +240,8 @@ void BoxDemo::reset() {
     world_ = std::make_unique<sim::SimWorld>();
     world_->build(desc_);
     world_->seal();
+    world_->set_telemetry(true);
+    telemetry_history_.clear();
     if (world_->zone() != nullptr) {
         zone_draw_.build(*world_->zone(), blind_mode_);
     }
@@ -279,6 +282,9 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
     }
     if (IsKeyPressed(KEY_H)) {
         overlay_visible_ = !overlay_visible_;
+    }
+    if (IsKeyPressed(KEY_T)) {
+        graphs_.press(blind_mode_);
     }
     if (IsKeyPressed(KEY_K)) {
         zone_mode_ = !zone_mode_;
@@ -346,6 +352,7 @@ float BoxDemo::step(const sim::SimInput& input) {
     }
     world_->step(input);
     recording_.record(input);
+    telemetry_history_.push(world_->telemetry());
     const std::uint16_t pressed = world_->controls().pressed;
     shift_up_presses_ += (pressed & sim::kButtonShiftUp) != 0 ? 1 : 0;
     shift_down_presses_ += (pressed & sim::kButtonShiftDown) != 0 ? 1 : 0;
@@ -575,11 +582,16 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
         DrawText("V: sincronización vertical   N: ajuste al refresco   L: registro   "
                  "B: bosque y O: origen/20 km (en el recinto)",
                  16, GetScreenHeight() - 62, 20, help);
-        DrawText("F1: rendimiento   F11 o Alt+Intro: pantalla completa   P: pausa   C: captura   "
-                 "H: texto   Esc: salir",
+        DrawText(TextFormat("F1: rendimiento   F11 o Alt+Intro: pantalla completa   P: pausa   "
+                            "C: captura   H: texto%s   Esc: salir",
+                            blind_mode_ ? "" : "   T: gráficas"),
                  16, GetScreenHeight() - 36, 20, help);
     }
 
+    if (graphs_.visible(blind_mode_)) {
+        draw_telemetry_graphs(telemetry_history_,
+                              GetScreenWidth() - (perf.visible() ? PerfCounter::kPanelWidth : 0));
+    }
     perf.draw(pacer, clock, snap_, render_width(), render_height());
     if (capture_requested_) {
         save_screenshot();

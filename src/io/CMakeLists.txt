@@ -1,5 +1,5 @@
 # Entrada y salida sin raylib ni SDL: formato de las grabaciones (.rrec), su repetición y el
-# guardado de emergencia (y en la 2.3, la telemetría). La enlazan el juego, rally_replay y
+# guardado de emergencia y la telemetría en CSV. La enlazan el juego, rally_replay y
 # los tests. Puede usar archivos; nada de aquí lee el reloj ni se llama dentro de step()
 # salvo Recorder::append, que no reserva memoria.
 
@@ -18,6 +18,7 @@ add_library(rally_io STATIC
     crash_save.cpp
     recording.cpp
     replay.cpp
+    telemetry_csv.cpp
     ${_build_info_cpp}
 )
 add_dependencies(rally_io rally_build_info)

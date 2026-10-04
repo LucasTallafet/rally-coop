@@ -1,0 +1,3 @@
+# Solo para plot.py y compare.py. telemetry.py, drift_check.py y los tests de la zona usan solo
+# la biblioteca estándar.
+matplotlib>=3.8

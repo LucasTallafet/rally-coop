@@ -57,10 +57,11 @@ winget install Python.Python.3.12
 
 ```powershell
 python -m pip install --user clang-format==23.1.2
+python -m pip install --user -r tools/telemetry/requirements.txt
 irm https://claude.ai/install.ps1 | iex
 ```
 
-La versión de clang-format está fijada: otra versión formatea distinto y el código ya formateado empezaría a dar diferencias.
+La versión de clang-format está fijada: otra versión formatea distinto y el código ya formateado empezaría a dar diferencias. `requirements.txt` (desde la raíz del repositorio clonado) instala matplotlib para `plot.py` y `compare.py`. Los tests de Python (`telemetry_py.*`, Python 3.12 o posterior) usan el `python` del PATH. Sin matplotlib, el configure avisa y no añade `telemetry_py.plot` ni `telemetry_py.compare`.
 
 ### 3.3 Comprobación
 
@@ -202,6 +203,7 @@ Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambia
 | G | Zona: siguiente superficie de la pista ciega (reconstruye); a ciegas, siguiente prueba de la serie |
 | M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15»; cada prueba sale en la pista ciega) |
 | H | Ocultar / mostrar el texto (quedan las vueltas) |
+| T | Gráficas de la telemetría de los últimos 10 s: β, guiñada, velocidad y entradas aplicadas (con F1, a su izquierda). En el modo a ciegas no hace nada |
 | O | Recinto: mundo a 20 km del origen (y de vuelta) |
 | J | Dibujar en float del mundo (depuración del render relativo) |
 | F | Frecuencia del monitor / 30 fps |
@@ -224,7 +226,19 @@ Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambia
 | `--bench-zone` | Mide la CPU del dibujo del suelo de la zona en pantalla completa sin bordes, con la cámara por la pista ciega a 100 km/h (3 s de calentamiento y 20 s de medida); escribe `rendimiento_zona_NNN.txt` junto al exe y se cierra |
 | `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
 
-Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: `info <archivo>`, `run <archivo>` («hash OK» o el primer problema), `run <archivo> --bench N`, `rewrite <archivo>` (solo grabaciones sintéticas de tests) y `zone --json <archivo> [--blind <superficie>]` (trazado de la zona de pruebas para los scripts de Python). `info` dice la superficie real de la pista ciega y `run`, la mejor vuelta cronometrada.
+Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: 
+- `info <archivo>`: dice, entre otras cosas, la superficie real de la pista ciega.
+- `run <archivo>`: «hash OK» o el primer problema, y la mejor vuelta cronometrada.
+- `run <archivo> --telemetry <salida.csv>`: CSV por paso; columnas en `tools/telemetry/columns.md`.
+- `run <archivo> --bench N`: ms por paso, sin y con la captura de la telemetría.
+- `rewrite <archivo>`: solo para grabaciones sintéticas de tests.
+- `zone --json <archivo> [--blind <superficie>]`: trazado de la zona de pruebas para los scripts de Python.
+- `columns --md [<archivo>]`: la tabla de columnas.
+
+Scripts en `tools/telemetry` (ver su `README.md`):
+- `plot.py <csv> <columnas...>`: curvas frente al tiempo.
+- `compare.py <a.csv> <b.csv> <columnas...>`: dos grabaciones superpuestas.
+- `drift_check.py <csv> <zona.json>`: la prueba de derrape.
 
 ---
 

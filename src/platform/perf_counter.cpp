@@ -16,7 +16,7 @@ namespace {
 
 constexpr int kFontSize = 20;
 constexpr int kLine = 22;
-constexpr int kPanelWidth = 640;
+constexpr int kPanelWidth = PerfCounter::kPanelWidth;
 constexpr int kPadding = 10;
 // Columnas: etiqueta, media (alineada a la derecha) y máximo de 2 s (a la derecha).
 constexpr int kAverageRight = 290;

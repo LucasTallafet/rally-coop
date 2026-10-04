@@ -109,6 +109,21 @@ Se usa `VehicleConstraint` de Jolt (suspensión, contacto por cylinder cast) con
   - **Sostenido** (círculo de grava de 40 m de radio): una ventana continua con |β| > 15°, freno y freno de mano a 0 y el coche a 40 ± 8 m del centro, en la que la posición barre ≥ 180° alrededor del centro.
   - **Progresivo** (mismo círculo): desde un derrape sostenido ≥ 0,5 s, se suelta el acelerador (aplicado < 10 %). En los 0,5 s siguientes, |β| baja al menos un 25 % y el radio de la trayectoria es menor que al soltar; en los 2 s siguientes, sin trompo.
   - **Recogida** (explanada de grava): con ≥ 95 km/h y |β| ≥ 20° en su máximo (t0), y contravolante (dirección hacia el exterior del giro durante ≥ 0,2 s), |β| < 5° durante 0,5 s seguidos antes de t0 + 2 s, sin trompo.
+  - **Implementación en `drift_check.py`** (2026-10-04, tarea 2.3, aprobada por Lucas). Valores aplicados de la telemetría (`columns.md`); posición y velocidad del centro de masas.
+    - **β y radio:** con velocidad horizontal < 3 m/s, β no está definido. Esos pasos cortan las ventanas, no cuentan para trompo y no entran en la media móvil. El CSV escribe el β calculado y las gráficas en pantalla lo muestran como 0.
+      - La media móvil va hacia atrás, de 24 pasos (0,1 s), sobre β desenrollado y solo con los pasos definidos seguidos.
+      - El radio de la trayectoria es |v|³ / |v × a| en el plano (x, z), con v y a suavizados con la misma media.
+    - **Sostenido:** freno y freno de mano aplicados exactamente a 0. El barrido es el valor absoluto del ángulo neto desenrollado de la posición alrededor del centro dentro de la ventana. Una ventana se informa (PASA o NO PASA) si dura ≥ 0,5 s.
+    - **Progresivo:**
+      - Soltar (t_r) es el primer paso con el acelerador aplicado < 10 %. Los 0,5 s anteriores cumplen las condiciones del sostenido salvo el barrido, con el acelerador ≥ 10 %.
+      - La caída de |β| y el radio se miden en el mismo instante, t_r + 0,5 s, con los valores suavizados: |β(t_r + 0,5)| ≤ 0,75·|β(t_r)| y r(t_r + 0,5) < r(t_r).
+      - Sin trompo en [t_r, t_r + 2 s].
+    - **Recogida:**
+      - t0 es el paso de |β| máximo de cada intervalo seguido con |β| ≥ 20°. Los 95 km/h se exigen al empezar el intervalo (primer paso con |β| ≥ 20°), no en t0.
+      - Contravolante: dirección aplicada con el signo de β y |dirección| ≥ 5 % durante ≥ 0,2 s seguidos, entre el inicio del intervalo y t0 + 2 s.
+      - Tiempo de recogida: el primer paso desde t0 a partir del cual |β| < 5° se mantiene 0,5 s seguidos, menos t0. Pasa si es < 2,0 s; la ventana de 0,5 s puede acabar después de t0 + 2 s.
+      - Sin trompo desde t0 hasta el final de esa ventana.
+    - **Candidatos descartados:** además de PASA y NO PASA, el script lista los candidatos que no llegan a evaluarse, con su motivo: velocidad al empezar < 95 km/h, ventana < 0,5 s, derrape fuera de 40 ± 8 m del centro o derrape previo < 0,5 s al soltar.
 
   Si no pasa tras el ajuste (tarea 2.10), se reconsidera cambiar de motor de física. Referencia: el paso límite por un radio de 40 m en grava es de ~60 km/h (√(μ·g·r), μ ≈ 0,7).
 

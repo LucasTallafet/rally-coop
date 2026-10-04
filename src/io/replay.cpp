@@ -22,15 +22,19 @@ bool build_world(const Recording& recording, sim::SimWorld& world, std::string& 
     return true;
 }
 
-ReplayResult replay(const Recording& recording) {
+ReplayResult replay(const Recording& recording, StepObserver* observer) {
     ReplayResult result;
     sim::SimWorld world;
     if (!build_world(recording, world, result.problem)) {
         return result;
     }
+    world.set_telemetry(observer != nullptr);
     for (const InputRun& run : recording.runs) {
         for (std::uint32_t i = 0; i < run.count; ++i) {
             world.step(run.input);
+            if (observer != nullptr) {
+                observer->after_step(world);
+            }
         }
         result.steps += run.count;
     }

@@ -25,6 +25,9 @@ struct FrameSteps;
 //   BeginDrawing → begin_render → dibujo → draw → end_render → EndDrawing → end_present
 class PerfCounter {
 public:
+    // Ancho del panel, a 16 px del borde derecho (las gráficas de T van a su izquierda).
+    static constexpr int kPanelWidth = 640;
+
     // Necesita la ventana abierta (instala el contador de draw calls y crea las consultas).
     PerfCounter();
 

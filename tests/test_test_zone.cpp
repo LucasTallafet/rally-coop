@@ -968,6 +968,9 @@ TEST_CASE("test_zone: step allocates nothing of ours on the zone ground") {
     SimWorld world;
     world.build(rally::sim::zone_world(Surface::Gravel));
     world.seal();
+    // Con la captura de la telemetría (superficie bajo el centro de masas, cronómetro) tampoco.
+    SUBCASE("without telemetry") {}
+    SUBCASE("with telemetry") { world.set_telemetry(true); }
     SimInput in;
     in.throttle = kAxisMax;
     in.steer = kAxisMax / 3;

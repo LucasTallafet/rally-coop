@@ -4,6 +4,7 @@
 #include "platform/frame_log.h"
 #include "platform/interpolation.h"
 #include "platform/recording_session.h"
+#include "platform/telemetry_history.h"
 #include "platform/zone_draw.h"
 #include "sim/sim_input.h"
 #include "sim/sim_world.h"
@@ -39,8 +40,9 @@ struct FrameSteps;
 // F alterna frecuencia del monitor / 30 fps, I la interpolación, V la sincronización
 // vertical, P la pausa, C guarda una captura (captura_NNN.png junto al exe), N activa el
 // ajuste del dt al refresco del monitor, L empieza o acaba el registro de fotogramas
-// (fotogramas_NNN.csv junto al exe) y B cambia el modo de la escena de medida del bosque
-// denso. El contador de rendimiento (F1) es aparte: PerfCounter.
+// (fotogramas_NNN.csv junto al exe), B cambia el modo de la escena de medida del bosque
+// denso y T muestra las gráficas de la telemetría de los últimos 10 s (no en el modo a
+// ciegas). El contador de rendimiento (F1) es aparte: PerfCounter.
 class BoxDemo {
 public:
     // Necesita la ventana abierta (fija los planos de recorte de raylib).
@@ -146,6 +148,9 @@ private:
     RenderTexture2D target_{}; // id 0 si se dibuja directamente en la ventana
     FrameLog frame_log_;       // L: registro de diagnóstico
     RecordingSession recording_;
+    // T: gráficas de la telemetría (no en el modo a ciegas). La historia se llena siempre.
+    TelemetryHistory telemetry_history_;
+    GraphToggle graphs_;
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).
     int shift_up_presses_ = 0;
     int shift_down_presses_ = 0;
