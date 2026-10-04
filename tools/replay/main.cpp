@@ -127,50 +127,85 @@ int info(const char* path) {
     return 0;
 }
 
+// Tiempo de un paso medido: en qué repetición y en qué paso de la grabación cayó.
+struct StepTime {
+    double ms = 0.0;
+    int repetition = 0;
+    std::uint32_t step = 0; // 0 = el primer paso
+};
+
 struct BenchStats {
     double mean_ms = 0.0;
     double p99_ms = 0.0;
     double max_ms = 0.0;
+    int over_1ms = 0;
+    std::vector<StepTime> slowest; // los kSlowest más lentos, de más a menos
 };
 
-// N repeticiones midiendo cada paso. Los tiempos se guardan en memoria reservada antes. Con
-// `telemetry`, el mundo captura la telemetría en cada paso (lo que cuesta capturarla).
-bool bench(const Recording& recording, int repetitions, bool telemetry, BenchStats& stats) {
+constexpr std::size_t kSlowest = 5;
+
+void summarize(std::vector<StepTime>& times, BenchStats& stats) {
+    if (times.empty()) {
+        return;
+    }
+    double total = 0.0;
+    for (const StepTime& t : times) {
+        total += t.ms;
+        stats.over_1ms += t.ms > 1.0 ? 1 : 0;
+    }
+    stats.mean_ms = total / static_cast<double>(times.size());
+    std::sort(times.begin(), times.end(),
+              [](const StepTime& a, const StepTime& b) { return a.ms > b.ms; });
+    const std::size_t p99 =
+        std::min(times.size() - 1, static_cast<std::size_t>(0.01 * times.size()));
+    stats.p99_ms = times[p99].ms;
+    stats.max_ms = times.front().ms;
+    stats.slowest.assign(times.begin(), times.begin() + std::min(kSlowest, times.size()));
+}
+
+// N repeticiones midiendo cada paso, alternando sin y con la captura de la telemetría en cada
+// repetición (así el ruido del sistema reparte igual entre las dos). Los tiempos se guardan en
+// memoria reservada antes.
+bool bench(const Recording& recording, int repetitions, BenchStats& plain, BenchStats& captured) {
     using Clock = std::chrono::steady_clock;
-    std::vector<double> step_ms;
-    step_ms.reserve(static_cast<std::size_t>(recording.footer.total_steps) *
-                    static_cast<std::size_t>(repetitions));
+    std::vector<StepTime> times[2];
+    for (std::vector<StepTime>& t : times) {
+        t.reserve(static_cast<std::size_t>(recording.footer.total_steps) *
+                  static_cast<std::size_t>(repetitions));
+    }
     for (int rep = 0; rep < repetitions; ++rep) {
-        rally::sim::SimWorld world;
-        std::string error;
-        if (!rally::io::build_world(recording, world, error)) {
-            std::fprintf(stderr, "error: %s\n", error.c_str());
-            return false;
-        }
-        world.set_telemetry(telemetry);
-        for (const rally::io::InputRun& run : recording.runs) {
-            for (std::uint32_t i = 0; i < run.count; ++i) {
-                const Clock::time_point start = Clock::now();
-                world.step(run.input);
-                const Clock::time_point end = Clock::now();
-                step_ms.push_back(std::chrono::duration<double, std::milli>(end - start).count());
+        for (int telemetry = 0; telemetry < 2; ++telemetry) {
+            rally::sim::SimWorld world;
+            std::string error;
+            if (!rally::io::build_world(recording, world, error)) {
+                std::fprintf(stderr, "error: %s\n", error.c_str());
+                return false;
+            }
+            world.set_telemetry(telemetry == 1);
+            std::uint32_t step = 0;
+            for (const rally::io::InputRun& run : recording.runs) {
+                for (std::uint32_t i = 0; i < run.count; ++i) {
+                    const Clock::time_point start = Clock::now();
+                    world.step(run.input);
+                    const Clock::time_point end = Clock::now();
+                    times[telemetry].push_back(
+                        {std::chrono::duration<double, std::milli>(end - start).count(), rep,
+                         step++});
+                }
             }
         }
     }
-    if (step_ms.empty()) {
-        return true;
-    }
-    double total = 0.0;
-    for (const double ms : step_ms) {
-        total += ms;
-    }
-    stats.mean_ms = total / static_cast<double>(step_ms.size());
-    std::sort(step_ms.begin(), step_ms.end());
-    const std::size_t p99 =
-        std::min(step_ms.size() - 1, static_cast<std::size_t>(0.99 * step_ms.size()));
-    stats.p99_ms = step_ms[p99];
-    stats.max_ms = step_ms.back();
+    summarize(times[0], plain);
+    summarize(times[1], captured);
     return true;
+}
+
+void print_slowest(const BenchStats& stats) {
+    std::printf("  pasos > 1 ms: %d; los más lentos (repetición/paso: ms):", stats.over_1ms);
+    for (const StepTime& t : stats.slowest) {
+        std::printf("  %d/%u: %.3f", t.repetition, t.step, t.ms);
+    }
+    std::puts("");
 }
 
 // Escribe la telemetría de cada paso de la repetición en el CSV.
@@ -251,16 +286,21 @@ int run(const char* path, int bench_repetitions, const char* telemetry_path) {
 #endif
         BenchStats plain;
         BenchStats captured;
-        if (!bench(recording, bench_repetitions, false, plain) ||
-            !bench(recording, bench_repetitions, true, captured)) {
+        if (!bench(recording, bench_repetitions, plain, captured)) {
             return 2;
         }
         std::printf("bench: %d repeticiones, ms por paso: media %.4f   p99 %.4f   máximo %.4f\n",
                     bench_repetitions, plain.mean_ms, plain.p99_ms, plain.max_ms);
+        print_slowest(plain);
         std::printf("bench con telemetría: media %.4f   p99 %.4f   máximo %.4f   "
                     "captura: %.2f µs por paso\n",
                     captured.mean_ms, captured.p99_ms, captured.max_ms,
                     (captured.mean_ms - plain.mean_ms) * 1000.0);
+        print_slowest(captured);
+        // Un máximo que cae en pasos distintos en cada repetición no es de la simulación (hace
+        // el mismo trabajo en todas): es el sistema (interrupciones, otros procesos).
+        std::puts("  si los pasos más lentos cambian de una repetición a otra, son ruido del "
+                  "sistema, no de la simulación");
     }
     return code;
 }

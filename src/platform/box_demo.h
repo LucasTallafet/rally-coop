@@ -150,7 +150,7 @@ private:
     RecordingSession recording_;
     // T: gráficas de la telemetría (no en el modo a ciegas). La historia se llena siempre.
     TelemetryHistory telemetry_history_;
-    GraphToggle graphs_;
+    GraphPager graphs_;
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).
     int shift_up_presses_ = 0;
     int shift_down_presses_ = 0;

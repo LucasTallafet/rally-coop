@@ -303,85 +303,118 @@ TEST_CASE("telemetry: the header and the markdown name every column once") {
     }
 }
 
-TEST_CASE("telemetry_history: the ring keeps the last steps and push allocates nothing") {
-    rally::platform::TelemetryHistory history(5);
-    CHECK(history.capacity() == 5);
-    CHECK(history.size() == 0);
+namespace {
+
+using Channel = rally::platform::TelemetryHistory::Channel;
+constexpr std::array<Channel, 2> kStepChannels = {
+    [](const CarTelemetry& s) { return static_cast<float>(s.step); },
+    [](const CarTelemetry& s) { return -static_cast<float>(s.step); },
+};
+
+void push_steps(rally::platform::TelemetryHistory& history, int first, int last) {
     CarTelemetry t;
-    const std::uint64_t before = rally::tests::global_new_count();
-    for (int i = 1; i <= 12; ++i) {
+    for (int i = first; i <= last; ++i) {
         t.step = i;
         history.push(t);
     }
-    CHECK(rally::tests::global_new_count() == before);
-    REQUIRE(history.size() == 5);
-    for (int i = 0; i < 5; ++i) {
-        CHECK(history.at(i).step == 8 + i);
-    }
-    // Columnas con el búfer dado la vuelta: una columna por paso, unida al paso anterior.
-    using Range = rally::platform::TelemetryHistory::Range;
-    const std::array<rally::platform::TelemetryHistory::Channel, 1> step_channel = {
-        [](const CarTelemetry& s) { return static_cast<float>(s.step); }};
-    std::array<Range, 5> columns{};
-    history.column_ranges(step_channel, 5, columns);
-    CHECK(columns[0].valid);
-    CHECK(columns[0].min == 8.0f);
-    CHECK(columns[0].max == 8.0f);
-    for (int c = 1; c < 5; ++c) {
-        CHECK(columns[static_cast<std::size_t>(c)].min == static_cast<float>(7 + c));
-        CHECK(columns[static_cast<std::size_t>(c)].max == static_cast<float>(8 + c));
-    }
-    history.clear();
-    CHECK(history.size() == 0);
-    t.step = 99;
-    history.push(t);
-    CHECK(history.at(0).step == 99);
-    // La de la partida: 10 s a 240 Hz.
-    CHECK(rally::platform::TelemetryHistory().capacity() == 10 * kStepsPerSecond);
 }
 
-TEST_CASE("telemetry_history: column ranges give each channel's minimum and maximum") {
-    using Range = rally::platform::TelemetryHistory::Range;
-    using Channel = rally::platform::TelemetryHistory::Channel;
-    rally::platform::TelemetryHistory history(10);
-    const std::array<Channel, 2> channels = {
-        [](const CarTelemetry& s) { return static_cast<float>(s.step); },
-        [](const CarTelemetry& s) { return -static_cast<float>(s.step); },
-    };
-    std::array<Range, 5 * 2> out{};
-    CarTelemetry t;
-    // Tres pasos en una historia de 10 repartida en 5 columnas de 2: solo las dos últimas
-    // columnas tienen datos (la 3, el paso 1; la 4, los pasos 2 y 3 más el 1 de la anterior).
-    for (int i = 1; i <= 3; ++i) {
-        t.step = i;
-        history.push(t);
-    }
-    history.column_ranges(channels, 5, out);
+} // namespace
+
+TEST_CASE("telemetry_history: columns cover fixed steps and join the previous column") {
+    // 5 columnas de 2 pasos; los pasos valen 1, 2, 3...
+    rally::platform::TelemetryHistory history(kStepChannels, 5, 2);
+    CHECK(history.columns() == 5);
+    CHECK(history.channel_count() == 2);
+    CHECK(!history.column(0, 4).valid);
+    CHECK(history.latest(0) == 0.0f);
+    // Tres pasos: la última columna (a medias) tiene el paso 3 más el 2 de la anterior; la
+    // anterior, los pasos 1 y 2; el resto, nada.
+    push_steps(history, 1, 3);
+    CHECK(history.steps() == 3);
+    CHECK(history.latest(0) == 3.0f);
+    CHECK(history.latest(1) == -3.0f);
     for (int c = 0; c < 3; ++c) {
-        CHECK(!out[static_cast<std::size_t>(c * 2)].valid);
+        CHECK(!history.column(0, c).valid);
     }
-    CHECK(out[3 * 2].valid);
-    CHECK(out[3 * 2].min == 1.0f);
-    CHECK(out[3 * 2].max == 1.0f);
-    CHECK(out[4 * 2].min == 1.0f);
-    CHECK(out[4 * 2].max == 3.0f);
-    CHECK(out[4 * 2 + 1].min == -3.0f);
-    CHECK(out[4 * 2 + 1].max == -1.0f);
-    // Llena: la columna c tiene los pasos 2c+1 y 2c+2, más el último de la anterior.
-    for (int i = 4; i <= 10; ++i) {
-        t.step = i;
-        history.push(t);
-    }
+    CHECK(history.column(0, 3).valid);
+    CHECK(history.column(0, 3).min == 1.0f);
+    CHECK(history.column(0, 3).max == 2.0f);
+    CHECK(history.column(0, 4).min == 2.0f);
+    CHECK(history.column(0, 4).max == 3.0f);
+    CHECK(history.column(1, 4).min == -3.0f);
+    CHECK(history.column(1, 4).max == -2.0f);
+    // Doce pasos más (15): ha dado la vuelta. Las columnas absolutas visibles son la 3 a la 7:
+    // la 7 tiene el 15 más el 14; la c, los pasos 2c+1 y 2c+2 más el 2c.
     const std::uint64_t before = rally::tests::global_new_count();
-    history.column_ranges(channels, 5, out);
+    push_steps(history, 4, 15);
     CHECK(rally::tests::global_new_count() == before);
-    CHECK(out[0].min == 1.0f);
-    CHECK(out[0].max == 2.0f);
-    for (int c = 1; c < 5; ++c) {
-        CHECK(out[static_cast<std::size_t>(c * 2)].min == static_cast<float>(2 * c));
-        CHECK(out[static_cast<std::size_t>(c * 2)].max == static_cast<float>(2 * c + 2));
-        CHECK(out[static_cast<std::size_t>(c * 2 + 1)].max == -static_cast<float>(2 * c));
+    CHECK(history.column(0, 4).min == 14.0f);
+    CHECK(history.column(0, 4).max == 15.0f);
+    for (int c = 0; c < 4; ++c) {
+        const int absolute = c + 3;
+        CHECK(history.column(0, c).valid);
+        CHECK(history.column(0, c).min == static_cast<float>(2 * absolute));
+        CHECK(history.column(0, c).max == static_cast<float>(2 * absolute + 2));
+        CHECK(history.column(1, c).max == -static_cast<float>(2 * absolute));
     }
+    history.clear();
+    CHECK(history.steps() == 0);
+    CHECK(!history.column(0, 4).valid);
+    push_steps(history, 99, 99);
+    CHECK(history.column(0, 4).min == 99.0f); // sin el paso anterior a clear()
+    CHECK(history.column(0, 4).max == 99.0f);
+}
+
+TEST_CASE("telemetry_history: visible columns match column by column") {
+    using Range = rally::platform::TelemetryHistory::Range;
+    rally::platform::TelemetryHistory history(kStepChannels, 7, 3);
+    std::array<Range, 7> out{};
+    const auto same = [&history, &out]() {
+        for (int k = 0; k < 2; ++k) {
+            history.visible_columns(k, out);
+            for (int c = 0; c < 7; ++c) {
+                const Range expected = history.column(k, c);
+                const Range& got = out[static_cast<std::size_t>(c)];
+                CHECK(got.valid == expected.valid);
+                if (expected.valid) {
+                    CHECK(got.min == expected.min);
+                    CHECK(got.max == expected.max);
+                }
+            }
+        }
+    };
+    same(); // vacía
+    int pushed = 0;
+    for (const int more : {1, 4, 9, 30, 2}) { // parcial, y después dando la vuelta
+        push_steps(history, pushed + 1, pushed + more);
+        pushed += more;
+        same();
+    }
+}
+
+TEST_CASE("telemetry_history: the game history holds 10 s and every page channel") {
+    const rally::platform::TelemetryHistory history;
+    CHECK(history.columns() * rally::platform::kGraphStepsPerColumn == 10 * kStepsPerSecond);
+    CHECK(history.channel_count() ==
+          static_cast<int>(rally::platform::default_graph_channels().size()));
+    // Páginas: 1 · manejo (beta, guiñada, velocidad, entradas aplicadas), 2 · tren motriz y
+    // 3 · suspensión, vacías hasta la 2.4–2.6.
+    const auto pages = rally::platform::default_graph_pages();
+    REQUIRE(pages.size() == 3);
+    CHECK(std::string(pages[0].title) == "manejo");
+    CHECK(pages[0].panels.size() == 4);
+    CHECK(pages[0].panels[3].channels.size() == 4);
+    CHECK(pages[1].panels.empty());
+    CHECK(pages[2].panels.empty());
+    CHECK(rally::platform::first_graph_channel(0) == 0);
+    CHECK(rally::platform::first_graph_channel(1) == 7);
+    CHECK(rally::platform::default_graph_channels().size() <=
+          static_cast<std::size_t>(rally::platform::kMaxGraphChannels));
+    // El orden de los canales es el de los paneles: el 3 es la velocidad en km/h.
+    CarTelemetry t;
+    t.speed = 10.0f;
+    CHECK(rally::platform::default_graph_channels()[2](t) == doctest::Approx(36.0f));
 }
 
 TEST_CASE("telemetry_history: the graphs show beta as 0 below 3 m/s horizontal") {
@@ -393,29 +426,38 @@ TEST_CASE("telemetry_history: the graphs show beta as 0 below 3 m/s horizontal")
     CHECK(rally::platform::graph_beta_deg(t) == 0.0f);
     t.vz = -2.3f; // 3,05 m/s
     CHECK(rally::platform::graph_beta_deg(t) == doctest::Approx(57.29578f));
-    // Los paneles por defecto: beta, guiñada, velocidad y entradas aplicadas; caben en el sitio
-    // que reserva el dibujo.
-    const auto panels = rally::platform::default_graph_panels();
-    CHECK(panels.size() == 4);
-    CHECK(panels[3].channels.size() == 4);
-    std::size_t channels = 0;
-    for (const rally::platform::GraphPanel& panel : panels) {
-        channels += panel.channels.size();
+}
+
+TEST_CASE("telemetry_history: T pages through the pages with panels and then hides them") {
+    using rally::platform::GraphPage;
+    using rally::platform::GraphPanel;
+    const std::array<GraphPanel, 1> panel = {GraphPanel{"p", "", 0.0f, 1.0f, {}}};
+    // Tres páginas con paneles: 1 → 2 → 3 → ocultas → 1.
+    const std::array<GraphPage, 3> full = {GraphPage{"a", panel}, GraphPage{"b", panel},
+                                           GraphPage{"c", panel}};
+    rally::platform::GraphPager pager;
+    CHECK(pager.visible(false) == -1);
+    for (const int expected : {0, 1, 2, -1, 0}) {
+        pager.press(false, full);
+        CHECK(pager.visible(false) == expected);
     }
-    CHECK(channels <= static_cast<std::size_t>(rally::platform::kMaxGraphChannels));
+    // Las páginas sin paneles se saltan: con las de la partida, T muestra la 1 y la oculta.
+    rally::platform::GraphPager game;
+    game.press(false, rally::platform::default_graph_pages());
+    CHECK(game.visible(false) == 0);
+    game.press(false, rally::platform::default_graph_pages());
+    CHECK(game.visible(false) == -1);
 }
 
 TEST_CASE("telemetry_history: T does nothing in blind mode and blind mode hides the graphs") {
-    rally::platform::GraphToggle toggle;
-    CHECK(!toggle.visible(false));
-    toggle.press(true); // a ciegas: no hace nada
-    CHECK(!toggle.visible(false));
-    CHECK(!toggle.visible(true));
-    toggle.press(false);
-    CHECK(toggle.visible(false));
-    CHECK(!toggle.visible(true)); // al entrar en el modo a ciegas desaparecen
-    toggle.press(true);
-    CHECK(toggle.visible(false)); // y vuelven al salir, sin que T haya cambiado nada
-    toggle.press(false);
-    CHECK(!toggle.visible(false));
+    const auto pages = rally::platform::default_graph_pages();
+    rally::platform::GraphPager pager;
+    pager.press(true, pages); // a ciegas: no hace nada
+    CHECK(pager.visible(false) == -1);
+    CHECK(pager.visible(true) == -1);
+    pager.press(false, pages);
+    CHECK(pager.visible(false) == 0);
+    CHECK(pager.visible(true) == -1); // al entrar en el modo a ciegas desaparecen
+    pager.press(true, pages);
+    CHECK(pager.visible(false) == 0); // y vuelven al salir, sin que T haya cambiado nada
 }

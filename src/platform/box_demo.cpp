@@ -284,7 +284,7 @@ void BoxDemo::handle_keys(FramePacer& pacer) {
         overlay_visible_ = !overlay_visible_;
     }
     if (IsKeyPressed(KEY_T)) {
-        graphs_.press(blind_mode_);
+        graphs_.press(blind_mode_, default_graph_pages());
     }
     if (IsKeyPressed(KEY_K)) {
         zone_mode_ = !zone_mode_;
@@ -588,8 +588,8 @@ void BoxDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePa
                  16, GetScreenHeight() - 36, 20, help);
     }
 
-    if (graphs_.visible(blind_mode_)) {
-        draw_telemetry_graphs(telemetry_history_,
+    if (graphs_.visible(blind_mode_) >= 0) {
+        draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_),
                               GetScreenWidth() - (perf.visible() ? PerfCounter::kPanelWidth : 0));
     }
     perf.draw(pacer, clock, snap_, render_width(), render_height());

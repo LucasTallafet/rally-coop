@@ -203,7 +203,7 @@ Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambia
 | G | Zona: siguiente superficie de la pista ciega (reconstruye); a ciegas, siguiente prueba de la serie |
 | M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15»; cada prueba sale en la pista ciega) |
 | H | Ocultar / mostrar el texto (quedan las vueltas) |
-| T | Gráficas de la telemetría de los últimos 10 s: β, guiñada, velocidad y entradas aplicadas (con F1, a su izquierda). En el modo a ciegas no hace nada |
+| T | Gráficas de la telemetría de los últimos 10 s, por páginas: 1 · manejo (β, guiñada, velocidad y entradas aplicadas) → 2 · tren motriz → 3 · suspensión → ocultas. Las páginas sin canales se saltan: hasta la 2.4, T muestra la 1 y la oculta. Con F1, a su izquierda. En el modo a ciegas no hace nada |
 | O | Recinto: mundo a 20 km del origen (y de vuelta) |
 | J | Dibujar en float del mundo (depuración del render relativo) |
 | F | Frecuencia del monitor / 30 fps |
@@ -230,7 +230,7 @@ Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junt
 - `info <archivo>`: dice, entre otras cosas, la superficie real de la pista ciega.
 - `run <archivo>`: «hash OK» o el primer problema, y la mejor vuelta cronometrada.
 - `run <archivo> --telemetry <salida.csv>`: CSV por paso; columnas en `tools/telemetry/columns.md`.
-- `run <archivo> --bench N`: ms por paso, sin y con la captura de la telemetría.
+- `run <archivo> --bench N`: ms por paso, sin y con la captura de la telemetría, alternando las dos en cada repetición, con los 5 pasos más lentos (repetición y paso). Si los pasos más lentos cambian de una repetición a otra, son ruido del sistema y no de la simulación.
 - `rewrite <archivo>`: solo para grabaciones sintéticas de tests.
 - `zone --json <archivo> [--blind <superficie>]`: trazado de la zona de pruebas para los scripts de Python.
 - `columns --md [<archivo>]`: la tabla de columnas.
