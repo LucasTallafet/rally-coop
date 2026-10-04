@@ -18,6 +18,7 @@ namespace rally::io {
 //   cabecera  "RALLYREC" (8 B)
 //             u32 versión del formato, u32 kSimVersion
 //             commit, mundo, texto del coche, ajustes del jugador: u32 longitud + bytes cada uno
+//             u64 hash de la zona de pruebas (desde la versión 2; 0 sin zona)
 //   cuerpo    u32 número de tramos
 //             por tramo (12 B): u32 repeticiones (> 0), i16 steer, i16 throttle, i16 brake,
 //             u16 buttons
@@ -29,7 +30,8 @@ namespace rally::io {
 // terminados hasta entonces y no tiene hash final.
 //
 // Versiones del formato: 1 (tarea 2.1); 2 (tarea 2.2): la descripción del mundo lleva la zona
-// de pruebas y la superficie de la pista ciega. Se siguen leyendo las de la versión 1.
+// de pruebas y la superficie de la pista ciega, y la cabecera el hash de la zona
+// (SimWorld::zone_hash). Se siguen leyendo las de la versión 1.
 
 inline constexpr std::uint32_t kRecordingFormatVersion = 2;
 inline constexpr std::uint32_t kOldestRecordingFormatVersion = 1;
@@ -48,6 +50,9 @@ struct RecordingHeader {
     std::string world;    // descripción del mundo (serialize_world)
     std::string car_text; // archivo del coche (vacío hasta la 2.4)
     std::string settings; // ajustes del jugador (vacíos hasta la 2.8)
+    // Hash de la zona de pruebas con la que se grabó (SimWorld::zone_hash; 0 sin zona). Si la
+    // zona cambia (suelo, h u ondulaciones), la repetición avisa y no compara el hash final.
+    std::uint64_t zone_hash = 0;
 };
 
 struct RecordingFooter {

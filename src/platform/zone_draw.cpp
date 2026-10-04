@@ -382,8 +382,9 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
 
     // Suelo: el cuadrado de Jolt menos las franjas con relieve, y esas franjas con su rejilla.
     TriangleList ground;
-    const double lo = zone::kGroundOrigin;
-    const double hi = -zone::kGroundOrigin;
+    // Fondo llano hasta el pie del talud perimetral; el talud, aparte.
+    const double lo = -zone::kUsableHalfSize;
+    const double hi = zone::kUsableHalfSize;
     std::vector<Rect> background{{lo, hi, lo, hi}};
     for (const ZoneArea& a : zone.areas()) {
         if (!is_relief(a.id)) {
@@ -414,6 +415,22 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
         ground.quad(v3(r.x0, 0.0, r.z0), v3(r.x0, 0.0, r.z1), v3(r.x1, 0.0, r.z1),
                     v3(r.x1, 0.0, r.z0), color_of(sim::Surface::Dirt));
     }
+    // Talud perimetral: dos anillos cuadrados (la cuesta a 45° y la coronación llana), cada
+    // uno de cuatro trapecios con las esquinas en diagonal, como max(|x|, |z|).
+    const auto ring = [&](double inner, double inner_y, double outer, double outer_y) {
+        const double sx[4] = {-1.0, 1.0, 1.0, -1.0};
+        const double sz[4] = {-1.0, -1.0, 1.0, 1.0};
+        for (int i = 0; i < 4; ++i) {
+            const int k = (i + 1) % 4;
+            ground.quad(v3(sx[i] * inner, inner_y, sz[i] * inner),
+                        v3(sx[k] * inner, inner_y, sz[k] * inner),
+                        v3(sx[k] * outer, outer_y, sz[k] * outer),
+                        v3(sx[i] * outer, outer_y, sz[i] * outer), color_of(sim::Surface::Dirt));
+        }
+    };
+    const double crest = zone::kUsableHalfSize + zone::kBermHeight;
+    ring(zone::kUsableHalfSize, 0.0, crest, zone::kBermHeight);
+    ring(crest, zone::kBermHeight, -zone::kGroundOrigin, zone::kBermHeight);
     ground.upload(ground_);
 
     // Áreas llanas: rectángulos y calzadas, en el plano del suelo.
@@ -521,6 +538,7 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
 }
 
 void ZoneDraw::update_near(const Vec3d& eye) {
+    using Clock = std::chrono::steady_clock;
     const int n = near_cells_;
     const auto floor_index = [](double v) {
         return static_cast<std::int64_t>(std::floor(v / kNearSpacing));
@@ -541,6 +559,7 @@ void ZoneDraw::update_near(const Vec3d& eye) {
     };
     // Geometría, h y superficie de la celda (gx, gz) del mundo, en su sitio del anillo.
     const auto compute = [this, n](std::int64_t gx, std::int64_t gz, int sx, int sz) {
+        ++breakdown_.cells;
         const double x = static_cast<double>(gx) * kNearSpacing;
         const double z = static_cast<double>(gz) * kNearSpacing;
         float* texel = texels_.data() + 4 * (static_cast<std::size_t>(sz) * n + sx);
@@ -560,7 +579,11 @@ void ZoneDraw::update_near(const Vec3d& eye) {
                 compute(gx, gz, slot(gx), sz);
             }
         }
+        const Clock::time_point t0 = Clock::now();
         rlUpdateTexture(near_texture_, 0, 0, n, n, format, texels_.data());
+        breakdown_.upload_ms +=
+            std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+        ++breakdown_.uploads;
         near_valid_ = true;
         return;
     }
@@ -577,8 +600,12 @@ void ZoneDraw::update_near(const Vec3d& eye) {
             compute(anchor_x_ + i, gz, sx, sz);
             sx = sx + 1 == n ? 0 : sx + 1;
         }
+        const Clock::time_point t0 = Clock::now();
         rlUpdateTexture(near_texture_, 0, sz, n, 1, format,
                         texels_.data() + static_cast<std::size_t>(4 * sz * n));
+        breakdown_.upload_ms +=
+            std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+        ++breakdown_.uploads;
     }
     for (std::int64_t gx = col_first; gx < col_end; ++gx) {
         const int sx = slot(gx);
@@ -595,12 +622,19 @@ void ZoneDraw::update_near(const Vec3d& eye) {
                         texels_.data() + static_cast<std::size_t>(4 * (r * n + sx)),
                         4 * sizeof(float));
         }
+        const Clock::time_point t0 = Clock::now();
         rlUpdateTexture(near_texture_, sx, 0, 1, n, format, column_.data());
+        breakdown_.upload_ms +=
+            std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+        ++breakdown_.uploads;
     }
 }
 
 void ZoneDraw::draw_near(const Vec3d& eye, const Vec3d& origin) {
+    using Clock = std::chrono::steady_clock;
+    const Clock::time_point start = Clock::now();
     update_near(eye);
+    breakdown_.near_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
     const int n = near_cells_;
     const auto slot = [n](std::int64_t g) {
         const std::int64_t m = g % n;
@@ -634,6 +668,7 @@ void ZoneDraw::draw(const Vec3d& eye, const Vec3d& origin) {
     if (zone_ == nullptr) {
         return;
     }
+    breakdown_ = Breakdown{};
     rlDrawRenderBatchActive();
     // Sin la rejilla cercana (modo a ciegas), lo lejano llega hasta el ojo.
     const float far_radius = blind_ ? 0.0f : static_cast<float>(kNearRadius);

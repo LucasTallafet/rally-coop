@@ -26,6 +26,9 @@ struct ReplayResult {
     std::int64_t timed_steps = -1; // mejor vuelta repetida, en pasos (-1 si ninguna)
     // La grabación es de otra kSimVersion: se repite, pero no se compara el hash.
     bool version_mismatch = false;
+    // La zona de pruebas de la grabación no es la de este build (otro hash de la zona): se
+    // repite, pero no se compara el hash final.
+    bool zone_mismatch = false;
     // Grabación incompleta (guardada al saltar un RALLY_CHECK): se repite hasta su último
     // paso y no hay hash con el que comparar.
     bool incomplete = false;

@@ -43,7 +43,7 @@ constexpr double kPi = 3.14159265358979323846;
 // Hash del suelo de la zona (alturas y superficies que entran en Jolt) con la pista ciega de
 // grava. Tiene que ser el mismo en Debug y en Release. Si un cambio intencionado de la zona
 // lo altera, se copia aquí el valor nuevo y se dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedGroundHash = 0xaa490d68c75928a0ull;
+constexpr std::uint64_t kExpectedGroundHash = 0x9900ca2923c42c84ull;
 
 // Reservas de Jolt 5.6.0 por paso sobre el suelo de la zona: la misma reconstrucción de la
 // broad phase que en el recinto (tests/test_sim_world.cpp), pero con un solo cuerpo en la
@@ -210,14 +210,65 @@ TEST_CASE("test_zone: areas are at least 30 m apart") {
         }
     }
     MESSAGE("separación mínima entre áreas: ", closest, " m");
-    // Todo dentro del suelo de Jolt, con margen.
-    const double edge = -zone::kGroundOrigin;
+    // Al menos 30 m de tierra entre cualquier área y el pie del talud perimetral.
+    const double usable = zone::kUsableHalfSize;
+    double closest_to_berm = 1e9;
     for (const ZoneArea& a : zone.areas()) {
         INFO(std::string(a.key));
-        CHECK(a.min_x > -edge + 30.0);
-        CHECK(a.max_x < edge - 30.0);
-        CHECK(a.min_z > -edge + 30.0);
-        CHECK(a.max_z < edge - 30.0);
+        CHECK(a.min_x > -usable + 30.0);
+        CHECK(a.max_x < usable - 30.0);
+        CHECK(a.min_z > -usable + 30.0);
+        CHECK(a.max_z < usable - 30.0);
+        closest_to_berm = std::min({closest_to_berm, a.min_x + usable, usable - a.max_x,
+                                    a.min_z + usable, usable - a.max_z});
+    }
+    MESSAGE("zona útil: ", 2.0 * usable, " × ", 2.0 * usable, " m; área más cercana al talud: a ",
+            closest_to_berm, " m");
+}
+
+TEST_CASE("test_zone: the blind trials start on the blind track, the rest on the straight") {
+    const TestZone zone;
+    const WorldDesc normal = rally::sim::zone_world(Surface::Snow);
+    const WorldDesc blind =
+        rally::sim::zone_world(Surface::Snow, rally::sim::ZoneStart::BlindTrack);
+    const rally::sim::BoxDesc& a = normal.bodies[0];
+    const rally::sim::BoxDesc& b = blind.bodies[0];
+    CHECK(zone.area_at(a.x, a.z) == static_cast<int>(AreaId::Straight));
+    CHECK(zone.area_at(b.x, b.z) == static_cast<int>(AreaId::BlindTrack));
+    CHECK(b.x == zone.blind_start().x);
+    CHECK(b.z == zone.blind_start().z);
+    CHECK(std::string(zone.blind_start().key) == "blind_track");
+    // La caja nace sin girar: los dos puntos miran al norte.
+    CHECK(zone.start().yaw == 0.0);
+    CHECK(zone.blind_start().yaw == 0.0);
+    CHECK(blind.blind_surface == Surface::Snow);
+}
+
+TEST_CASE("test_zone: the perimeter berm rises 2 m at 45 degrees in the last 10 m") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(rally::sim::zone_world(Surface::Gravel));
+    world.seal();
+    const TestZone& zone = *world.zone();
+    const double edge = -zone::kGroundOrigin;
+    // Geometría: 0 hasta el pie, 45° en 2 m y llano hasta el borde, en los cuatro lados y en
+    // las esquinas.
+    for (const double sign : {-1.0, 1.0}) {
+        CHECK(zone.ground_height(sign * (edge - 10.5), 100.0) == 0.0);
+        CHECK(zone.ground_height(sign * (edge - 9.0), 100.0) == doctest::Approx(1.0));
+        CHECK(zone.ground_height(100.0, sign * (edge - 9.5)) == doctest::Approx(0.5));
+        CHECK(zone.ground_height(sign * (edge - 4.0), -200.0) == doctest::Approx(2.0));
+        CHECK(zone.ground_height(sign * (edge - 0.1), sign * (edge - 0.1)) == doctest::Approx(2.0));
+    }
+    // En el suelo de Jolt: la coronación a 2 m y la cuesta a mitad, 1 m (± la muestra).
+    for (const double sign : {-1.0, 1.0}) {
+        const rally::sim::GroundProbe top = world.probe_ground(sign * (edge - 4.0), 0.0);
+        const rally::sim::GroundProbe mid = world.probe_ground(0.0, sign * (edge - 9.0));
+        REQUIRE(top.hit);
+        REQUIRE(mid.hit);
+        CHECK(top.y == doctest::Approx(2.0).epsilon(0.01));
+        CHECK(std::abs(mid.y - 1.0) < 0.4);
+        CHECK(top.surface == Surface::Dirt);
     }
 }
 
@@ -629,6 +680,7 @@ rally::io::Recording drive_blind_lap(int seconds, std::int64_t& laps) {
     rally::io::RecordingHeader header;
     header.commit = "test";
     header.world = rally::io::serialize_world(desc);
+    header.zone_hash = world.zone_hash();
     rally::io::Recorder recorder;
     const int steps = seconds * rally::sim::kStepsPerSecond;
     recorder.begin(std::move(header), static_cast<std::size_t>(steps));
@@ -679,8 +731,27 @@ TEST_CASE("test_zone: a recorded lap of the blind track is timed and replays the
     REQUIRE(rally::io::read_file(path, bytes, error));
     const rally::io::ParseResult stored = rally::io::parse(bytes);
     REQUIRE(stored.ok);
+    CHECK(stored.recording.header.zone_hash == recording.header.zone_hash);
     CHECK(stored.recording.footer.final_hash == recording.footer.final_hash);
     CHECK(stored.recording.footer.timed_steps == recording.footer.timed_steps);
+
+    // La misma grabación con otro hash de la zona: se repite y avisa, sin comparar el hash
+    // final. La guardada (zone_lap_other_zone.rrec) la usa el test de rally_replay.
+    rally::io::Recording other = recording;
+    other.header.zone_hash ^= 1u;
+    const rally::io::ReplayResult changed = rally::io::replay(other);
+    CHECK(changed.ran);
+    CHECK(changed.zone_mismatch);
+    CHECK_FALSE(changed.hash_ok);
+    CHECK(changed.problem.find("la zona ha cambiado") != std::string::npos);
+    const char* other_path = RALLY_TEST_DATA_DIR "/recordings/zone_lap_other_zone.rrec";
+    if (rewrite) {
+        REQUIRE(rally::io::write_file(other_path, rally::io::serialize(other), error));
+    }
+    REQUIRE(rally::io::read_file(other_path, bytes, error));
+    const rally::io::ParseResult stored_other = rally::io::parse(bytes);
+    REQUIRE(stored_other.ok);
+    CHECK(stored_other.recording.header.zone_hash == other.header.zone_hash);
 }
 
 TEST_CASE("test_zone: crossing the line backwards or resetting during a lap gives no time") {

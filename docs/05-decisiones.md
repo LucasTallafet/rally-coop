@@ -36,6 +36,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Fotogramas | Sincronización vertical a la frecuencia del monitor (60 fps en 60 Hz) y modo de 30 sin espera activa; física a 240 Hz | Cerrada |
 | Modo de pantalla | Pantalla completa sin bordes para jugar y medir; la ventana es solo para desarrollo | Cerrada |
 | Entrada | Zona muerta y curva en la plataforma (sin memoria); suavizado de dirección y acelerador digital en la simulación, por paso de 240 Hz; botones por posición; mando activo = último usado; acelerador y freno separados (frenada con el pie izquierdo) | Provisional hasta la fase 2 (velocidades) |
+| Microrrelieve | `h` en `src/sim`, la misma función para la rueda y el dibujo (salvo en el modo a ciegas de la zona de pruebas, donde no se dibuja). Zona de pruebas: banda de λ 2–8 m, seis ondas planas por superficie sembradas con PCG32, RMS de 2/4/5/6/8 mm (asfalto, nieve, tierra, grava, arena), mezcla en 2 m entre superficies; ondulaciones de la grava de los baches de 0,8 m y 2 cm. El número de ondas y el reparto de amplitudes por longitud de onda también se ajustan | Provisional hasta la fase 2 (2.10) |
 | Estilo visual | 3D en primera persona, low-poly con colores planos; ruido procedural solo en el suelo | Cerrada |
 | Render | Sombras en 3 cascadas, vegetación por instancias, partículas, sin texturas fotográficas, sin cambiar el campo de visión | Cerrada |
 | Voz | Discord al principio; llamada integrada con Opus después de la 1.0 | Cerrada |
@@ -107,3 +108,4 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-02 | Ayudas (alcance) | Bloqueadas en modo difícil | ABS y control de tracción bloqueados en modo difícil; la ayuda de dirección no | Aclaración tras D1: la decisión se refería al ABS y al control de tracción; la ayuda de dirección compensa el mando, no la habilidad |
 | 2026-10-02 | Prueba a ciegas | 4 superficies, 10 de 12 | 5 superficies, 13 de 15 | La arena se ajusta en la fase 2 (decisión "Superficies") |
 | 2026-10-02 | Estimación 1.0 | ~220–390 h | ~230–410 h | Fase 2 ampliada en su diseño y en la revisión |
+| 2026-10-03 | Microrrelieve | λ 1–4 m; amplitudes de 3 mm a 2 cm (prompt 2.2) | λ 2–8 m; RMS de 2 a 8 mm según la superficie | Los valores de partida daban pendientes de hasta 0,25 (golpes falsos a 100 km/h); los nuevos siguen los órdenes de magnitud de la ISO 8608 (asfalto ≈ clase B, arena ≈ clase D) |

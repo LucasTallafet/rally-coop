@@ -96,4 +96,10 @@ add_test(NAME replay.zone_lap
     COMMAND rally_replay run ${CMAKE_CURRENT_SOURCE_DIR}/data/recordings/zone_lap.rrec)
 set_tests_properties(replay.zone_lap PROPERTIES
     PASS_REGULAR_EXPRESSION "vuelta: [0-9]+ pasos .*hash OK"
-    FAIL_REGULAR_EXPRESSION "FALLO|vuelta: ninguno")
+    FAIL_REGULAR_EXPRESSION "FALLO|vuelta: ninguno|aviso")
+# La misma vuelta con otro hash de la zona: rally_replay avisa y no compara el hash final.
+add_test(NAME replay.zone_changed
+    COMMAND rally_replay run ${CMAKE_CURRENT_SOURCE_DIR}/data/recordings/zone_lap_other_zone.rrec)
+set_tests_properties(replay.zone_changed PROPERTIES
+    PASS_REGULAR_EXPRESSION "aviso: la zona ha cambiado"
+    FAIL_REGULAR_EXPRESSION "FALLO|hash OK")

@@ -137,7 +137,8 @@ std::filesystem::path to_path(const std::string& utf8) {
 
 std::size_t header_bytes(const RecordingHeader& header) {
     return kMagic.size() + 4 + 4 + (4 + header.commit.size()) + (4 + header.world.size()) +
-           (4 + header.car_text.size()) + (4 + header.settings.size()) + 4;
+           (4 + header.car_text.size()) + (4 + header.settings.size()) +
+           (header.format_version >= 2 ? 8 : 0) + 4;
 }
 
 std::string serialize(const Recording& recording) {
@@ -152,6 +153,9 @@ std::string serialize(const Recording& recording) {
     w.str(h.world);
     w.str(h.car_text);
     w.str(h.settings);
+    if (h.format_version >= 2) {
+        w.u64(h.zone_hash);
+    }
     w.u32(static_cast<std::uint32_t>(recording.runs.size()));
     for (const InputRun& run : recording.runs) {
         w.u32(run.count);
@@ -192,6 +196,9 @@ ParseResult parse(std::string_view bytes) {
     h.world = r.str();
     h.car_text = r.str();
     h.settings = r.str();
+    if (h.format_version >= 2) {
+        h.zone_hash = r.u64();
+    }
     const std::uint32_t run_count = r.u32();
     if (!r.ok()) {
         result.error = at("archivo truncado en la cabecera", r.offset());

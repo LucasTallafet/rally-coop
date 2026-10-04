@@ -192,8 +192,10 @@ BoxDemo::BoxDemo() {
 
 void BoxDemo::describe_world() {
     if (zone_mode_) {
-        desc_ = sim::zone_world(blind_mode_ ? blind_series_[static_cast<std::size_t>(blind_trial_)]
-                                            : blind_surface_);
+        // A ciegas, cada prueba sale en la pista ciega; si no, al principio de la recta.
+        desc_ = blind_mode_ ? sim::zone_world(blind_series_[static_cast<std::size_t>(blind_trial_)],
+                                              sim::ZoneStart::BlindTrack)
+                            : sim::zone_world(blind_surface_);
     } else {
         desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0);
     }
@@ -240,7 +242,7 @@ void BoxDemo::reset() {
     if (world_->zone() != nullptr) {
         zone_draw_.build(*world_->zone(), blind_mode_);
     }
-    recording_.start(desc_);
+    recording_.start(desc_, *world_);
     shift_up_presses_ = 0;
     shift_down_presses_ = 0;
     reset_presses_ = 0;
@@ -662,7 +664,8 @@ void BoxDemo::advance_zone_bench(std::int64_t frame_ns) {
         ++zone_bench_frames_;
         // CPU del dibujo del suelo del fotograma anterior (este aún no se ha dibujado).
         if (zone_bench_ground_ms_.size() < zone_bench_ground_ms_.capacity()) {
-            zone_bench_ground_ms_.push_back(zone_draw_.last_cpu_ms());
+            zone_bench_ground_ms_.push_back(
+                {zone_draw_.last_cpu_ms(), ms, zone_draw_.last_breakdown()});
         }
         if (zone_bench_ns_ >= kZoneBenchWarmupNs + kZoneBenchMeasureNs) {
             write_zone_bench_report();
@@ -699,16 +702,47 @@ void BoxDemo::write_zone_bench_report() const {
                  zone_bench_frame_ms_total_ / frames, zone_bench_frame_ms_max_);
     std::fprintf(file, "CPU del dibujo del suelo: media %.3f ms, máximo %.3f ms (límite 1 ms)\n",
                  zone_draw_.total_mean_ms(), zone_draw_.total_max_ms());
-    std::vector<double> sorted = zone_bench_ground_ms_;
+    std::vector<double> sorted;
+    sorted.reserve(zone_bench_ground_ms_.size());
+    double cells = 0.0;
+    double near_ms = 0.0;
+    for (const ZoneBenchFrame& f : zone_bench_ground_ms_) {
+        sorted.push_back(f.ground_ms);
+        cells += f.breakdown.cells;
+        near_ms += f.breakdown.near_ms;
+    }
     std::sort(sorted.begin(), sorted.end());
     if (!sorted.empty()) {
         const std::size_t p99 = std::min(sorted.size() - 1, sorted.size() * 99 / 100);
         const auto over =
             std::count_if(sorted.begin(), sorted.end(), [](double ms) { return ms > 1.0; });
+        const auto count = static_cast<double>(sorted.size());
         std::fprintf(file,
                      "CPU del dibujo del suelo: p99 %.3f ms; %lld de %zu fotogramas por encima "
                      "de 1 ms\n",
                      sorted[p99], static_cast<long long>(over), sorted.size());
+        std::fprintf(file, "Rejilla cercana por fotograma: media %.1f celdas nuevas, %.3f ms\n",
+                     cells / count, near_ms / count);
+    }
+    // Desglose de los fotogramas por encima de 1 ms (y del más lento).
+    std::fprintf(file, "\nFotogramas lentos (suelo ms | rejilla ms | subidas ms | celdas | "
+                       "subidas | fotograma ms):\n");
+    double worst = -1.0;
+    std::size_t worst_index = 0;
+    for (std::size_t i = 0; i < zone_bench_ground_ms_.size(); ++i) {
+        const ZoneBenchFrame& f = zone_bench_ground_ms_[i];
+        if (f.ground_ms > worst) {
+            worst = f.ground_ms;
+            worst_index = i;
+        }
+    }
+    for (std::size_t i = 0; i < zone_bench_ground_ms_.size(); ++i) {
+        const ZoneBenchFrame& f = zone_bench_ground_ms_[i];
+        if (f.ground_ms > 1.0 || i == worst_index) {
+            std::fprintf(file, "  #%zu: %.3f | %.3f | %.3f | %d | %d | %.3f\n", i, f.ground_ms,
+                         f.breakdown.near_ms, f.breakdown.upload_ms, f.breakdown.cells,
+                         f.breakdown.uploads, f.frame_ms);
+        }
     }
     std::fclose(file);
 }

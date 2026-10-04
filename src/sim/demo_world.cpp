@@ -28,10 +28,11 @@ WorldDesc demo_arena(double offset) {
 
 namespace rally::sim {
 
-WorldDesc zone_world(Surface blind_surface) {
+WorldDesc zone_world(Surface blind_surface, ZoneStart start_at) {
     const TestZone zone(blind_surface);
     WorldDesc desc;
-    const RespawnPoint& start = zone.start();
+    const RespawnPoint& start =
+        start_at == ZoneStart::BlindTrack ? zone.blind_start() : zone.start();
     BoxDesc box;
     box.motion = BodyMotion::Dynamic;
     box.x = start.x;

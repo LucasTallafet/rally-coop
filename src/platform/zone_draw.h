@@ -52,6 +52,15 @@ public:
     // CPU del último draw() y estadísticas de los últimos kStatsFrames fotogramas, en ms.
     static constexpr int kStatsFrames = 240;
     double last_cpu_ms() const { return last_ms_; }
+    // Desglose del último draw(): la rejilla cercana (celdas calculadas, subidas a la textura
+    // y su tiempo) frente al total. Para --bench-zone.
+    struct Breakdown {
+        double near_ms = 0.0;   // update_near entero
+        double upload_ms = 0.0; // dentro de él, rlUpdateTexture
+        int cells = 0;
+        int uploads = 0;
+    };
+    const Breakdown& last_breakdown() const { return breakdown_; }
     double mean_cpu_ms() const { return mean_ms_; }
     double max_cpu_ms() const { return max_ms_; }
     // Media y máximo desde reset_totals().
@@ -101,6 +110,7 @@ private:
     std::vector<Vec3d> posts_;
 
     double last_ms_ = 0.0;
+    Breakdown breakdown_;
     double mean_ms_ = 0.0;
     double max_ms_ = 0.0;
     std::vector<double> history_;

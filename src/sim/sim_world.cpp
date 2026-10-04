@@ -85,6 +85,7 @@ struct SimWorld::Impl {
     std::unique_ptr<LapTimer> lap;
     JPH::BodyID ground;
     std::uint64_t ground_hash = 0;
+    std::uint64_t zone_hash = 0;
     std::size_t ground_bytes = 0;
 };
 
@@ -115,6 +116,7 @@ void SimWorld::build(const WorldDesc& desc) {
         std::vector<std::uint8_t> surfaces;
         w.zone->fill_ground(heights, surfaces);
         w.ground_hash = sim::ground_hash(heights, surfaces);
+        w.zone_hash = sim::zone_hash(heights, surfaces, *w.zone);
         JPH::PhysicsMaterialList materials;
         for (int s = 0; s < kSurfaceCount; ++s) {
             materials.push_back(new SurfaceMaterial(static_cast<Surface>(s)));
@@ -308,6 +310,8 @@ const TestZone* SimWorld::zone() const { return impl_->zone.get(); }
 const LapState* SimWorld::lap() const { return impl_->lap ? &impl_->lap->state() : nullptr; }
 
 std::uint64_t SimWorld::ground_hash() const { return impl_->ground_hash; }
+
+std::uint64_t SimWorld::zone_hash() const { return impl_->zone_hash; }
 
 std::size_t SimWorld::ground_bytes() const { return impl_->ground_bytes; }
 

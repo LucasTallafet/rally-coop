@@ -150,9 +150,10 @@ TEST_CASE("recording: the file is exactly header plus 12 bytes per run plus foot
     const Recording recording = record(steps);
     const std::string bytes = rally::io::serialize(recording);
     const RecordingHeader& h = recording.header;
-    // Firma, dos versiones, cuatro cadenas con su longitud y el número de tramos.
+    // Firma, dos versiones, cuatro cadenas con su longitud, el hash de la zona (formato 2) y
+    // el número de tramos.
     const std::size_t header = 8 + 4 + 4 + (4 + h.commit.size()) + (4 + h.world.size()) +
-                               (4 + h.car_text.size()) + (4 + h.settings.size()) + 4;
+                               (4 + h.car_text.size()) + (4 + h.settings.size()) + 8 + 4;
     CHECK(rally::io::header_bytes(h) == header);
     CHECK(bytes.size() == header + 12 * recording.runs.size() + 32);
 
@@ -299,6 +300,27 @@ TEST_CASE("recording: a game-like loop and its replay give the same hash and ste
     CHECK(replayed.hash == game_hash);
     CHECK(static_cast<std::int64_t>(game_steps) == clock.steps_done());
     MESSAGE("pasos: ", game_steps, "; fotogramas con otros pasos que 4: ", frames_with_other_steps);
+}
+
+TEST_CASE("recording: a format 1 recording of the 2.1 replays with hash OK") {
+    // Formato 1, como lo escribía la tarea 2.1: la descripción del mundo acaba en el cuerpo
+    // controlado (sin los 2 bytes de la zona) y la cabecera no tiene hash de la zona.
+    const rally::sim::JoltRuntime runtime;
+    Recording recording = simulate_and_record(random_steps(5, 0x7ec0'0000'0000'0021ull));
+    recording.header.format_version = 1;
+    recording.header.world.resize(recording.header.world.size() - 2);
+    recording.header.zone_hash = 0;
+    REQUIRE(rally::io::rewrite_footer(recording).hash_ok);
+    const std::string bytes = rally::io::serialize(recording);
+    CHECK(bytes.size() == rally::io::header_bytes(recording.header) + 12 * recording.runs.size() +
+                              rally::io::kFooterBytes);
+    const rally::io::ParseResult parsed = rally::io::parse(bytes);
+    REQUIRE(parsed.ok);
+    CHECK(parsed.recording.header.format_version == 1);
+    CHECK(parsed.recording.header.zone_hash == 0);
+    const rally::io::ReplayResult replayed = rally::io::replay(parsed.recording);
+    CHECK(replayed.hash_ok);
+    CHECK_FALSE(replayed.zone_mismatch);
 }
 
 TEST_CASE("recording: another sim version replays without comparing the hash, and warns") {

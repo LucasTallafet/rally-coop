@@ -128,6 +128,10 @@ public:
     // Hash de las alturas y superficies que entraron en el suelo de Jolt (0 sin zona) y
     // memoria que ocupa el HeightFieldShape.
     std::uint64_t ground_hash() const;
+    // Hash de la zona entera (0 sin zona): ground_hash seguido de las ondas de h de cada
+    // superficie y los parámetros de las ondulaciones de la grava (TestZone::add_micro_hash).
+    // Va en la cabecera de las grabaciones: si cambia, la repetición no compara el hash final.
+    std::uint64_t zone_hash() const;
     std::size_t ground_bytes() const;
     // Rayo vertical contra el suelo de la zona. Solo lee; reserva memoria (fuera del paso).
     GroundProbe probe_ground(double x, double z) const;

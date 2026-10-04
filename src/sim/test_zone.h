@@ -30,6 +30,13 @@ inline constexpr int kGroundSamples = 2048;
 inline constexpr double kGroundSpacing = 0.75;
 inline constexpr double kGroundOrigin = -0.5 * (kGroundSamples - 1) * kGroundSpacing;
 
+// Talud perimetral: en los últimos kBermWidth metros antes del borde del suelo, el terreno
+// sube a 45° hasta kBermHeight y sigue llano hasta el borde, para que nada caiga al vacío.
+// La zona útil es el cuadrado dentro de su pie.
+inline constexpr double kBermWidth = 10.0;
+inline constexpr double kBermHeight = 2.0;
+inline constexpr double kUsableHalfSize = -kGroundOrigin - kBermWidth;
+
 // Semilla fija del microrrelieve (PCG32; un stream por superficie).
 inline constexpr std::uint64_t kMicroSeed = 0x2a2a'7e57'2026'1003ull;
 // Banda del microrrelieve: seis ondas planas por superficie con longitudes de onda en
@@ -202,11 +209,17 @@ public:
     const std::vector<ZoneArea>& areas() const { return areas_; }
     const ZoneArea& area(AreaId id) const { return areas_[static_cast<std::size_t>(id)]; }
     const std::vector<RespawnPoint>& respawns() const { return respawns_; }
+    const std::array<std::array<MicroWave, zone::kMicroWaves>, kSurfaceCount>& waves() const {
+        return waves_;
+    }
     // Índice del punto de recolocación más cercano en el plano (el primero si empatan).
     int nearest_respawn(double x, double z) const;
     const FinishLine& finish_line() const { return finish_; }
     // Salida del cuerpo controlado: el primer punto de recolocación (inicio de la recta).
     const RespawnPoint& start() const { return respawns_.front(); }
+    // Punto de recolocación de la pista ciega (50 m antes de la meta): salida de las pruebas
+    // a ciegas.
+    const RespawnPoint& blind_start() const { return respawns_.back(); }
 
     // Longitud del eje de una calzada y punto a una distancia s a lo largo de él.
     static double axis_length(const ZoneArea& area);
@@ -237,6 +250,11 @@ private:
 // Hash FNV-1a de las alturas (sus bits) y las superficies de las celdas del suelo.
 std::uint64_t ground_hash(const std::vector<float>& heights,
                           const std::vector<std::uint8_t>& surfaces);
+// Hash de la zona: lo mismo que ground_hash seguido de la tabla de ondas de h (amplitud,
+// números de onda y fase de cada onda de cada superficie, sus bits) y los parámetros de las
+// ondulaciones de la grava (longitud de onda y amplitud).
+std::uint64_t zone_hash(const std::vector<float>& heights,
+                        const std::vector<std::uint8_t>& surfaces, const TestZone& zone);
 
 // Serie de pruebas a ciegas: las cinco superficies tres veces cada una, barajadas con PCG32
 // desde `seed` (Fisher-Yates).

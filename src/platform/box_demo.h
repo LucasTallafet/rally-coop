@@ -121,7 +121,13 @@ private:
     double zone_bench_frame_ms_total_ = 0.0;
     double zone_bench_frame_ms_max_ = 0.0;
     std::int64_t zone_bench_frames_ = 0;
-    std::vector<double> zone_bench_ground_ms_; // CPU del suelo por fotograma medido
+    // CPU del suelo por fotograma medido, con su desglose.
+    struct ZoneBenchFrame {
+        double ground_ms = 0.0;
+        double frame_ms = 0.0;
+        ZoneDraw::Breakdown breakdown;
+    };
+    std::vector<ZoneBenchFrame> zone_bench_ground_ms_;
     std::unique_ptr<sim::SimWorld> world_;
     std::vector<Pose> previous_; // por cuerpo, en el orden de la descripción
     std::vector<Pose> current_;

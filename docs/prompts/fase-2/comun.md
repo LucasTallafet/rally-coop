@@ -70,7 +70,7 @@ Espera mi respuesta. Si lo que digo cambia algo, corrígelo en la misma copia y 
 2. `clang-format --dry-run --Werror` sin diferencias sobre `src/`, `tests/` y el C++ de `tools/` (clang-format 23.1.2).
 3. Fila nueva en el registro de `docs/progreso.md`, arriba del todo, con el estilo de las de la fase 1: qué se hizo, con cifras; tests antes → después; huella y reservas; validado a ojo por Lucas (o "sin validar a ojo", si la tarea no tiene parada). **La columna de horas, vacía.** "Siguiente paso": la próxima tarea según el README.
 4. Si una prueba confirma o cambia una decisión provisional, propón la edición de `docs/05-decisiones.md` (fila y fila de Cambios) y aplícala solo si te digo que sí.
-5. Commit en inglés, fusión en `master`, `git push`. Dime la rama y la copia de trabajo que se pueden borrar.
+5. Commit en inglés, fusión en `master`, `git push`. Dime la rama y la copia de trabajo que se pueden borrar. Después de fusionar, en la copia principal: `cmake --build --preset windows-release` y `ctest --preset windows-release`; el número de tests de la fila de `progreso.md` es el de esa ejecución.
 
 ## 11. Resumen final (siempre, además de lo que pida cada prompt)
 

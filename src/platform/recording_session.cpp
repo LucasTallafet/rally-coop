@@ -35,13 +35,14 @@ RecordingSession::~RecordingSession() {
     }
 }
 
-void RecordingSession::start(const sim::WorldDesc& desc) {
+void RecordingSession::start(const sim::WorldDesc& desc, const sim::SimWorld& world) {
     const std::string folder = std::string(GetApplicationDirectory()) + "grabaciones/";
     name_ = free_name(folder, name_);
     path_ = folder + name_;
     io::RecordingHeader header;
     header.commit = io::build_commit();
     header.world = io::serialize_world(desc);
+    header.zone_hash = world.zone_hash();
     recorder_.begin(std::move(header), io::steps_for_minutes(kReservedMinutes));
     io::set_crash_recording(&recorder_, path_);
 }

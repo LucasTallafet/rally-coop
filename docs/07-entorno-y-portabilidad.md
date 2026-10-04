@@ -51,6 +51,7 @@ winget install Python.Python.3.12
 
 - **Visual Studio 2022 Community**, no Build Tools: Build Tools no trae depurador, y desde la fase 2 hace falta. No uses Visual Studio 2026: el generador fijado en los presets es `Visual Studio 17 2022`.
 - El **Visual C++ Redistributable** no sirve: solo ejecuta programas, no compila.
+- **Python 3** lo necesitan clang-format y ctest: el test `zone_json.python` comprueba el trazado de la zona de pruebas con la biblioteca estándar (sin paquetes). Sin Python, el configure avisa y ese test falla.
 
 ### 3.2 Herramientas de usuario (PowerShell normal, ventana nueva)
 
@@ -197,7 +198,7 @@ Válido desde la tarea 2.2 de la fase 2. La demo de la caja es temporal y cambia
 | Tab | Cámara: primera persona → fija (recinto) o detrás y por encima (zona) → toda la zona |
 | K | Zona de pruebas / recinto de la fase 1 (reconstruye el mundo y empieza otra grabación) |
 | G | Zona: siguiente superficie de la pista ciega (reconstruye); a ciegas, siguiente prueba de la serie |
-| M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15») |
+| M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15»; cada prueba sale en la pista ciega) |
 | H | Ocultar / mostrar el texto (quedan las vueltas) |
 | O | Recinto: mundo a 20 km del origen (y de vuelta) |
 | J | Dibujar en float del mundo (depuración del render relativo) |

@@ -38,6 +38,7 @@ ReplayResult replay(const Recording& recording) {
     result.hash = world.state_hash();
     result.timed_steps = timed_steps(world);
     result.version_mismatch = recording.header.sim_version != sim::kSimVersion;
+    result.zone_mismatch = recording.header.zone_hash != world.zone_hash();
     result.incomplete = !recording.footer.complete;
 
     char buffer[200];
@@ -52,6 +53,12 @@ ReplayResult replay(const Recording& recording) {
                       "grabada con la versión de la simulación %u y esta es la %u: no se "
                       "compara el hash",
                       recording.header.sim_version, sim::kSimVersion);
+        result.problem = buffer;
+    } else if (result.zone_mismatch) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "la zona ha cambiado (grabada con 0x%016" PRIx64 ", esta es 0x%016" PRIx64
+                      "): no se compara el hash",
+                      recording.header.zone_hash, world.zone_hash());
         result.problem = buffer;
     } else if (result.steps != recording.footer.total_steps) {
         std::snprintf(buffer, sizeof(buffer),
@@ -80,6 +87,11 @@ ReplayResult rewrite_footer(Recording& recording) {
         return result;
     }
     recording.header.sim_version = sim::kSimVersion;
+    sim::SimWorld world;
+    std::string error;
+    if (build_world(recording, world, error)) {
+        recording.header.zone_hash = world.zone_hash();
+    }
     recording.footer.complete = true;
     recording.footer.total_steps = result.steps;
     recording.footer.final_hash = result.hash;

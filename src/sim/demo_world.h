@@ -3,6 +3,8 @@
 #include "sim/sim_world.h"
 #include "sim/surface.h"
 
+#include <cstdint>
+
 namespace rally::sim {
 
 // Mundo de la demo de la caja (temporal hasta el coche, tarea 2.4). Lo construyen la
@@ -19,8 +21,13 @@ WorldDesc demo_arena(double offset);
 // Índice del cuerpo controlado en zone_world.
 inline constexpr int kZoneControlled = 0;
 
-// Zona de pruebas (sim/test_zone.h) con la caja controlada apoyada en la salida de la recta
-// (su primer punto de recolocación) y la pista ciega de `blind_surface`.
-WorldDesc zone_world(Surface blind_surface);
+// Dónde sale la caja en la zona: al principio de la recta (lo normal) o en el punto de
+// recolocación de la pista ciega (pruebas a ciegas). Los dos miran al norte, que es la
+// orientación de la caja recién creada.
+enum class ZoneStart : std::uint8_t { Straight, BlindTrack };
+
+// Zona de pruebas (sim/test_zone.h) con la caja controlada apoyada en la salida elegida y la
+// pista ciega de `blind_surface`.
+WorldDesc zone_world(Surface blind_surface, ZoneStart start = ZoneStart::Straight);
 
 } // namespace rally::sim

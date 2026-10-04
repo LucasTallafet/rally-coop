@@ -639,6 +639,9 @@ double TestZone::ground_height(double x, double z) const {
                       ramp_profile);
     h += strip_height(x, z, kCrestCenterX, kCrestHalfWidth, kCrestStartZ, kCrestTotal,
                       crest_profile);
+    // Talud perimetral: sube un metro por metro desde su pie hasta kBermHeight.
+    const double beyond = rmath::max(rmath::abs(x), rmath::abs(z)) - zone::kUsableHalfSize;
+    h += rmath::clamp(beyond, 0.0, zone::kBermHeight);
     return h;
 }
 
@@ -906,9 +909,10 @@ std::string TestZone::to_json() const {
     return json.take();
 }
 
-std::uint64_t ground_hash(const std::vector<float>& heights,
-                          const std::vector<std::uint8_t>& surfaces) {
-    Fnv1a64 hash;
+namespace {
+
+void add_ground(Fnv1a64& hash, const std::vector<float>& heights,
+                const std::vector<std::uint8_t>& surfaces) {
     for (const float h : heights) {
         std::uint32_t bits = 0;
         std::memcpy(&bits, &h, sizeof(bits));
@@ -917,6 +921,38 @@ std::uint64_t ground_hash(const std::vector<float>& heights,
     for (const std::uint8_t s : surfaces) {
         hash.add_byte(s);
     }
+}
+
+void add_double(Fnv1a64& hash, double value) {
+    std::uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    hash.add_u32(static_cast<std::uint32_t>(bits));
+    hash.add_u32(static_cast<std::uint32_t>(bits >> 32));
+}
+
+} // namespace
+
+std::uint64_t ground_hash(const std::vector<float>& heights,
+                          const std::vector<std::uint8_t>& surfaces) {
+    Fnv1a64 hash;
+    add_ground(hash, heights, surfaces);
+    return hash.value();
+}
+
+std::uint64_t zone_hash(const std::vector<float>& heights,
+                        const std::vector<std::uint8_t>& surfaces, const TestZone& zone) {
+    Fnv1a64 hash;
+    add_ground(hash, heights, surfaces);
+    for (const auto& waves : zone.waves()) {
+        for (const MicroWave& w : waves) {
+            add_double(hash, w.amplitude);
+            add_double(hash, w.kx);
+            add_double(hash, w.kz);
+            add_double(hash, w.phase);
+        }
+    }
+    add_double(hash, zone::kRippleWavelength);
+    add_double(hash, zone::kRippleAmplitude);
     return hash.value();
 }
 

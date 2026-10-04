@@ -98,6 +98,10 @@ int info(const char* path) {
     } else {
         std::printf("mundo:               no válido (%s)\n", error.c_str());
     }
+    if (h.format_version >= 2) {
+        std::printf("hash de la zona:     0x%016" PRIx64 "%s\n", h.zone_hash,
+                    h.zone_hash == 0 ? " (sin zona)" : "");
+    }
     std::printf("coche:               %zu bytes\n", h.car_text.size());
     std::printf("ajustes:             %zu bytes\n", h.settings.size());
     std::printf("tramos:              %zu\n", recording.runs.size());
@@ -176,7 +180,7 @@ int run(const char* path, int bench_repetitions) {
     int code = 0;
     if (result.hash_ok) {
         std::puts("hash OK");
-    } else if (result.incomplete || result.version_mismatch) {
+    } else if (result.incomplete || result.version_mismatch || result.zone_mismatch) {
         std::printf("aviso: %s\n", result.problem.c_str());
     } else {
         std::printf("FALLO: %s\n", result.problem.c_str());
