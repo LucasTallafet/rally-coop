@@ -133,6 +133,8 @@ Coordenadas del trazado: `s` (distancia a lo largo de la carretera) y `t` (despl
 
 Un tramo es una lista de primitivas (recta, clotoide, arco) con superficies y parámetros de entorno. El primer tramo se escribe a mano en ese formato como archivo de texto; el generador produce el mismo formato. Un tramo se guarda como semilla + parámetros + versión del generador (pocos KB).
 
+**Esqueleto e irregularidad.** Las primitivas son el esqueleto: sobre ellas se calculan `s`, `t`, las notas, el ritmo y la tablet. La malla visible y la de colisión se construyen con una capa de irregularidad: desplazamiento lateral del eje d(s), semianchos w_izq(s) y w_der(s), peralte θ(s) y ondulación vertical z(s). Son sumas de pocas ondas sembradas con PCG desde la semilla del tramo, con amplitudes y longitudes de onda en datos por entorno. Se calcula al cargar, nunca en el paso. El borde y la salida de pista usan d(s), w_izq(s) y w_der(s). Las curvas del generador son perfiles de curvatura κ(s) con entrada y salida asimétricas, no solo un arco con clotoides simétricas.
+
 ### 6.2 Analizador de tramos reales (herramienta Python, fuera del juego)
 
 Fuentes:
@@ -148,7 +150,7 @@ Fuentes:
 Pasos, sobre 20–40 tramos reales de montaña (asfalto y tierra):
 
 1. Ajuste a primitivas: suavizado de la polilínea, curvatura a lo largo de `s` y división en tramos de curvatura cero, constante o lineal por mínimos cuadrados con programación dinámica.
-2. Perfil de altura desde el MDT02: crestas, badenes y radios verticales.
+2. Perfil de altura desde el MDT02: crestas, badenes y radios verticales; residuo vertical frente al perfil suavizado (amplitud y longitudes de onda de la ondulación de escala media).
 3. Perfil de visibilidad desde el ojo del conductor con terreno + vegetación.
 4. Distribuciones: radios y giros de curva, rectas, separación entre curvas, pares y tríos de curvas, pendientes, radios verticales, fracción ciega, combinaciones de cresta y curva.
 

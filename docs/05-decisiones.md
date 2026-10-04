@@ -27,6 +27,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Conjunto de instrucciones | SSE4.2 como máximo en todo el código (Jolt incluido): sin AVX, AVX2, AVX-512, LZCNT, TZCNT, F16C ni FMA | Cerrada |
 | Precisión | Doble precisión en Jolt, origen en el centro, render relativo a la cámara, posición por red en mm con enteros de 32 bits | Cerrada |
 | Carga del tramo | Generado y validado entero; física entera con franja de terreno de ±60 m; gráficos por ventana; sentido contrario sin recargar | Provisional hasta la fase 3 (medida de memoria) |
+| Trazado | Primitivas (recta, clotoide, arco) como esqueleto para `s`, `t`, notas y ritmo; malla con una capa de irregularidad determinista (eje, ancho, peralte, ondulación vertical, bordes); curvas con curvatura variable y asimétrica | Provisional hasta la fase 3 |
 | Seguimiento | `s` incremental con ventana; índice espacial solo para adquirir; atajo si se ganan más de 30 m de trazado | Cerrada (umbral provisional) |
 | Generador | Terreno primero, perfiles de ritmo de tramos reales, ceguera por diseño, semilla + 1 si falla | Provisional hasta la fase 4 |
 | Validador | 4 capas: geometría, ritmo, visibilidad, piloto IA en los dos sentidos | Provisional hasta la fase 4 |
@@ -109,3 +110,5 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-02 | Prueba a ciegas | 4 superficies, 10 de 12 | 5 superficies, 13 de 15 | La arena se ajusta en la fase 2 (decisión "Superficies") |
 | 2026-10-02 | Estimación 1.0 | ~220–390 h | ~230–410 h | Fase 2 ampliada en su diseño y en la revisión |
 | 2026-10-03 | Microrrelieve | λ 1–4 m; amplitudes de 3 mm a 2 cm (prompt 2.2) | λ 2–8 m; RMS de 2 a 8 mm según la superficie | Los valores de partida daban pendientes de hasta 0,25 (golpes falsos a 100 km/h); los nuevos siguen los órdenes de magnitud de la ISO 8608 (asfalto ≈ clase B, arena ≈ clase D) |
+| 2026-10-04 | Trazado | Primitivas geométricas exactas | Esqueleto de primitivas más capa de irregularidad desde la fase 3 | Validación de la 2.2: la zona, con rectas y arcos exactos, se siente simulada; el tramo a mano de la fase 3 usa el mismo formato y tendría el mismo problema |
+| 2026-10-04 | Estimación 1.0 | ~230–410 h | ~236–420 h | Capa de irregularidad en la fase 3 (6–10 h) |

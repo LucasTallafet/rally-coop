@@ -217,7 +217,8 @@ Automático o secuencial manual, sin embrague ni calado. El automático cambia p
 ### 7.3 Superficies y relieve
 
 - Asfalto, grava, tierra, nieve y arena en la 1.0 (barro [post-1.0]). Cada una con su agarre, su resistencia a la rodadura, su color, su ruido procedural y su sonido. La arena tiene mucha resistencia a la rodadura y poco agarre lateral: frena el coche y castiga perder las vueltas. En la montaña de la 1.0 aparece en tramos sueltos (lechos de río, zonas arenosas). La vibración del mando cambia con la superficie y con el deslizamiento.
-- **Relieve:** forma de la carretera en la malla (trazado, peralte, crestas, badenes, saltos) más un microrrelieve `h(s, t)` que nota la rueda. En la 1.0, una banda de ruido sencilla; el espectro ISO 8608 en dos bandas (física y fina) llega después.
+- **Relieve:** forma de la carretera en la malla (trazado, peralte, crestas, badenes, saltos), una capa de irregularidad de escala media más un microrrelieve `h(s, t)` que nota la rueda. En la 1.0, una banda de ruido sencilla; el espectro ISO 8608 en dos bandas (física y fina) llega después.
+- **Irregularidad:** una carretera de rally no es una sucesión de rectas y arcos perfectos. Sobre el trazado de primitivas, cada tramo lleva desviaciones deterministas del eje (de centímetros a algo más de un metro, en longitudes de 15–150 m), ancho variable, peralte y bombeo que cambian, ondulación vertical de decímetros en 10–60 m y bordes irregulares. Las curvas se cierran y se abren: su curvatura no es constante ni simétrica.
 - Lo que se ve coincide con lo que se pisa: el render desplaza la carretera cerca de la cámara con la misma función que usa la rueda.
 
 ### 7.4 Sensación de velocidad

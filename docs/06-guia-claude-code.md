@@ -1,5 +1,7 @@
 # Rally Coop — Empezar a trabajar con Claude Code
 
+> **Documento histórico** (montaje inicial, 30 de septiembre de 2026). La guía vigente para instalar y montar el entorno es `07-entorno-y-portabilidad.md`; el flujo de trabajo está en `CLAUDE.md` y en `docs/prompts/fase-2/comun.md`.
+
 Guía para montar el repositorio y trabajar el proyecto con Claude Code en Windows.
 
 ## 1. Instalar

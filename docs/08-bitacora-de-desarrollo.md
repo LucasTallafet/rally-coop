@@ -117,7 +117,7 @@ Diseño cerrado el 2026-10-02 (ver `04-plan-de-fases.md`, fase 2).
 - **El ajuste mueve la huella** si el test usa el coche del juego: por eso el test usa un coche congelado.
 - **Ajustar el manejo es el gran coste en horas.** Claude Code escribe el neumático rápido, pero la sensación se ajusta jugando. Es la fase que dirá si la nueva estimación se sostiene.
 - **`SimInput` crecerá** (freno separado del acelerador, freno de mano, marchas, recolocar). Cada cambio mueve la huella y el total de reservas: se actualizan a propósito, como hasta ahora.
-- **Mandos sin validar.** Solo se ha probado el de PS4. El de **Switch Pro** es el único con gatillos digitales, y ese camino solo se ha probado con un mando simulado: hay que probarlo antes de la fase 2. También faltan Xbox y PS5.
+- **Mandos validados** el 2026-10-02: Xbox, PS5 y Switch Pro (gatillos digitales) funcionan con Steam cerrado. El de PS3 necesita el driver DsHidMini.
 - **Velocidades del suavizado.** El cambio de sentido con teclado tarda ~0,37 s de tope a tope y puede resultar lento para contravolantear. Es la primera constante que habría que tocar.
 - **Vibración por superficie y por deslizamiento**: hoy solo hay vibración por impacto.
 - **Estado de la simulación fuera del SaveState de Jolt** (`previous_buttons`, dirección y acelerador aplicados): crecerá con el coche, y todo tiene que quedar listo para el cambio de host de la fase 5.
@@ -180,7 +180,7 @@ Además de lo que ya recoge el plan después de la 1.0 (barro y clima, fuera del
 - [x] `CLAUDE.md`: regla de no borrar archivos de la carpeta del exe sin mirarla antes (hoy solo está en la memoria local de Claude Code)
 - [x] Probar los mandos de Xbox, PS5 y Switch Pro (este último, antes de la fase 2): todo funciona, 2026-10-02
 - [x] Añadir `07-entorno-y-portabilidad.md` y esta bitácora a `README.md` y a `CLAUDE.md`
-- [ ] Subir los documentos al proyecto de claude.ai
+- [x] Subir los documentos al proyecto de claude.ai. Desde la 2.2 los sube el consultor del proyecto después de cada fusión
 
 ---
 
@@ -192,8 +192,8 @@ La fase 1 costó ~6 h frente a 60. Claude Code comprime mucho el código de infr
 | --- | --- | --- | --- |
 | 1 · Base del motor | 60 | ~6 (real) | |
 | 2 · Coche | 130–160 | 61–109 | El ajuste del neumático jugando no se comprime. Ampliada el 2026-10-02: arena, turbo y configuraciones de prueba; y en la revisión del diseño: zona de pruebas, `rally_replay` y chasis completo |
-| 3 · Corte vertical | 110–130 | 45–75 | Las pruebas con el compañero no se comprimen |
+| 3 · Corte vertical | 110–130 | 51–85 | Las pruebas con el compañero no se comprimen; capa de irregularidad del trazado (2026-10-04) |
 | 4 · Generador | 120–150 | 50–90 | Datos reales y validación de semillas jugando |
 | 5 · Entre casas | 60–80 | 20–40 | Casi todo es infraestructura |
 | 6 · Calidad visual y sonora | 80–120 | 50–90 | Blender y sonido son trabajo manual |
-| **Total 1.0** | **560–700** | **~230–410** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |
+| **Total 1.0** | **560–700** | **~236–420** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |

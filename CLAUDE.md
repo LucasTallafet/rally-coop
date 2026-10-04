@@ -24,6 +24,7 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 - Si una prueba cambia una decisión provisional, propón la edición de `docs/05-decisiones.md` con fecha y motivo.
 - Regla de alcance: implementa solo lo que pide la fase actual. Nada genérico "por si acaso". Lo marcado [post-1.0] no se toca hasta su fase.
 - Yo valoro el manejo, el aspecto y la diversión jugando. Tú compruebas todo lo que se pueda comprobar con tests.
+- Los mensajes del consultor llegan como archivos en `mensajes/` de la copia principal; tus informes van a `mensajes/` de tu copia de trabajo (detalle en `docs/prompts/fase-2/comun.md` §12).
 
 ## Idioma y estilo
 

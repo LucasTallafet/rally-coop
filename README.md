@@ -12,7 +12,7 @@ Juego de rally cooperativo en 3D low-poly para 2 jugadores en 2 PCs: uno conduce
 | `docs/04-plan-de-fases.md` | Fases 0 a 6 de la 1.0 con horas y criterios, y fases posteriores |
 | `docs/05-decisiones.md` | Registro de decisiones cerradas y provisionales, con historial de cambios |
 | `docs/progreso.md` | Horas reales por fase, registro de sesiones y hallazgos |
-| `docs/06-guia-claude-code.md` | Instalar, montar el repositorio y primeras tareas con Claude Code |
+| `docs/06-guia-claude-code.md` | Histórico: montaje inicial del kit (lo vigente está en `07`) |
 | `docs/07-entorno-y-portabilidad.md` | Montar el entorno de desarrollo en otro PC y comprobar que da los mismos resultados |
 | `docs/08-bitacora-de-desarrollo.md` | Por qué se decidió cada cosa, problemas encontrados y esperados, ideas de futuro |
 | `CLAUDE.md` | Instrucciones que Claude Code lee en cada sesión |
@@ -21,6 +21,6 @@ Juego de rally cooperativo en 3D low-poly para 2 jugadores en 2 PCs: uno conduce
 
 ## Por dónde empezar
 
-1. Sigue `docs/06-guia-claude-code.md` para instalar y crear el repositorio con este kit.
+1. Sigue `docs/07-entorno-y-portabilidad.md` para instalar, clonar y comprobar el entorno.
 2. Monta el proyecto de Claude con `proyecto-claude/LEEME.md`.
 3. Empieza la fase 1: base del motor.

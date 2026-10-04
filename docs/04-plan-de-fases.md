@@ -17,11 +17,11 @@ La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo
 | 0 · Pruebas del concepto | Omitida (ver `05-decisiones.md`) | 0 |
 | 1 · Base del motor | Bucle, render básico, entrada, Jolt configurado, tests | ~6 (real) |
 | 2 · Coche | Coche inspirado en un Grupo B 4×4, neumático Pacejka con cinco superficies, motor con turbo, transmisión, ayudas, telemetría, cuatro configuraciones de prueba | 61–109 |
-| 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 45–75 |
+| 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 51–85 |
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 50–90 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 20–40 |
 | 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 50–90 |
-| **Total 1.0** | | **~230–410** |
+| **Total 1.0** | | **~236–420** |
 
 Revisado al cerrar la fase 1 (2026-10-02): el código de infraestructura se comprime mucho con Claude Code; las horas de ajuste jugando, pruebas con otra persona, Blender, sonido y datos reales no. Se revisa de nuevo al cerrar la fase 2.
 
@@ -63,7 +63,7 @@ Coche de la 1.0 inspirado en el Peugeot 205 T16 Evo 1 (ver `01` §7.1), con fís
 | # | Tarea | Horas |
 | --- | --- | --- |
 | 2.1 | Entrada del coche (`SimInput` con dirección, acelerador, freno, freno de mano, marchas y recolocar), grabación de entradas y `rally_replay` | 3–4 |
-| 2.2 | Zona de pruebas: círculo de grava de 40 m, explanada de grava de 400 × 80 m (recogida a 100 km/h), eslalon, horquilla, recta con baches y ondulaciones, rampa del 15 %, cresta, parches de asfalto, tierra y nieve, pista ciega con la superficie elegida al construir y recorrido cronometrado; superficie por material; `h(x, z)` | 4–6 |
+| 2.2 | Zona de pruebas: círculo de grava de 40 m, explanada de grava de 400 × 80 m (recogida a 100 km/h), eslalon, horquilla, recta con baches y ondulaciones, rampa del 15 %, cresta, parches de tierra, nieve y arena, pista ciega de 785 m con la superficie elegida al construir y recorrido cronometrado, muros perimetrales; superficie por material; `h(x, z)` | 4–6 |
 | 2.3 | Telemetría: CSV por paso, gráficas en pantalla, script de Python | 4–6 |
 | 2.4 | Vehículo base: `VehicleConstraint` y controlador propio, suspensión y barras, frenos, dirección, resistencia aerodinámica, subpasos de rueda, baja velocidad, coche desde archivo de datos y recarga en caliente | 7–11 |
 | 2.5 | Neumático: Pacejka, fricción combinada, carga, relajación, rodadura, cinco superficies | 8–13 |
@@ -89,11 +89,11 @@ Las tareas suman 61–99 h; el resto, hasta 109, es margen.
 - la simulación cuesta ≤ 0,5 ms por paso en el equipo de pruebas;
 - las cuatro configuraciones se han probado con el compañero y se ha elegido la del juego.
 
-## Fase 3 · Corte vertical (~45–75 h)
+## Fase 3 · Corte vertical (~51–85 h)
 
-Formato de tramo por primitivas y un tramo de 3–5 km escrito a mano con crestas, curvas tapadas y horquillas; malla de carretera con arcenes cosidos y franja de terreno con colisión; física entera cargada; gráficos por ventana en segundo plano; seguimiento de `s` y `t`, recolocación, atajos y parciales; velocidad de referencia y perfil de velocidad. Tablet (mapa, perfil, cinta, cursor libre), diales principal, secundario y de distancias, borrar; panel del salpicadero con sonido por lado. Segunda instancia conectada por localhost con ENet, host autoritativo, interpolación por número de paso. Copiloto bot de desarrollo. Registro de notas (paso, ancla `s`, nota, distancia elegida y distancia real a la curva siguiente) y las dos orientaciones del mapa (tangente y punto 30–50 m por delante) conmutables con una tecla.
+Formato de tramo por primitivas y un tramo de 3–5 km escrito a mano con crestas, curvas tapadas y horquillas; malla de carretera con arcenes cosidos y franja de terreno con colisión; capa de irregularidad del trazado (eje, ancho, peralte, ondulación, bordes) con una tecla para quitarla y comparar; física entera cargada; gráficos por ventana en segundo plano; seguimiento de `s` y `t`, recolocación, atajos y parciales; velocidad de referencia y perfil de velocidad. Tablet (mapa, perfil, cinta, cursor libre), diales principal, secundario y de distancias, borrar; panel del salpicadero con sonido por lado. Segunda instancia conectada por localhost con ENet, host autoritativo, interpolación por número de paso. Copiloto bot de desarrollo. Registro de notas (paso, ancla `s`, nota, distancia elegida y distancia real a la curva siguiente) y las dos orientaciones del mapa (tangente y punto 30–50 m por delante) conmutables con una tecla.
 
-**Terminado cuando:** una persona canta mirando solo la tablet, primero por voz y después solo con los diales, y otra termina el tramo; cada nota aparece en su sitio; los tests de `s` en horquillas pasan; y los dos quieren repetir. Con el registro de notas se fijan el techo de densidad de curvas, la orientación del mapa en horquillas y las decisiones de tablet, cursor, diales y panel que estaban pendientes de la fase 0. Si no es divertido, se corrige el diseño antes de construir el generador.
+**Terminado cuando:** una persona canta mirando solo la tablet, primero por voz y después solo con los diales, y otra termina el tramo; cada nota aparece en su sitio; los tests de `s` en horquillas pasan; con la irregularidad activada, el tramo se siente una carretera real y no un trazado de primitivas (lo juzgan los dos comparando con la tecla); y los dos quieren repetir. Con el registro de notas se fijan el techo de densidad de curvas, la orientación del mapa en horquillas y las decisiones de tablet, cursor, diales y panel que estaban pendientes de la fase 0. Si no es divertido, se corrige el diseño antes de construir el generador.
 
 ## Fase 4 · Generador (~50–90 h)
 

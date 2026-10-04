@@ -176,7 +176,9 @@ git worktree remove -f .claude/worktrees/<carpeta>
 git worktree prune
 ```
 
-**Prompts largos:** la consola de Windows a veces corta lo que pegas. Si Claude Code responde a medias o pregunta por algo que estaba en el prompt, vuelve a pegarlo en dos partes.
+Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cierra la sesión de Claude Code que trabajaba en ella y bórrala con `rmdir`.
+
+**Mensajes con el consultor:** los textos largos no se pegan en la consola. El consultor del proyecto de claude.ai los deja como archivos en `mensajes/` de la copia principal (local, ignorada por git), y a Claude Code se le dice «Lee y aplica mensajes/<archivo>». Claude Code escribe sus informes en `mensajes/` de su copia de trabajo (`comun.md` §12).
 
 ---
 
