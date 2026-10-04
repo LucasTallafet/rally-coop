@@ -84,4 +84,4 @@ Espera mi respuesta. Si lo que digo cambia algo, corrígelo en la misma copia y 
 
 ## 12. Mensajes con el consultor
 
-Lucas te pasa las respuestas del consultor como archivos de `mensajes/` en la raíz de la copia principal (`D:\Proyectos\RallyCoop\Rally\mensajes\`, carpeta local fuera de git). Léelos enteros y aplícalos. Al parar o cerrar una tarea, escribe además tu informe completo en `mensajes/<tarea>-informe-<n>.md` (por ejemplo, `2.2-informe-3.md`), con el mismo contenido que me das en la sesión. No borres nada de esa carpeta.
+Lucas te pasa las respuestas del consultor como archivos de `mensajes/` en la raíz de la copia principal (`D:\Proyectos\RallyCoop\Rally\mensajes\`, carpeta local fuera de git). Léelos enteros y aplícalos. Al parar o cerrar una tarea, escribe además tu informe completo en `mensajes/<tarea>-informe-<n>.md` **de tu copia de trabajo** (por ejemplo, `.claude/worktrees/phase2-2.2-test-zone/mensajes/2.2-informe-4.md`): la sesión no puede escribir en la copia principal y el consultor lo lee ahí. Dime la ruta completa. No borres nada de esa carpeta.
