@@ -70,7 +70,7 @@ Espera mi respuesta. Si lo que digo cambia algo, corrígelo en la misma copia y 
 2. `clang-format --dry-run --Werror` sin diferencias sobre `src/`, `tests/` y el C++ de `tools/` (clang-format 23.1.2).
 3. Fila nueva en el registro de `docs/progreso.md`, arriba del todo, con el estilo de las de la fase 1: qué se hizo, con cifras; tests antes → después; huella y reservas; validado a ojo por Lucas (o "sin validar a ojo", si la tarea no tiene parada). **La columna de horas, vacía.** "Siguiente paso": la próxima tarea según el README.
 4. Si una prueba confirma o cambia una decisión provisional, propón la edición de `docs/05-decisiones.md` (fila y fila de Cambios) y aplícala solo si te digo que sí.
-5. Commit en inglés, fusión en `master`, `git push`. Dime la rama y la copia de trabajo que se pueden borrar. Después de fusionar, en la copia principal: `cmake --build --preset windows-release` y `ctest --preset windows-release`; el número de tests de la fila de `progreso.md` es el de esa ejecución.
+5. Commit en inglés, fusión en `master`, `git push`. Dime la rama y la copia de trabajo que se pueden borrar. Después de fusionar, en la copia principal: `cmake --build --preset windows-release` y `ctest --preset windows-release`; el número de tests de la fila de `progreso.md` es el de esa ejecución. Antes de decir qué copia de trabajo se puede borrar, lista las carpetas de su exe (grabaciones/, informes y capturas) y pregúntame qué guardar: al borrar la copia se pierden. Las grabaciones que sirvan de prueba van a tests/data/recordings/; las de manejo, a docs/manejo/sesiones/<fecha>/.
 
 ## 11. Resumen final (siempre, además de lo que pida cada prompt)
 
@@ -81,3 +81,7 @@ Espera mi respuesta. Si lo que digo cambia algo, corrígelo en la misma copia y 
 - Las cifras de telemetría que pida el prompt.
 - Decisiones que has tomado tú y no estaban en el prompt.
 - Lo que queda pendiente o te preocupa.
+
+## 12. Mensajes con el consultor
+
+Lucas te pasa las respuestas del consultor como archivos de `mensajes/` en la raíz de la copia principal (`D:\Proyectos\RallyCoop\Rally\mensajes\`, carpeta local fuera de git). Léelos enteros y aplícalos. Al parar o cerrar una tarea, escribe además tu informe completo en `mensajes/<tarea>-informe-<n>.md` (por ejemplo, `2.2-informe-3.md`), con el mismo contenido que me das en la sesión. No borres nada de esa carpeta.

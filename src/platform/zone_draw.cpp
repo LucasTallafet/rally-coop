@@ -122,6 +122,7 @@ constexpr Color kLineWhite{236, 236, 228, 255};
 constexpr Color kLineYellow{232, 196, 64, 255};
 constexpr Color kCone{240, 112, 32, 255};
 constexpr Color kPost{236, 232, 220, 255};
+constexpr Color kWall{78, 80, 86, 255};
 constexpr double kLineLift = 0.03; // las líneas pintadas, por encima del microrrelieve
 constexpr float kLineWidth = 0.15f;
 
@@ -382,9 +383,9 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
 
     // Suelo: el cuadrado de Jolt menos las franjas con relieve, y esas franjas con su rejilla.
     TriangleList ground;
-    // Fondo llano hasta el pie del talud perimetral; el talud, aparte.
-    const double lo = -zone::kUsableHalfSize;
-    const double hi = zone::kUsableHalfSize;
+    // Fondo llano hasta el borde del suelo.
+    const double lo = zone::kGroundOrigin;
+    const double hi = -zone::kGroundOrigin;
     std::vector<Rect> background{{lo, hi, lo, hi}};
     for (const ZoneArea& a : zone.areas()) {
         if (!is_relief(a.id)) {
@@ -415,22 +416,21 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
         ground.quad(v3(r.x0, 0.0, r.z0), v3(r.x0, 0.0, r.z1), v3(r.x1, 0.0, r.z1),
                     v3(r.x1, 0.0, r.z0), color_of(sim::Surface::Dirt));
     }
-    // Talud perimetral: dos anillos cuadrados (la cuesta a 45° y la coronación llana), cada
-    // uno de cuatro trapecios con las esquinas en diagonal, como max(|x|, |z|).
-    const auto ring = [&](double inner, double inner_y, double outer, double outer_y) {
-        const double sx[4] = {-1.0, 1.0, 1.0, -1.0};
-        const double sz[4] = {-1.0, -1.0, 1.0, 1.0};
-        for (int i = 0; i < 4; ++i) {
-            const int k = (i + 1) % 4;
-            ground.quad(v3(sx[i] * inner, inner_y, sz[i] * inner),
-                        v3(sx[k] * inner, inner_y, sz[k] * inner),
-                        v3(sx[k] * outer, outer_y, sz[k] * outer),
-                        v3(sx[i] * outer, outer_y, sz[i] * outer), color_of(sim::Surface::Dirt));
-        }
-    };
-    const double crest = zone::kUsableHalfSize + zone::kBermHeight;
-    ring(zone::kUsableHalfSize, 0.0, crest, zone::kBermHeight);
-    ring(crest, zone::kBermHeight, -zone::kGroundOrigin, zone::kBermHeight);
+    // Muros perimetrales: cajas grises con colores planos (las cinco caras visibles).
+    for (const sim::WallBox& wall : zone.walls()) {
+        const double x0 = wall.cx - wall.half_x;
+        const double x1 = wall.cx + wall.half_x;
+        const double z0 = wall.cz - wall.half_z;
+        const double z1 = wall.cz + wall.half_z;
+        const double y0 = wall.cy - wall.half_y;
+        const double y1 = wall.cy + wall.half_y;
+        ground.quad(v3(x0, y1, z0), v3(x0, y1, z1), v3(x1, y1, z1), v3(x1, y1, z0), kWall);
+        // Caras verticales con la normal hacia fuera de la caja (para el sombreado).
+        ground.quad(v3(x0, y0, z0), v3(x0, y1, z0), v3(x1, y1, z0), v3(x1, y0, z0), kWall);
+        ground.quad(v3(x1, y0, z1), v3(x1, y1, z1), v3(x0, y1, z1), v3(x0, y0, z1), kWall);
+        ground.quad(v3(x0, y0, z1), v3(x0, y1, z1), v3(x0, y1, z0), v3(x0, y0, z0), kWall);
+        ground.quad(v3(x1, y0, z0), v3(x1, y1, z0), v3(x1, y1, z1), v3(x1, y0, z1), kWall);
+    }
     ground.upload(ground_);
 
     // Áreas llanas: rectángulos y calzadas, en el plano del suelo.

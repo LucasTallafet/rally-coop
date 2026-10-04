@@ -97,7 +97,8 @@ void SimWorld::build(const WorldDesc& desc) {
     Impl& w = *impl_;
     RALLY_CHECK(w.state == State::Empty,
                 "SimWorld::build: el mundo ya está construido (tras seal() no se añaden cuerpos)");
-    RALLY_CHECK(desc.bodies.size() <= kMaxBodies, "SimWorld::build: demasiados cuerpos");
+    RALLY_CHECK(desc.bodies.size() + (desc.test_zone ? 1 + kWallCount : 0) <= kMaxBodies,
+                "SimWorld::build: demasiados cuerpos");
     const int count = static_cast<int>(desc.bodies.size());
     RALLY_CHECK(desc.controlled >= -1 && desc.controlled < count,
                 "SimWorld::build: índice de cuerpo controlado fuera de rango");
@@ -107,7 +108,8 @@ void SimWorld::build(const WorldDesc& desc) {
                 "SimWorld::build: el cuerpo controlado tiene que ser dinámico");
 
     JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
-    // Lote de cuerpos en el orden de creación: el suelo (si hay zona) y la descripción.
+    // Lote de cuerpos en el orden de creación: el suelo y los muros (si hay zona) y la
+    // descripción.
     std::vector<JPH::BodyID> batch;
     if (desc.test_zone) {
         w.zone = std::make_unique<TestZone>(desc.blind_surface);
@@ -140,6 +142,18 @@ void SimWorld::build(const WorldDesc& desc) {
         RALLY_CHECK(body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
         w.ground = body->GetID();
         batch.push_back(w.ground);
+        // Muros perimetrales, después del suelo y antes de la descripción (orden fijo).
+        for (const WallBox& wall : w.zone->walls()) {
+            const JPH::BodyCreationSettings wall_settings(
+                new JPH::BoxShape(JPH::Vec3(static_cast<float>(wall.half_x),
+                                            static_cast<float>(wall.half_y),
+                                            static_cast<float>(wall.half_z))),
+                JPH::RVec3(wall.cx, wall.cy, wall.cz), JPH::Quat::sIdentity(),
+                JPH::EMotionType::Static, layers::kStatic);
+            const JPH::Body* wall_body = bodies.CreateBody(wall_settings);
+            RALLY_CHECK(wall_body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
+            batch.push_back(wall_body->GetID());
+        }
     }
     w.bodies.reserve(desc.bodies.size());
     for (int i = 0; i < count; ++i) {

@@ -31,8 +31,8 @@ struct BoxDesc {
     float half_z = 0.5f;
 };
 
-// Descripción del mundo. Primero el suelo de la zona de pruebas (si lo hay) y después los
-// cuerpos en el orden de `bodies`: los BodyID dependen solo de la descripción.
+// Descripción del mundo. Primero el suelo y los muros de la zona de pruebas (si la hay) y
+// después los cuerpos en el orden de `bodies`: los BodyID dependen solo de la descripción.
 struct WorldDesc {
     std::vector<BoxDesc> bodies;
     int controlled = -1; // índice del cuerpo dinámico que mueve SimInput; -1 si ninguno
@@ -129,7 +129,7 @@ public:
     // memoria que ocupa el HeightFieldShape.
     std::uint64_t ground_hash() const;
     // Hash de la zona entera (0 sin zona): ground_hash seguido de las ondas de h de cada
-    // superficie y los parámetros de las ondulaciones de la grava (TestZone::add_micro_hash).
+    // superficie, los parámetros de las ondulaciones de la grava y los muros (sim::zone_hash).
     // Va en la cabecera de las grabaciones: si cambia, la repetición no compara el hash final.
     std::uint64_t zone_hash() const;
     std::size_t ground_bytes() const;

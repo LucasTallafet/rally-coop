@@ -43,7 +43,7 @@ constexpr double kPi = 3.14159265358979323846;
 // Hash del suelo de la zona (alturas y superficies que entran en Jolt) con la pista ciega de
 // grava. Tiene que ser el mismo en Debug y en Release. Si un cambio intencionado de la zona
 // lo altera, se copia aquí el valor nuevo y se dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedGroundHash = 0x9900ca2923c42c84ull;
+constexpr std::uint64_t kExpectedGroundHash = 0xaa490d68c75928a0ull;
 
 // Reservas de Jolt 5.6.0 por paso sobre el suelo de la zona: la misma reconstrucción de la
 // broad phase que en el recinto (tests/test_sim_world.cpp), pero con un solo cuerpo en la
@@ -112,6 +112,12 @@ TEST_CASE("test_zone: the same description gives the same ground hash twice") {
     b.build(rally::sim::zone_world(Surface::Gravel));
     b.seal();
     MESSAGE("suelo: ", a.ground_bytes() / 1024, " KiB; build() + seal(): ", build_ms, " ms");
+    char hashes[100];
+    std::snprintf(hashes, sizeof(hashes), "hash del suelo 0x%016llx; hash de la zona 0x%016llx",
+                  static_cast<unsigned long long>(a.ground_hash()),
+                  static_cast<unsigned long long>(a.zone_hash()));
+    MESSAGE(hashes);
+    CHECK(a.zone_hash() == b.zone_hash());
     char message[200];
     std::snprintf(message, sizeof(message),
                   "hash del suelo 0x%016llx, esperado 0x%016llx. Si el cambio de la zona es "
@@ -210,20 +216,21 @@ TEST_CASE("test_zone: areas are at least 30 m apart") {
         }
     }
     MESSAGE("separación mínima entre áreas: ", closest, " m");
-    // Al menos 30 m de tierra entre cualquier área y el pie del talud perimetral.
+    // Al menos 30 m de tierra entre cualquier área y la cara interior de los muros.
     const double usable = zone::kUsableHalfSize;
-    double closest_to_berm = 1e9;
+    double closest_to_wall = 1e9;
     for (const ZoneArea& a : zone.areas()) {
         INFO(std::string(a.key));
         CHECK(a.min_x > -usable + 30.0);
         CHECK(a.max_x < usable - 30.0);
         CHECK(a.min_z > -usable + 30.0);
         CHECK(a.max_z < usable - 30.0);
-        closest_to_berm = std::min({closest_to_berm, a.min_x + usable, usable - a.max_x,
+        closest_to_wall = std::min({closest_to_wall, a.min_x + usable, usable - a.max_x,
                                     a.min_z + usable, usable - a.max_z});
     }
-    MESSAGE("zona útil: ", 2.0 * usable, " × ", 2.0 * usable, " m; área más cercana al talud: a ",
-            closest_to_berm, " m");
+    MESSAGE("zona útil: ", 2.0 * usable, " × ", 2.0 * usable, " m; área más cercana a un muro: a ",
+            closest_to_wall, " m");
+    CHECK(closest_to_wall >= 30.0);
 }
 
 TEST_CASE("test_zone: the blind trials start on the blind track, the rest on the straight") {
@@ -244,31 +251,136 @@ TEST_CASE("test_zone: the blind trials start on the blind track, the rest on the
     CHECK(blind.blind_surface == Surface::Snow);
 }
 
-TEST_CASE("test_zone: the perimeter berm rises 2 m at 45 degrees in the last 10 m") {
+TEST_CASE("test_zone: the ground is flat to the edge and four 4 m walls close the usable zone") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
     world.build(rally::sim::zone_world(Surface::Gravel));
     world.seal();
     const TestZone& zone = *world.zone();
     const double edge = -zone::kGroundOrigin;
-    // Geometría: 0 hasta el pie, 45° en 2 m y llano hasta el borde, en los cuatro lados y en
-    // las esquinas.
+    const double usable = zone::kUsableHalfSize;
+    CHECK(2.0 * usable == doctest::Approx(1515.25));
+    // Sin talud: llano hasta el borde, también en las esquinas y en el suelo de Jolt.
     for (const double sign : {-1.0, 1.0}) {
-        CHECK(zone.ground_height(sign * (edge - 10.5), 100.0) == 0.0);
-        CHECK(zone.ground_height(sign * (edge - 9.0), 100.0) == doctest::Approx(1.0));
-        CHECK(zone.ground_height(100.0, sign * (edge - 9.5)) == doctest::Approx(0.5));
-        CHECK(zone.ground_height(sign * (edge - 4.0), -200.0) == doctest::Approx(2.0));
-        CHECK(zone.ground_height(sign * (edge - 0.1), sign * (edge - 0.1)) == doctest::Approx(2.0));
+        CHECK(zone.ground_height(sign * (edge - 9.0), 100.0) == 0.0);
+        CHECK(zone.ground_height(100.0, sign * (edge - 0.1)) == 0.0);
+        CHECK(zone.ground_height(sign * (edge - 0.1), sign * (edge - 0.1)) == 0.0);
+        const rally::sim::GroundProbe probe = world.probe_ground(sign * (edge - 4.0), 0.0);
+        REQUIRE(probe.hit);
+        CHECK(std::abs(probe.y) < 0.01);
     }
-    // En el suelo de Jolt: la coronación a 2 m y la cuesta a mitad, 1 m (± la muestra).
-    for (const double sign : {-1.0, 1.0}) {
-        const rally::sim::GroundProbe top = world.probe_ground(sign * (edge - 4.0), 0.0);
-        const rally::sim::GroundProbe mid = world.probe_ground(0.0, sign * (edge - 9.0));
-        REQUIRE(top.hit);
-        REQUIRE(mid.hit);
-        CHECK(top.y == doctest::Approx(2.0).epsilon(0.01));
-        CHECK(std::abs(mid.y - 1.0) < 0.4);
-        CHECK(top.surface == Surface::Dirt);
+    // Norte, sur, oeste y este: 4 m de alto apoyados en el suelo, 1 m de grueso, la cara
+    // interior en el límite de la zona útil. Norte y sur llegan a la cara exterior del este y
+    // el oeste: las esquinas quedan cerradas.
+    const auto& walls = zone.walls();
+    for (const rally::sim::WallBox& w : walls) {
+        CHECK(w.cy - w.half_y == 0.0);
+        CHECK(2.0 * w.half_y == zone::kWallHeight);
+        CHECK(2.0 * std::min(w.half_x, w.half_z) == zone::kWallThickness);
+    }
+    CHECK(walls[0].cz + walls[0].half_z == -usable);
+    CHECK(walls[1].cz - walls[1].half_z == usable);
+    CHECK(walls[2].cx + walls[2].half_x == -usable);
+    CHECK(walls[3].cx - walls[3].half_x == usable);
+    for (const int i : {0, 1}) {
+        CHECK(walls[i].cx - walls[i].half_x == walls[2].cx - walls[2].half_x);
+        CHECK(walls[i].cx + walls[i].half_x == walls[3].cx + walls[3].half_x);
+    }
+    for (const int i : {2, 3}) {
+        CHECK(walls[i].cz - walls[i].half_z <= walls[0].cz + walls[0].half_z);
+        CHECK(walls[i].cz + walls[i].half_z >= walls[1].cz - walls[1].half_z);
+    }
+    // Dentro del suelo de Jolt.
+    for (const rally::sim::WallBox& w : walls) {
+        CHECK(std::max(std::abs(w.cx) + w.half_x, std::abs(w.cz) + w.half_z) < edge);
+    }
+}
+
+namespace {
+
+// Lleva la caja de la zona desde (x, z) con rumbo `heading` hasta el muro que tiene delante,
+// sosteniendo `speed` m/s hasta el choque, y sigue 3 s más. Devuelve la velocidad horizontal
+// del paso anterior al choque, la mayor distancia del centro de la caja al centro de la zona
+// (max(|x|, |z|)), la mayor altura y la distancia al final.
+struct WallHit {
+    double speed = 0.0;
+    double max_extent = 0.0;
+    double max_y = 0.0;
+    double final_extent = 0.0; // max(|x|, |z|) al final
+};
+
+WallHit launch_at_wall(double x, double z, double heading, double speed) {
+    const TestZone zone;
+    SimWorld world;
+    world.build(zone_with_box_at(zone, x, z));
+    world.seal();
+    WallHit hit;
+    double previous_speed = 0.0;
+    int after_hit = -1;
+    for (int i = 0; i < 60 * rally::sim::kStepsPerSecond && after_hit < 3 * 240; ++i) {
+        const rally::sim::BodyPose pose = world.pose(0);
+        const rally::sim::BodyVelocity v = world.velocity(0);
+        const double error = wrap(heading - box_heading(pose));
+        const double now = std::hypot(v.vx, v.vz);
+        SimInput in;
+        if (after_hit < 0) {
+            in.steer = static_cast<std::int16_t>(std::clamp(4.0 * error, -1.0, 1.0) * kAxisMax);
+            if (std::abs(error) < 0.01) {
+                in.throttle = static_cast<std::int16_t>(
+                    std::clamp(2.0 * (speed + 0.5 - now), 0.0, 1.0) * kAxisMax);
+            }
+        }
+        world.step(in);
+        const rally::sim::BodyPose after = world.pose(0);
+        hit.max_extent = std::max({hit.max_extent, std::abs(after.x), std::abs(after.z)});
+        hit.max_y = std::max(hit.max_y, after.y);
+        if (after_hit < 0 && world.last_impact() > 5.0f) {
+            after_hit = 0;
+            hit.speed = previous_speed;
+        } else if (after_hit >= 0) {
+            ++after_hit;
+        }
+        previous_speed = now;
+    }
+    const rally::sim::BodyPose end = world.pose(0);
+    hit.final_extent = std::max(std::abs(end.x), std::abs(end.z));
+    return hit;
+}
+
+} // namespace
+
+TEST_CASE("test_zone: the box launched at 30 and 80 m/s against each wall stays inside the zone") {
+    const rally::sim::JoltRuntime runtime;
+    const double usable = zone::kUsableHalfSize;
+    struct Run {
+        std::string wall;
+        double x;
+        double z;
+        double heading;
+    };
+    // 30 m/s es lo que pide la prueba; 80 m/s, lo que alcanzó la caja de Lucas en la zona
+    // (78 m/s: no tiene velocidad máxima). Salida lejos de las áreas (todas a menos de 650 m
+    // del centro) y de las esquinas, con sitio para acelerar.
+    for (const double speed : {30.0, 80.0}) {
+        const double start = usable - (speed < 50.0 ? 150.0 : 1000.0);
+        const Run runs[] = {{"norte", 700.0, -start, 0.0},
+                            {"sur", -700.0, start, kPi},
+                            {"oeste", -start, -700.0, -0.5 * kPi},
+                            {"este", start, 700.0, 0.5 * kPi}};
+        for (const Run& run : runs) {
+            const WallHit hit = launch_at_wall(run.x, run.z, run.heading, speed);
+            // La caja mide 1 m: su cara delantera llega a max_extent + 0,5. Lo que pase de la
+            // cara del muro es la penetración de un paso, que Jolt deshace.
+            const double penetration = hit.max_extent + 0.5 - usable;
+            MESSAGE("muro ", run.wall, ": choque a ", hit.speed, " m/s; penetración máxima ",
+                    100.0 * penetration, " cm; altura máxima de la caja ", hit.max_y, " m");
+            INFO("muro ", run.wall, " a ", speed, " m/s");
+            CHECK(hit.speed >= speed);
+            CHECK(penetration < speed * rally::sim::kStepSeconds);
+            CHECK(hit.max_y < zone::kWallHeight);
+            // Al final, apoyada en el muro (con el margen de penetración de Jolt, 2 cm).
+            CHECK(hit.final_extent < usable - 0.5 + 0.03);
+        }
     }
 }
 

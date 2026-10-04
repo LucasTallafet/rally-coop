@@ -501,6 +501,17 @@ void write_axis(Json& json, const ZoneArea& area) {
 TestZone::TestZone(Surface blind_surface) : blind_surface_(blind_surface) {
     using zone::kHairpinRadius;
     using zone::kHairpinStraight;
+    {
+        // Muros: el norte y el sur llegan hasta las caras exteriores del este y el oeste.
+        const double half_y = 0.5 * zone::kWallHeight;
+        const double half_t = 0.5 * zone::kWallThickness;
+        const double center = zone::kUsableHalfSize + half_t;
+        const double long_half = zone::kUsableHalfSize + zone::kWallThickness;
+        walls_[0] = WallBox{0.0, half_y, -center, long_half, half_y, half_t};
+        walls_[1] = WallBox{0.0, half_y, center, long_half, half_y, half_t};
+        walls_[2] = WallBox{-center, half_y, 0.0, half_t, half_y, zone::kUsableHalfSize};
+        walls_[3] = WallBox{center, half_y, 0.0, half_t, half_y, zone::kUsableHalfSize};
+    }
     areas_.reserve(kAreaCount);
     areas_.push_back(rect_span(AreaId::Straight, "straight", "recta", Surface::Asphalt,
                                -kStraightHalfWidth, kStraightHalfWidth, kStraightStartZ,
@@ -639,9 +650,6 @@ double TestZone::ground_height(double x, double z) const {
                       ramp_profile);
     h += strip_height(x, z, kCrestCenterX, kCrestHalfWidth, kCrestStartZ, kCrestTotal,
                       crest_profile);
-    // Talud perimetral: sube un metro por metro desde su pie hasta kBermHeight.
-    const double beyond = rmath::max(rmath::abs(x), rmath::abs(z)) - zone::kUsableHalfSize;
-    h += rmath::clamp(beyond, 0.0, zone::kBermHeight);
     return h;
 }
 
@@ -953,6 +961,14 @@ std::uint64_t zone_hash(const std::vector<float>& heights,
     }
     add_double(hash, zone::kRippleWavelength);
     add_double(hash, zone::kRippleAmplitude);
+    for (const WallBox& wall : zone.walls()) {
+        add_double(hash, wall.cx);
+        add_double(hash, wall.cy);
+        add_double(hash, wall.cz);
+        add_double(hash, wall.half_x);
+        add_double(hash, wall.half_y);
+        add_double(hash, wall.half_z);
+    }
     return hash.value();
 }
 

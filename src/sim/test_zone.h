@@ -30,12 +30,14 @@ inline constexpr int kGroundSamples = 2048;
 inline constexpr double kGroundSpacing = 0.75;
 inline constexpr double kGroundOrigin = -0.5 * (kGroundSamples - 1) * kGroundSpacing;
 
-// Talud perimetral: en los últimos kBermWidth metros antes del borde del suelo, el terreno
-// sube a 45° hasta kBermHeight y sigue llano hasta el borde, para que nada caiga al vacío.
-// La zona útil es el cuadrado dentro de su pie.
-inline constexpr double kBermWidth = 10.0;
-inline constexpr double kBermHeight = 2.0;
-inline constexpr double kUsableHalfSize = -kGroundOrigin - kBermWidth;
+// Muros perimetrales: cuatro cajas estáticas de kWallHeight de alto y kWallThickness de
+// grueso, apoyadas en el suelo llano, con la cara interior kWallInset metros dentro del borde
+// del suelo. Los del norte y el sur cubren también el grueso de los del este y el oeste para
+// cerrar las esquinas. La zona útil es el cuadrado dentro de sus caras interiores.
+inline constexpr double kWallInset = 10.0;
+inline constexpr double kWallHeight = 4.0;
+inline constexpr double kWallThickness = 1.0;
+inline constexpr double kUsableHalfSize = -kGroundOrigin - kWallInset;
 
 // Semilla fija del microrrelieve (PCG32; un stream por superficie).
 inline constexpr std::uint64_t kMicroSeed = 0x2a2a'7e57'2026'1003ull;
@@ -165,6 +167,17 @@ struct FinishLine {
     double half_length = 0.0;
 };
 
+// Caja estática de un muro perimetral: centro y medias medidas, en metros.
+struct WallBox {
+    double cx = 0.0;
+    double cy = 0.0;
+    double cz = 0.0;
+    double half_x = 0.0;
+    double half_y = 0.0;
+    double half_z = 0.0;
+};
+inline constexpr int kWallCount = 4;
+
 // Una onda plana del microrrelieve: amplitud, número de onda en x y z, y fase.
 struct MicroWave {
     double amplitude = 0.0;
@@ -180,8 +193,8 @@ public:
 
     Surface blind_surface() const { return blind_surface_; }
 
-    // Altura de la geometría (rampa, cresta, baches de asfalto; 0 en el resto). Es la que va
-    // al suelo de Jolt, muestreada cada kGroundSpacing.
+    // Altura de la geometría (rampa, cresta, baches de asfalto; 0 en el resto, también junto
+    // a los muros). Es la que va al suelo de Jolt, muestreada cada kGroundSpacing.
     double ground_height(double x, double z) const;
 
     // Superficie en (x, z): la del área de más prioridad que contiene el punto; tierra fuera.
@@ -215,6 +228,8 @@ public:
     // Índice del punto de recolocación más cercano en el plano (el primero si empatan).
     int nearest_respawn(double x, double z) const;
     const FinishLine& finish_line() const { return finish_; }
+    // Muros perimetrales (norte, sur, oeste y este), en el orden en que entran en Jolt.
+    const std::array<WallBox, kWallCount>& walls() const { return walls_; }
     // Salida del cuerpo controlado: el primer punto de recolocación (inicio de la recta).
     const RespawnPoint& start() const { return respawns_.front(); }
     // Punto de recolocación de la pista ciega (50 m antes de la meta): salida de las pruebas
@@ -244,6 +259,7 @@ private:
     std::vector<ZoneArea> areas_;
     std::vector<RespawnPoint> respawns_;
     FinishLine finish_;
+    std::array<WallBox, kWallCount> walls_{};
     std::array<std::array<MicroWave, zone::kMicroWaves>, kSurfaceCount> waves_{};
 };
 
@@ -251,8 +267,9 @@ private:
 std::uint64_t ground_hash(const std::vector<float>& heights,
                           const std::vector<std::uint8_t>& surfaces);
 // Hash de la zona: lo mismo que ground_hash seguido de la tabla de ondas de h (amplitud,
-// números de onda y fase de cada onda de cada superficie, sus bits) y los parámetros de las
-// ondulaciones de la grava (longitud de onda y amplitud).
+// números de onda y fase de cada onda de cada superficie, sus bits), los parámetros de las
+// ondulaciones de la grava (longitud de onda y amplitud) y las cajas de los muros (centro y
+// medias medidas de cada una).
 std::uint64_t zone_hash(const std::vector<float>& heights,
                         const std::vector<std::uint8_t>& surfaces, const TestZone& zone);
 
