@@ -3,9 +3,10 @@
 namespace rally::platform {
 
 // Ventana de raylib (backend SDL). Se abre al construir y se cierra al destruir.
-// Esc cierra la ventana; F11 o Alt+Intro alternan la ventana y la pantalla completa sin
-// bordes a la resolución nativa del monitor (pantalla completa de escritorio de SDL: no
-// cambia el modo de pantalla y mantiene la sincronización vertical).
+// Teclas de platform/keys: Salir (Esc) cierra la ventana y Pantalla completa (F11 o Alt+Intro)
+// alterna la ventana y la pantalla completa sin bordes a la resolución nativa del monitor
+// (pantalla completa de escritorio de SDL: no cambia el modo de pantalla y mantiene la
+// sincronización vertical).
 class Window {
 public:
     Window(int width, int height, const char* title);

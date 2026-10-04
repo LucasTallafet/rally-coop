@@ -11,6 +11,7 @@ namespace rally::platform {
 
 class FixedStepClock;
 class FramePacer;
+class Overlay;
 struct FrameSteps;
 
 // Contador de rendimiento en pantalla (F1): CPU por fotograma desglosada en simulación
@@ -25,9 +26,6 @@ struct FrameSteps;
 //   BeginDrawing → begin_render → dibujo → draw → end_render → EndDrawing → end_present
 class PerfCounter {
 public:
-    // Ancho del panel, a 16 px del borde derecho (las gráficas de T van a su izquierda).
-    static constexpr int kPanelWidth = 640;
-
     // Necesita la ventana abierta (instala el contador de draw calls y crea las consultas).
     PerfCounter();
 
@@ -49,10 +47,11 @@ public:
     void end_render();
     void end_present(); // justo después de EndDrawing
 
-    // Dibuja el panel (si está visible) entre begin_render y end_render. render_width y
-    // render_height: resolución a la que se dibuja la escena.
+    // Dibuja el panel (si está visible) en su sitio del diseño de la pantalla (capa Perf) entre
+    // begin_render y end_render. render_width y render_height: resolución a la que se dibuja la
+    // escena.
     void draw(const FramePacer& pacer, const FixedStepClock& clock, bool snap_enabled,
-              int render_width, int render_height) const;
+              int render_width, int render_height, Overlay& overlay) const;
 
     // Última muestra cerrada (la del fotograma anterior) y la memoria leída por última vez.
     const FrameSample& last_sample() const { return last_; }

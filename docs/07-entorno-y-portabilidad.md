@@ -185,38 +185,76 @@ Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cier
 
 ## 8. Referencia rápida de la demo actual
 
-Válido desde la tarea 2.4 de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) sustituye a la caja. Arranca en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración.
+Válido desde la tarea 2.4b de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración. En pantalla, siempre, el indicador mínimo (velocidad, selector y, en la zona, la vuelta en curso y la mejor; a ciegas, «Prueba k/15») y «H: ayuda»; H enseña la ayuda de teclas, F3 el panel de depuración, F1 el rendimiento y T las gráficas, cada uno en su sitio fijo. El asiento (Re Pág / Av Pág, Inicio / Fin, Insert / Supr) se guarda en `ajustes.txt` junto al exe; si ese archivo tiene una línea mal escrita, se avisa en pantalla con su número y se usa el valor por defecto.
+
+Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el juego y la ayuda en pantalla); el test `keys: docs/07 section 8 matches the generated table` comprueba que coinciden. Para cambiarlas, se cambia `keys.cpp` y se copia aquí lo que imprime ese test al fallar.
+
+<!-- teclas: generado desde src/platform/keys.cpp (keys_markdown); no editar a mano -->
+
+**Conducir**
 
 | Tecla / mando | Acción |
 | --- | --- |
-| W o ↑ · gatillo derecho | Acelerador |
-| S o ↓ · gatillo izquierdo | Freno |
-| A/D o ←/→ · stick izquierdo | Girar |
-| Espacio · botón de abajo de la cara derecha (A Xbox, ✕ PlayStation, B Nintendo) | Freno de mano (ruedas traseras; mientras se tira, sin par motor) |
-| Q · hombro izquierdo (LB, L1, L) | Selector provisional (hasta la 2.6): parado, de adelante a N y de N a R |
-| E · hombro derecho (RB, R1, R) | Selector provisional: de R a N y de N a adelante |
-| R · botón de arriba de la cara derecha (Y Xbox, △ PlayStation, X Nintendo) | Recolocar: en la zona, al punto de recolocación más cercano, parado y con su orientación; en el recinto, a la salida mirando al frente |
-| F5 | Releer el archivo del coche y reconstruir el mundo con el coche en el punto de recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo muestra con su línea y sigue el coche anterior |
-| Retroceso | Reiniciar el mundo (cierra la grabación y empieza otra) |
-| Tab | Cámara: ojo del conductor (del archivo del coche) → persecución → fija (recinto) o toda la zona |
-| K | Zona de pruebas / recinto de la fase 1 (reconstruye el mundo y empieza otra grabación) |
-| G | Zona: siguiente superficie de la pista ciega (reconstruye); a ciegas, siguiente prueba de la serie |
-| M | Zona: modo a ciegas sí / no (todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla solo «Prueba k/15»; cada prueba sale en la pista ciega) |
-| H | Ocultar / mostrar el texto (quedan las vueltas) |
-| T | Gráficas de la telemetría de los últimos 10 s, por páginas: 1 · manejo (β, guiñada, velocidad y entradas aplicadas) → 2 · tren motriz → 3 · suspensión (carga y compresión por rueda) → ocultas. Las páginas sin canales se saltan: hasta la 2.5, T muestra la 1, la 3 y las oculta. Con F1, a su izquierda. En el modo a ciegas no hace nada |
-| O | Recinto: mundo a 20 km del origen (y de vuelta) |
-| J | Dibujar en float del mundo (depuración del render relativo) |
-| F | Frecuencia del monitor / 30 fps |
-| V | Sincronización vertical sí / no |
-| I | Interpolación sí / no |
-| N | Ajuste del dt al refresco sí / no |
+| W o Arriba · gatillo derecho | Acelerador |
+| S o Abajo · gatillo izquierdo | Freno |
+| A/D o Izquierda/Derecha · stick izquierdo | Girar |
+| Espacio · botón de abajo de la cara derecha (A Xbox, Cruz PlayStation, B Nintendo) | Freno de mano: ruedas traseras; mientras se tira, sin par motor |
+| Q · hombro izquierdo (LB, L1, L) | Selector hacia R: provisional hasta la 2.6; parado, de adelante a N y de N a R |
+| E · hombro derecho (RB, R1, R) | Selector hacia adelante: provisional; de R a N y de N a adelante |
+| R · botón de arriba de la cara derecha (Y Xbox, Triángulo PlayStation, X Nintendo) | Recolocar: en la zona, al punto de recolocación más cercano, parado y con su orientación; en el recinto, a la salida mirando al frente |
+
+**Cámara y asiento**
+
+| Tecla / mando | Acción |
+| --- | --- |
+| Tab | Cámara: ojo del conductor (el del archivo del coche más el asiento), persecución y fija (recinto) o toda la zona, por turnos |
+| Re Pág/Av Pág | Asiento: arriba / abajo: 1 cm por pulsación, se repite al mantener; solo la vista del ojo, no la simulación ni la grabación; límite ± 15 cm en cada eje; se guarda en ajustes.txt junto al exe |
+| Inicio/Fin | Asiento: adelante / atrás |
+| Insert/Supr | Asiento: a los lados: derecha / izquierda |
+
+**Zona**
+
+| Tecla / mando | Acción |
+| --- | --- |
+| G | Superficie de la pista ciega: la siguiente; reconstruye el mundo |
+| G | A ciegas: siguiente prueba: de la serie de 15 (--blind-seed) |
+| M | Modo a ciegas sí / no: todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla, «Prueba k/15»; cada prueba sale en la pista ciega |
+
+**Grabación**
+
+| Tecla / mando | Acción |
+| --- | --- |
+| C | Captura del fotograma: captura_NNN.png junto al exe |
+| L | Registro por fotograma: fotogramas_NNN.csv junto al exe |
+
+**Depuración**
+
+| Tecla / mando | Acción |
+| --- | --- |
+| F3 | Panel de depuración: mando, entradas, impacto, coche, grabación, zona, cámara, asiento y ritmo de fotogramas; en el modo a ciegas, sin superficie ni configuración |
+| F1 | Contador de rendimiento: CPU, GPU, draw calls, memoria y gráfica de fotogramas |
+| T | Gráficas de la telemetría: últimos 10 s, por páginas: 1 · manejo (beta, guiñada, velocidad y entradas aplicadas), 2 · tren motriz, 3 · suspensión (carga y compresión por rueda) y ocultas; las páginas sin canales se saltan; en el modo a ciegas no hace nada |
+| O | Recinto a 20 km del origen: y de vuelta |
+| B | Bosque de medida (recinto): escena de medida del bosque, por turnos: apagado, uno a uno, DrawMeshInstanced y persistente |
+| J | Dibujar en float del mundo: depuración del render relativo |
+| F | Monitor / 30 fps: a la frecuencia del monitor o a 30 fps |
+| V | Sincronización vertical |
+| I | Interpolación |
+| N | Ajuste del dt al refresco |
+
+**General**
+
+| Tecla / mando | Acción |
+| --- | --- |
+| H | Ayuda de teclas |
 | P | Pausa |
-| C | Captura del fotograma (`captura_NNN.png` junto al exe) |
-| L | Registro por fotograma (`fotogramas_NNN.csv` junto al exe) |
-| F1 | Contador de rendimiento (CPU, GPU, draw calls, memoria, gráfica de fotogramas) |
-| B | Recinto: escena de medida del bosque: apagado → uno a uno → `DrawMeshInstanced` → persistente |
+| F5 | Releer el archivo del coche: reconstruye el mundo con el coche en el punto de recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo muestra con su línea y sigue el coche anterior |
+| Retroceso | Reiniciar el mundo: cierra la grabación y empieza otra |
+| K | Zona de pruebas / recinto: el recinto es el de la fase 1; reconstruye el mundo y empieza otra grabación |
 | F11 o Alt+Intro | Pantalla completa sin bordes |
 | Esc | Salir |
+
+<!-- fin de teclas -->
 
 | Opción de arranque | Qué hace |
 | --- | --- |

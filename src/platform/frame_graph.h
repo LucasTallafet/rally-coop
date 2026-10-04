@@ -5,6 +5,7 @@
 namespace rally::platform {
 
 class FrameHistory;
+class Overlay;
 
 // Gráfica de ritmo de fotogramas para el contador en pantalla (pasará al contador de
 // rendimiento de la tarea 6). Arriba, una barra por fotograma con su duración medida
@@ -15,9 +16,9 @@ class FrameHistory;
 // activo cuenta también los fotogramas sin ajustar: son los que mueven la imagen a saltos.
 //
 // frame_period: duración prevista del fotograma en unidades del reloj (0 si no se conoce).
-// debt: deuda del ajuste de FixedStepClock. Dibuja entre BeginDrawing y EndDrawing.
-// Devuelve la altura ocupada en píxeles.
-int draw_frame_graph(const FrameHistory& history, std::int64_t frame_period, std::int64_t debt,
-                     bool snap_enabled, int x, int y);
+// debt: deuda del ajuste de FixedStepClock. Dibuja entre BeginDrawing y EndDrawing, en la capa
+// Perf con las medidas de su diseño (PerfGeometry); (x, y): esquina de las barras.
+void draw_frame_graph(const FrameHistory& history, std::int64_t frame_period, std::int64_t debt,
+                      bool snap_enabled, int x, int y, Overlay& overlay);
 
 } // namespace rally::platform

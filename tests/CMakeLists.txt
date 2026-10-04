@@ -13,19 +13,26 @@ add_executable(rally_tests
     test_input_smoothing.cpp
     test_interpolation.cpp
     test_jolt.cpp
+    test_keys.cpp
     test_pcg32.cpp
+    test_player_settings.cpp
     test_perf_stats.cpp
     test_recording.cpp
     test_rmath.cpp
+    test_screen_layout.cpp
+    test_seat.cpp
     test_sim_world.cpp
     test_telemetry.cpp
     test_test_zone.cpp
+    test_ui_text.cpp
 )
 target_link_libraries(rally_tests PRIVATE rally_sim rally_io rally_loop doctest::doctest
     rally_warnings)
 # Datos medidos para los tests (registros de fotogramas).
+# Documentos del repositorio (la tabla de teclas de docs/07 §8).
 target_compile_definitions(rally_tests PRIVATE
-    RALLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    RALLY_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
+    RALLY_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(rally_tests)

@@ -1,12 +1,14 @@
 #include "platform/window.h"
 
+#include "platform/keys_raylib.h"
+
 #include <raylib.h>
 
 namespace rally::platform {
 
 Window::Window(int width, int height, const char* title) {
     InitWindow(width, height, title);
-    SetExitKey(KEY_ESCAPE);
+    SetExitKey(raylib_key(chords_for(Action::Exit)[0].key));
 }
 
 Window::~Window() { CloseWindow(); }
@@ -14,8 +16,7 @@ Window::~Window() { CloseWindow(); }
 bool Window::should_close() const { return WindowShouldClose(); }
 
 void Window::handle_keys() {
-    const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
-    if (IsKeyPressed(KEY_F11) || (alt && IsKeyPressed(KEY_ENTER))) {
+    if (action_pressed(Action::Fullscreen)) {
         toggle_fullscreen();
     }
 }

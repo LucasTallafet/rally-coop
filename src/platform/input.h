@@ -10,11 +10,7 @@ namespace rally::platform {
 // magnitud; combine_inputs). Se lee una vez por fotograma y se aplica igual a todos sus
 // pasos; solo enteros llegan a la simulación, que suaviza la dirección y el acelerador
 // digital por paso (sim/input_smoothing.h).
-// Teclado: W/flecha arriba acelera y S/abajo frena; A/izquierda gira a la izquierda y
-// D/derecha a la derecha; Espacio freno de mano; Q baja marcha y E sube; R recoloca; X salta
-// (temporal, solo la caja hasta la 2.4).
-// Mando: stick izquierdo (solo el eje X) gira; gatillo derecho acelera y el izquierdo
-// frena; botones en platform/gamepad.h.
+// Teclas y botones del mando: la tabla de platform/keys (bloque Conducir).
 class DriverInput {
 public:
     // step_count: pasos de física de este fotograma. Los botones de pulsación de los

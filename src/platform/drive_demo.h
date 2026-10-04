@@ -3,6 +3,8 @@
 #include "platform/forest_scene.h"
 #include "platform/frame_log.h"
 #include "platform/interpolation.h"
+#include "platform/overlay.h"
+#include "platform/player_settings.h"
 #include "platform/recording_session.h"
 #include "platform/telemetry_history.h"
 #include "platform/zone_draw.h"
@@ -30,23 +32,24 @@ struct FrameSteps;
 // SimWorld, conducido con el teclado o el mando, en la zona de pruebas de la fase 2 (por
 // defecto) o en el recinto de la fase 1. Sin interior todavía (tarea 2.7).
 //
-// Conducción en platform/input.h (W/S acelerador y freno, A/D, Espacio freno de mano, Q/E
-// selector R – N – adelante, R recolocar). Retroceso reinicia el mundo, K alterna la zona y
-// el recinto, y en el recinto O lo reconstruye a 20 km del origen (o lo devuelve); todos
-// cierran la grabación de la partida y empiezan otra (grabaciones/AAAAMMDD-HHMMSS.rrec junto
-// al exe). F5 relee el archivo del coche y reconstruye el mundo con el coche en el punto de
-// recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo
-// muestra con su línea y sigue el coche anterior. En la zona, G cambia la superficie de la
-// pista ciega y M el modo a ciegas: todas las superficies del mismo color, sin h y sin nombres
-// en el overlay; ahí G pasa a la siguiente prueba de la serie de 15 (--blind-seed). Tab
-// cambia la cámara (ojo del conductor del archivo del coche, persecución y fija en el recinto
-// o toda la zona), J dibuja en float del mundo (depuración, para ver el temblor),
-// F alterna frecuencia del monitor / 30 fps, I la interpolación, V la sincronización
-// vertical, P la pausa, C guarda una captura (captura_NNN.png junto al exe), N activa el
-// ajuste del dt al refresco del monitor, L empieza o acaba el registro de fotogramas
-// (fotogramas_NNN.csv junto al exe), B cambia el modo de la escena de medida del bosque
-// denso y T muestra las gráficas de la telemetría de los últimos 10 s (no en el modo a
-// ciegas). El contador de rendimiento (F1) es aparte: PerfCounter.
+// Teclas: la tabla de platform/keys (la ayuda, H, las enseña en pantalla). Retroceso reinicia el
+// mundo, K alterna la zona y el recinto, y en el recinto O lo reconstruye a 20 km del origen (o
+// lo devuelve); todos cierran la grabación de la partida y empiezan otra
+// (grabaciones/AAAAMMDD-HHMMSS.rrec junto al exe). F5 relee el archivo del coche y reconstruye el
+// mundo con el coche en el punto de recolocación más cercano (en el recinto, en su salida); si el
+// archivo tiene un error, lo dice en pantalla con su línea y sigue el coche anterior. En la zona,
+// G cambia la superficie de la pista ciega y M el modo a ciegas: todas las superficies del mismo
+// color, sin h y sin nombres en pantalla; ahí G pasa a la siguiente prueba de la serie de 15
+// (--blind-seed). Tab cambia la cámara (ojo del conductor, persecución y fija en el recinto o
+// toda la zona).
+//
+// Texto en pantalla (platform/overlay, cada capa en su sitio fijo): el indicador mínimo y «H:
+// ayuda» siempre; H la ayuda de teclas, F3 el panel de depuración, T las gráficas de la
+// telemetría (no en el modo a ciegas) y F1 el contador de rendimiento (PerfCounter).
+//
+// Asiento: Re Pág / Av Pág, Inicio / Fin e Insert / Supr mueven el ojo del conductor 1 cm
+// (platform/seat); se guarda en ajustes.txt junto al exe (platform/player_settings) tras 0,5 s sin
+// cambios y al salir. Solo mueve la cámara del ojo.
 class DriveDemo {
 public:
     // Necesita la ventana abierta (fija los planos de recorte de raylib). `car_path`: el archivo
@@ -112,7 +115,17 @@ private:
     void describe_world();
     void advance_zone_bench(std::int64_t frame_ns);
     void write_zone_bench_report() const;
-    void draw_zone_overlay(int y) const;
+    // Contexto de las teclas: zona, zona a ciegas o recinto (platform/keys).
+    std::uint8_t key_context() const;
+    void handle_seat_keys();
+    // ajustes.txt junto al exe: se lee al construir y se guarda tras los cambios y al destruir.
+    void load_settings();
+    void save_settings();
+    // Capas del texto en pantalla.
+    void draw_indicator();
+    void draw_help();
+    void draw_debug(const FrameSteps& steps, const FramePacer& pacer, const DriverInput& driver,
+                    const sim::SimInput& input, float frame_impact, const Vec3d& eye);
 
     sim::WorldDesc desc_;
     bool zone_mode_ = true;                             // K: zona de pruebas o recinto
@@ -139,13 +152,10 @@ private:
     };
     std::vector<ZoneBenchFrame> zone_bench_ground_ms_;
     std::unique_ptr<sim::SimWorld> world_;
-    // Coche: archivo, su texto (va a la cabecera de las grabaciones), sus datos y el mensaje
-    // de la última recarga (F5).
+    // Coche: archivo, su texto (va a la cabecera de las grabaciones) y sus datos.
     std::string car_path_;
     std::string car_text_;
     sim::CarData car_;
-    std::string car_message_;
-    bool car_message_error_ = false;
     std::vector<Pose> previous_; // por cuerpo, en el orden de la descripción
     std::vector<Pose> current_;
     std::vector<Pose> drawn_; // poses del fotograma (interpoladas o no)
@@ -160,7 +170,8 @@ private:
     bool capture_requested_ = false;  // C: captura del búfer al final del fotograma
     bool far_from_origin_ = false;    // O: mundo a 20 km del origen en x y z
     bool world_float_ = false;        // J: dibujo en float del mundo en vez de relativo
-    bool overlay_visible_ = true;     // H: texto del overlay
+    bool help_visible_ = false;       // H: ayuda de teclas
+    bool debug_visible_ = false;      // F3: panel de depuración
     bool snap_ = true;                // N: ajuste del dt al refresco
     float last_rumble_impact_ = 0.0f; // último pico que hizo vibrar, en m/s
 
@@ -169,6 +180,11 @@ private:
     RenderTexture2D target_{}; // id 0 si se dibuja directamente en la ventana
     FrameLog frame_log_;       // L: registro de diagnóstico
     RecordingSession recording_;
+    Overlay overlay_;
+    // Ajustes del jugador (asiento) y su archivo.
+    PlayerSettings settings_;
+    std::string settings_path_; // UTF-8
+    SettingsSaver settings_saver_;
     // T: gráficas de la telemetría (no en el modo a ciegas). La historia se llena siempre.
     TelemetryHistory telemetry_history_;
     GraphPager graphs_;

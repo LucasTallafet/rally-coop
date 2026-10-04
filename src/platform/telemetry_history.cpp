@@ -210,4 +210,26 @@ void GraphPager::press(bool blind_mode, std::span<const GraphPage> pages) {
     page_ = -1;
 }
 
+void merge_columns(std::span<const TelemetryHistory::Range> in,
+                   std::span<TelemetryHistory::Range> out) {
+    const std::size_t n = in.size();
+    const std::size_t m = out.size();
+    for (std::size_t i = 0; i < m; ++i) {
+        TelemetryHistory::Range merged;
+        for (std::size_t c = i * n / m; c < (i + 1) * n / m; ++c) {
+            const TelemetryHistory::Range& r = in[c];
+            if (!r.valid) {
+                continue;
+            }
+            if (!merged.valid) {
+                merged = r;
+            } else {
+                merged.min = std::min(merged.min, r.min);
+                merged.max = std::max(merged.max, r.max);
+            }
+        }
+        out[i] = merged;
+    }
+}
+
 } // namespace rally::platform

@@ -464,3 +464,68 @@ TEST_CASE("telemetry_history: T does nothing in blind mode and blind mode hides 
     pager.press(true, pages);
     CHECK(pager.visible(false) == 0); // y vuelven al salir, sin que T haya cambiado nada
 }
+
+TEST_CASE("telemetry_history: merged columns keep the exact envelope") {
+    using Range = rally::platform::TelemetryHistory::Range;
+    // 480 columnas → 320: cada una de las nuevas junta 1 o 2 de las de la historia.
+    std::vector<Range> in(rally::platform::kGraphColumns);
+    for (std::size_t c = 0; c < in.size(); ++c) {
+        const float v = static_cast<float>(c);
+        in[c] = Range{v, v + 0.5f, c >= 10}; // las 10 primeras, sin pasos
+    }
+    in[301] = Range{-50.0f, 1000.0f, true}; // un pico de un paso
+    std::vector<Range> out(320);
+    rally::platform::merge_columns(in, out);
+    float lowest = 1e9f;
+    float highest = -1e9f;
+    int valid = 0;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        const std::size_t first = i * in.size() / out.size();
+        const std::size_t last = (i + 1) * in.size() / out.size();
+        bool any = false;
+        float lo = 1e9f;
+        float hi = -1e9f;
+        for (std::size_t c = first; c < last; ++c) {
+            if (in[c].valid) {
+                any = true;
+                lo = std::min(lo, in[c].min);
+                hi = std::max(hi, in[c].max);
+            }
+        }
+        CHECK(out[i].valid == any);
+        if (any) {
+            CHECK(out[i].min == lo);
+            CHECK(out[i].max == hi);
+            lowest = std::min(lowest, out[i].min);
+            highest = std::max(highest, out[i].max);
+            ++valid;
+        }
+    }
+    CHECK(lowest == -50.0f);
+    // La columna que cubre el pico lo conserva entero.
+    std::size_t spike = 0;
+    while ((spike + 1) * in.size() / out.size() <= 301) {
+        ++spike;
+    }
+    CHECK(out[spike].min == -50.0f);
+    CHECK(out[spike].max == 1000.0f);
+    CHECK(highest == 1000.0f);
+    CHECK(valid == 313); // las 7 primeras cubren solo columnas 0..9, sin pasos
+}
+
+TEST_CASE("telemetry_history: merging into the same width copies the columns") {
+    using Range = rally::platform::TelemetryHistory::Range;
+    std::vector<Range> in(8);
+    for (std::size_t c = 0; c < in.size(); ++c) {
+        in[c] = Range{static_cast<float>(c), static_cast<float>(c) + 1.0f, c % 3 != 0};
+    }
+    std::vector<Range> out(8);
+    rally::platform::merge_columns(in, out);
+    for (std::size_t c = 0; c < in.size(); ++c) {
+        CHECK(out[c].valid == in[c].valid);
+        if (in[c].valid) {
+            CHECK(out[c].min == in[c].min);
+            CHECK(out[c].max == in[c].max);
+        }
+    }
+}

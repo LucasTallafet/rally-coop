@@ -1,5 +1,7 @@
 #include "platform/gamepad.h"
 
+#include "platform/keys.h"
+
 #include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_stdinc.h>
 
@@ -9,21 +11,58 @@ namespace rally::platform {
 
 namespace {
 
-// Mapeo del conductor (sin menú de reasignación hasta los menús, fase 5).
+// Mapeo del conductor: el mando de cada acción en la tabla de platform/keys (sin menú de
+// reasignación hasta los menús, fase 5).
+SDL_GamepadAxis to_axis(PadControl control) {
+    switch (control) {
+    case PadControl::LeftStickX:
+        return SDL_GAMEPAD_AXIS_LEFTX;
+    case PadControl::RightTrigger:
+        return SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+    case PadControl::LeftTrigger:
+        return SDL_GAMEPAD_AXIS_LEFT_TRIGGER;
+    default:
+        return SDL_GAMEPAD_AXIS_INVALID;
+    }
+}
+
+SDL_GamepadButton to_button(PadControl control) {
+    switch (control) {
+    case PadControl::FaceSouth:
+        return SDL_GAMEPAD_BUTTON_SOUTH;
+    case PadControl::FaceNorth:
+        return SDL_GAMEPAD_BUTTON_NORTH;
+    case PadControl::LeftShoulder:
+        return SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    case PadControl::RightShoulder:
+        return SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+    default:
+        return SDL_GAMEPAD_BUTTON_INVALID;
+    }
+}
+
 struct PadBindings {
-    SDL_GamepadAxis steer = SDL_GAMEPAD_AXIS_LEFTX;
+    SDL_GamepadAxis steer = to_axis(pad_for(Action::SteerLeft));
     SDL_GamepadAxis vertical = SDL_GAMEPAD_AXIS_LEFTY; // solo para no tomarlo por dirección
-    SDL_GamepadAxis accelerate = SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
-    SDL_GamepadAxis brake = SDL_GAMEPAD_AXIS_LEFT_TRIGGER;
-    SDL_GamepadButton handbrake = SDL_GAMEPAD_BUTTON_SOUTH;
-    SDL_GamepadButton reset = SDL_GAMEPAD_BUTTON_NORTH;
-    SDL_GamepadButton shift_down = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
-    SDL_GamepadButton shift_up = SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+    SDL_GamepadAxis accelerate = to_axis(pad_for(Action::Throttle));
+    SDL_GamepadAxis brake = to_axis(pad_for(Action::Brake));
+    SDL_GamepadButton handbrake = to_button(pad_for(Action::Handbrake));
+    SDL_GamepadButton reset = to_button(pad_for(Action::Reset));
+    SDL_GamepadButton shift_down = to_button(pad_for(Action::ShiftDown));
+    SDL_GamepadButton shift_up = to_button(pad_for(Action::ShiftUp));
 };
-constexpr PadBindings kDriverPad{};
+const PadBindings kDriverPad{};
+
+// SDL da false o 0 con un botón o un eje no válido; lo leído queda en reposo.
+bool button(SDL_Gamepad* pad, SDL_GamepadButton b) {
+    return b != SDL_GAMEPAD_BUTTON_INVALID && SDL_GetGamepadButton(pad, b);
+}
 
 // SDL da los sticks en [-32768, 32767] y los gatillos en [0, 32767].
 float axis_value(SDL_Gamepad* pad, SDL_GamepadAxis axis) {
+    if (axis == SDL_GAMEPAD_AXIS_INVALID) {
+        return 0.0f;
+    }
     return std::max(-1.0f, static_cast<float>(SDL_GetGamepadAxis(pad, axis)) / 32767.0f);
 }
 
@@ -50,10 +89,10 @@ PadState Gamepads::read() {
         reading.left_y = axis_value(pad, kDriverPad.vertical);
         reading.left_trigger = axis_value(pad, kDriverPad.brake);
         reading.right_trigger = axis_value(pad, kDriverPad.accelerate);
-        reading.handbrake = SDL_GetGamepadButton(pad, kDriverPad.handbrake);
-        reading.reset = SDL_GetGamepadButton(pad, kDriverPad.reset);
-        reading.shift_down = SDL_GetGamepadButton(pad, kDriverPad.shift_down);
-        reading.shift_up = SDL_GetGamepadButton(pad, kDriverPad.shift_up);
+        reading.handbrake = button(pad, kDriverPad.handbrake);
+        reading.reset = button(pad, kDriverPad.reset);
+        reading.shift_down = button(pad, kDriverPad.shift_down);
+        reading.shift_up = button(pad, kDriverPad.shift_up);
         for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT && !reading.any_button; ++b) {
             reading.any_button = SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
         }

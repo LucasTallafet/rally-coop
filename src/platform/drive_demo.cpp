@@ -1,5 +1,6 @@
 #include "platform/drive_demo.h"
 
+#include "io/atomic_file.h"
 #include "io/recording.h"
 #include "platform/camera_space.h"
 #include "platform/fixed_step_clock.h"
@@ -7,8 +8,11 @@
 #include "platform/frame_pacer.h"
 #include "platform/input.h"
 #include "platform/input_shaping.h"
+#include "platform/keys_raylib.h"
 #include "platform/perf_counter.h"
+#include "platform/screen_layout.h"
 #include "platform/screenshot.h"
+#include "platform/seat.h"
 #include "platform/telemetry_graphs.h"
 #include "sim/check.h"
 #include "sim/demo_world.h"
@@ -19,12 +23,14 @@
 #include <rlgl.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace rally::platform {
 
@@ -55,6 +61,18 @@ constexpr Vec3d kOverviewTarget{0.0, 0.0, -60.0};
 // --bench-zone: velocidad de la cámara por la pista ciega y altura del ojo.
 constexpr double kZoneBenchSpeed = 100.0 / 3.6;
 constexpr double kZoneBenchEyeHeight = 1.1;
+
+// Texto en pantalla.
+constexpr Color kText{220, 223, 228, 255};
+constexpr Color kDim{150, 156, 168, 255};
+constexpr Color kTitle{240, 200, 120, 255};
+constexpr Color kStrong{250, 200, 90, 255};
+constexpr Color kError{255, 110, 90, 255};
+constexpr Color kUnavailable{105, 110, 120, 255}; // ayuda: teclas que no valen aquí
+constexpr Color kPanelBackground{20, 22, 26, 215};
+// Duración de los mensajes que no son errores persistentes.
+constexpr std::int64_t kShortMessageNs = 5'000'000'000;
+constexpr std::int64_t kSettingsMessageNs = 10'000'000'000;
 
 constexpr Color kCarColor{230, 160, 60, 255};
 constexpr Color kTireColor{38, 40, 44, 255};
@@ -163,21 +181,50 @@ void draw_posts(const sim::BoxDesc& floor, const Vec3d& origin) {
 }
 
 // Barra de un eje en [-1, 1]: el valor aplicado relleno desde el centro y el objetivo como
-// una marca blanca.
-constexpr int kAxisBarWidth = 200;
-constexpr int kAxisBarHeight = 16;
-
-void draw_axis_bar(int x, int y, float target, float applied) {
-    const int center = x + kAxisBarWidth / 2;
-    const auto offset = [](float value) {
-        return static_cast<int>(std::clamp(value, -1.0f, 1.0f) * (kAxisBarWidth / 2));
+// una marca blanca. Medidas del diseño de la pantalla (axis_bar_width).
+void draw_axis_bar(int x, int y, int width, int height, float target, float applied) {
+    const int center = x + width / 2;
+    const auto offset = [width](float value) {
+        return static_cast<int>(std::clamp(value, -1.0f, 1.0f) * static_cast<float>(width / 2));
     };
-    DrawRectangle(x, y, kAxisBarWidth, kAxisBarHeight, Color{60, 64, 72, 255});
+    DrawRectangle(x, y, width, height, Color{60, 64, 72, 255});
     const int fill = offset(applied);
-    DrawRectangle(std::min(center, center + fill), y, std::abs(fill), kAxisBarHeight,
+    DrawRectangle(std::min(center, center + fill), y, std::abs(fill), height,
                   Color{230, 160, 60, 255});
-    DrawRectangle(center + offset(target) - 1, y - 3, 3, kAxisBarHeight + 6, RAYWHITE);
-    DrawRectangle(center, y, 1, kAxisBarHeight, Color{150, 156, 168, 255});
+    const int mark = std::max(1, height / 5);
+    DrawRectangle(center + offset(target) - 1, y - mark, 3, height + 2 * mark, RAYWHITE);
+    DrawRectangle(center, y, 1, height, Color{150, 156, 168, 255});
+}
+
+// Tiempo en pasos como segundos, o "--" si no hay.
+struct LapText {
+    char text[24];
+};
+LapText lap_text(std::int64_t steps) {
+    LapText out{};
+    if (steps < 0) {
+        std::snprintf(out.text, sizeof(out.text), "--");
+    } else {
+        std::snprintf(out.text, sizeof(out.text), "%.2f s",
+                      static_cast<double>(steps) / kStepsPerSecond);
+    }
+    return out;
+}
+
+std::int64_t now_ns() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+// Ruta UTF-8 (raylib da la carpeta del exe en UTF-8).
+std::filesystem::path utf8_path(const std::string& text) {
+    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+}
+
+std::string file_name(const std::string& path) {
+    const std::u8string name = utf8_path(path).filename().u8string();
+    return std::string(name.begin(), name.end());
 }
 
 Pose to_pose(const sim::BodyPose& body) {
@@ -274,9 +321,44 @@ DriveDemo::DriveDemo(std::string car_path) : car_path_(std::move(car_path)) {
     std::string error;
     RALLY_CHECK(!car_path_.empty() && io::read_file(car_path_, car_text_, error), message.c_str());
     car_ = sim::load_car_or_abort(car_text_, car_path_);
-    car_message_ = "coche: " + car_path_;
+    load_settings();
     describe_world();
     reset();
+}
+
+void DriveDemo::load_settings() {
+    settings_path_ = std::string(GetApplicationDirectory()) + std::string(kSettingsFileName);
+    std::error_code missing;
+    if (!std::filesystem::exists(utf8_path(settings_path_), missing)) {
+        return; // se crea en el primer guardado
+    }
+    std::string text;
+    std::string error;
+    if (!io::read_file(settings_path_, text, error)) {
+        overlay_.set_message(Overlay::Message::Settings, "ajustes.txt: " + error, kError,
+                             kSettingsMessageNs);
+        return;
+    }
+    std::vector<SettingsWarning> warnings;
+    settings_ = parse_settings(text, warnings);
+    if (!warnings.empty()) {
+        std::string message = "ajustes.txt:";
+        for (const SettingsWarning& w : warnings) {
+            message += " línea " + std::to_string(w.line) + ", " + w.message + ";";
+        }
+        message.pop_back();
+        overlay_.set_message(Overlay::Message::Settings, std::move(message), kError,
+                             kSettingsMessageNs);
+    }
+}
+
+void DriveDemo::save_settings() {
+    std::string error;
+    if (!io::write_file_atomic(utf8_path(settings_path_), format_settings(settings_), error)) {
+        overlay_.set_message(Overlay::Message::Settings, "ajustes.txt no se ha guardado: " + error,
+                             kError, kSettingsMessageNs);
+    }
+    settings_saver_.saved();
 }
 
 void DriveDemo::describe_world() {
@@ -294,14 +376,16 @@ void DriveDemo::reload_car() {
     std::string text;
     std::string error;
     if (!io::read_file(car_path_, text, error)) {
-        car_message_ = "F5: no se puede leer " + car_path_ + ": " + error;
-        car_message_error_ = true;
+        overlay_.set_message(Overlay::Message::Car,
+                             "F5: no se puede leer " + car_path_ + ": " + error, kError);
         return;
     }
     const sim::CarParseResult parsed = sim::parse_car(text);
     if (!parsed.ok) {
-        car_message_ = "F5: " + car_path_ + ", " + parsed.error + " (sigue el coche anterior)";
-        car_message_error_ = true;
+        overlay_.set_message(Overlay::Message::Car,
+                             "F5: " + file_name(car_path_) + ", " + parsed.error +
+                                 " (sigue el coche anterior)",
+                             kError);
         return;
     }
     // El coche nuevo sale parado en el punto de recolocación más cercano (en el recinto, en
@@ -319,9 +403,10 @@ void DriveDemo::reload_car() {
         desc_.car_spawn.yaw = static_cast<float>(r.yaw);
     }
     reset();
-    car_message_ = "F5: coche recargado de " + car_path_ + " (" +
-                   std::to_string(static_cast<int>(car_.mass)) + " kg)";
-    car_message_error_ = false;
+    overlay_.set_message(Overlay::Message::Car,
+                         "F5: coche recargado de " + file_name(car_path_) + " (" +
+                             std::to_string(static_cast<int>(car_.mass)) + " kg)",
+                         kText, kShortMessageNs);
 }
 
 void DriveDemo::use_arena() {
@@ -333,6 +418,9 @@ void DriveDemo::use_arena() {
 }
 
 DriveDemo::~DriveDemo() {
+    if (settings_saver_.dirty()) {
+        save_settings();
+    }
     recording_.finish(*world_);
     if (target_.id != 0) {
         UnloadRenderTexture(target_);
@@ -388,42 +476,85 @@ void DriveDemo::read_poses() {
     }
 }
 
+std::uint8_t DriveDemo::key_context() const {
+    if (!zone_mode_) {
+        return kContextArena;
+    }
+    return blind_mode_ ? kContextBlind : kContextZone;
+}
+
+void DriveDemo::handle_seat_keys() {
+    struct SeatKey {
+        Action action;
+        SeatAxis axis;
+        int delta_cm;
+    };
+    static constexpr SeatKey kSeatKeys[] = {
+        {Action::SeatUp, SeatAxis::Up, 1},           {Action::SeatDown, SeatAxis::Up, -1},
+        {Action::SeatForward, SeatAxis::Forward, 1}, {Action::SeatBack, SeatAxis::Forward, -1},
+        {Action::SeatRight, SeatAxis::Right, 1},     {Action::SeatLeft, SeatAxis::Right, -1},
+    };
+    const std::int64_t now = now_ns();
+    for (const SeatKey& key : kSeatKeys) {
+        if (action_pressed_repeat(key.action)) {
+            const SeatOffsetCm seat = nudge_seat(settings_.seat, key.axis, key.delta_cm);
+            if (!(seat == settings_.seat)) {
+                settings_.seat = seat;
+                settings_saver_.changed(now);
+            }
+        }
+    }
+    // Guardado diferido: no en cada repetición de una tecla mantenida.
+    if (settings_saver_.due(now)) {
+        save_settings();
+    }
+}
+
 void DriveDemo::handle_keys(FramePacer& pacer) {
-    if (IsKeyPressed(KEY_F)) {
+    const std::uint8_t context = key_context();
+    if (action_pressed(Action::FrameRate, context)) {
         pacer.set_target(pacer.target() == FrameTarget::MonitorRate ? FrameTarget::Fps30
                                                                     : FrameTarget::MonitorRate);
     }
-    if (IsKeyPressed(KEY_I)) {
+    if (action_pressed(Action::Interpolation, context)) {
         interpolate_ = !interpolate_;
     }
-    if (IsKeyPressed(KEY_V)) {
+    if (action_pressed(Action::Vsync, context)) {
         pacer.set_vsync(!pacer.vsync());
     }
-    if (IsKeyPressed(KEY_P)) {
+    if (action_pressed(Action::Pause, context)) {
         paused_ = !paused_;
+        if (paused_) {
+            overlay_.set_message(Overlay::Message::Pause, "PAUSA (P)", kStrong);
+        } else {
+            overlay_.clear_message(Overlay::Message::Pause);
+        }
     }
-    if (IsKeyPressed(KEY_C)) {
+    if (action_pressed(Action::Capture, context)) {
         capture_requested_ = true;
     }
-    if (IsKeyPressed(KEY_TAB)) {
+    if (action_pressed(Action::Camera, context)) {
         view_ = (view_ + 1) % 3;
     }
-    if (IsKeyPressed(KEY_F5)) {
+    if (action_pressed(Action::ReloadCar, context)) {
         reload_car();
     }
-    if (IsKeyPressed(KEY_H)) {
-        overlay_visible_ = !overlay_visible_;
+    if (action_pressed(Action::Help, context)) {
+        help_visible_ = !help_visible_;
     }
-    if (IsKeyPressed(KEY_T)) {
+    if (action_pressed(Action::DebugPanel, context)) {
+        debug_visible_ = !debug_visible_;
+    }
+    if (action_pressed(Action::Graphs, context)) {
         graphs_.press(blind_mode_, default_graph_pages());
     }
-    if (IsKeyPressed(KEY_K)) {
+    if (action_pressed(Action::ToggleArena, context)) {
         zone_mode_ = !zone_mode_;
         view_ = 0;
         describe_world();
         reset();
     }
-    if (zone_mode_ && IsKeyPressed(KEY_M)) {
+    if (action_pressed(Action::BlindMode, context)) {
         // Al entrar empieza la serie desde la primera prueba; al salir, la pista vuelve a
         // la superficie elegida con G.
         blind_mode_ = !blind_mode_;
@@ -434,26 +565,27 @@ void DriveDemo::handle_keys(FramePacer& pacer) {
         describe_world();
         reset();
     }
-    if (zone_mode_ && IsKeyPressed(KEY_G)) {
-        if (blind_mode_) {
-            blind_trial_ = std::min(blind_trial_ + 1, sim::kBlindTrials - 1);
-        } else {
-            blind_surface_ = static_cast<sim::Surface>((static_cast<int>(blind_surface_) + 1) %
-                                                       sim::kSurfaceCount);
-        }
+    if (action_pressed(Action::NextTrial, context)) {
+        blind_trial_ = std::min(blind_trial_ + 1, sim::kBlindTrials - 1);
         describe_world();
         reset();
     }
-    if (IsKeyPressed(KEY_J)) {
+    if (action_pressed(Action::NextSurface, context)) {
+        blind_surface_ =
+            static_cast<sim::Surface>((static_cast<int>(blind_surface_) + 1) % sim::kSurfaceCount);
+        describe_world();
+        reset();
+    }
+    if (action_pressed(Action::WorldFloat, context)) {
         world_float_ = !world_float_;
     }
-    if (!zone_mode_ && IsKeyPressed(KEY_B)) {
+    if (action_pressed(Action::Forest, context)) {
         forest_mode_ = next_forest_mode(forest_mode_);
     }
-    if (IsKeyPressed(KEY_N)) {
+    if (action_pressed(Action::Snap, context)) {
         snap_ = !snap_;
     }
-    if (IsKeyPressed(KEY_L)) {
+    if (action_pressed(Action::FrameLog, context)) {
         if (frame_log_.active()) {
             frame_log_.stop();
         } else {
@@ -461,14 +593,15 @@ void DriveDemo::handle_keys(FramePacer& pacer) {
         }
     }
     // La zona está hecha para el origen: O solo mueve el recinto.
-    if (!zone_mode_ && IsKeyPressed(KEY_O)) {
+    if (action_pressed(Action::FarOrigin, context)) {
         far_from_origin_ = !far_from_origin_;
         describe_world();
         reset();
     }
-    if (IsKeyPressed(KEY_BACKSPACE)) {
+    if (action_pressed(Action::ResetWorld, context)) {
         reset();
     }
+    handle_seat_keys();
 }
 
 void DriveDemo::prepare_steps(int count) {
@@ -533,12 +666,9 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
         eye = {p.x, world_->zone()->ground_height(p.x, p.z) + kZoneBenchEyeHeight, p.z};
         forward = {std::sin(p.psi), -0.05, -std::cos(p.psi)};
     } else if (view_ == 0) {
-        // Ojo del conductor del archivo del coche: a la izquierda, a su altura sobre el suelo y
-        // detrás del eje delantero (en z = -batalla/2). Dentro de la caja: sus caras quedan de
-        // espaldas y no se dibujan.
-        const Vec3d eye_offset{-car_.eye_left, car_.eye_height,
-                               -0.5 * car_.wheelbase + car_.eye_behind_front_axle};
-        const Pose head = attach(drawn_car_, eye_offset);
+        // Ojo del conductor: el del archivo del coche más el asiento del jugador, en ejes del
+        // coche (platform/seat). Dentro de la caja: sus caras quedan de espaldas y no se dibujan.
+        const Pose head = attach(drawn_car_, driver_eye(car_, settings_.seat));
         eye = head.position;
         forward = rotate(head.rotation, {0.0, 0.0, -1.0});
         up = rotate(head.rotation, {0.0, 1.0, 0.0});
@@ -611,139 +741,26 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
                        Vector2{0.0f, 0.0f}, 0.0f, WHITE);
     }
 
-    // Velocidad del coche y selector tras el último paso.
-    const sim::BodyVelocity car_velocity = world_->car_velocity();
-    const double speed = std::sqrt(
-        static_cast<double>(car_velocity.vx * car_velocity.vx + car_velocity.vz * car_velocity.vz));
-    const sim::Gear gear = world_->car_controller().gear();
-    const char* gear_name = gear == sim::Gear::Reverse   ? "R"
-                            : gear == sim::Gear::Neutral ? "N"
-                                                         : "adelante";
-
-    // H oculta el texto para mirar la escena; en la zona quedan las vueltas (y la prueba a
-    // ciegas).
-    if (!overlay_visible_) {
-        if (zone_mode_) {
-            draw_zone_overlay(16);
-        }
-    } else {
-        const char* target =
-            pacer.target() == FrameTarget::MonitorRate ? "frecuencia del monitor" : "30 fps";
-        const char* method = !pacer.uses_timer()             ? ""
-                             : pacer.high_resolution_timer() ? " + temporizador de alta resolución"
-                                                             : " + temporizador de 1 ms";
-        const Color text = Color{220, 223, 228, 255};
-        DrawText(TextFormat("último fotograma: %.2f ms   bosque (B): %s%s",
-                            static_cast<double>(frame_ns) / 1e6, forest_mode_name(forest_mode_),
-                            forest_mode_ == ForestMode::Off
-                                ? ""
-                                : TextFormat(", %d árboles de %d triángulos", kForestTrees,
-                                             kTreeTriangles)),
-                 16, 16, 20, text);
-        DrawText(
-            TextFormat("pasos en el último fotograma: %d   alpha: %.2f", steps.count, steps.alpha),
-            16, 42, 20, text);
-        DrawText(TextFormat("ritmo: %s   sincronización vertical: %s", target,
-                            pacer.vsync() ? "sí" : "no"),
-                 16, 68, 20, text);
-        int actual_interval = 0;
-        const bool interval_known = SDL_GL_GetSwapInterval(&actual_interval);
-        DrawText(TextFormat("monitor: %.2f Hz   intervalo pedido: %d%s   real (SDL): %s",
-                            pacer.refresh_rate(), pacer.swap_interval(), method,
-                            interval_known ? TextFormat("%d", actual_interval) : "desconocido"),
-                 16, 94, 20, text);
-        DrawText(TextFormat("interpolación: %s   pantalla: %s   registro: %s   %s",
-                            interpolate_ ? "sí" : "no",
-                            IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes"
-                                                                         : "ventana",
-                            frame_log_.active() ? frame_log_.name() : "no", paused_ ? "PAUSA" : ""),
-                 16, 120, 20, text);
-        DrawText(TextFormat("render: %d×%d%s", render_width(), render_height(),
-                            target_.id != 0 ? " en RenderTexture, escalado a la ventana" : ""),
-                 16, 146, 20, text);
-        const char* view_name = zone_bench_   ? "medida del suelo"
-                                : view_ == 0  ? "ojo del conductor"
-                                : view_ == 1  ? "persecución"
-                                : !zone_mode_ ? "fija"
-                                              : "toda la zona";
-        DrawText(TextFormat("cámara: %s   mundo: %s   render: %s", view_name,
-                            zone_mode_         ? "zona de pruebas"
-                            : far_from_origin_ ? "recinto a 20 km del origen"
-                                               : "recinto en el origen",
-                            world_float_ ? "FLOAT DEL MUNDO (depuración)" : "relativo a la cámara"),
-                 16, 172, 20, text);
-        DrawText(TextFormat("ojo: %.3f, %.3f, %.3f m   velocidad: %.1f km/h   selector: %s", eye.x,
-                            eye.y, eye.z, speed * 3.6, gear_name),
-                 16, 198, 20, text);
-        const Gamepads& pads = driver.gamepads();
-        if (pads.active_name() != nullptr) {
-            DrawText(TextFormat("mando: %s (%s)   gatillos: RT %s, LT %s   conectados: %d",
-                                pads.active_name(), pads.active_type(),
-                                pads.active_throttle_digital() ? "digital" : "analógico",
-                                pads.active_brake_digital() ? "digital" : "analógico",
-                                pads.connected()),
-                     16, 224, 20, text);
-        } else {
-            DrawText(TextFormat("mando: ninguno activo   conectados: %d", pads.connected()), 16,
-                     224, 20, text);
-        }
-        const sim::ControlState& controls = world_->controls();
-        constexpr float kAxisScale = 1.0f / sim::kAxisMax;
-        draw_axis_bar(16, 256, input.steer * kAxisScale, controls.steer.applied * kAxisScale);
-        draw_axis_bar(16 + kAxisBarWidth + 16, 256, input.throttle * kAxisScale,
-                      controls.throttle.applied * kAxisScale);
-        draw_axis_bar(16 + 2 * (kAxisBarWidth + 16), 256, input.brake * kAxisScale,
-                      controls.brake.applied * kAxisScale);
-        const auto mode = [&input](std::uint16_t bit) {
-            return (input.buttons & bit) != 0 ? "digital" : "analógico";
-        };
-        // Barras: dirección, acelerador y freno; blanco el objetivo y naranja el aplicado.
-        DrawText(TextFormat("dirección %s, acelerador %s, freno %s", mode(sim::kButtonSteerDigital),
-                            mode(sim::kButtonThrottleDigital), mode(sim::kButtonBrakeDigital)),
-                 16 + 3 * (kAxisBarWidth + 16), 252, 20, text);
-        DrawText(
-            TextFormat("freno de mano: %3.0f %%   pulsaciones: subir %d, bajar %d, recolocar %d",
-                       100.0f * controls.handbrake * kAxisScale, shift_up_presses_,
-                       shift_down_presses_, reset_presses_),
-            16, 282, 20, text);
-        DrawText(TextFormat("impacto: %.2f m/s   último que vibró: %.2f m/s (umbral %.1f)",
-                            frame_impact, last_rumble_impact_, kImpactThreshold),
-                 16, 308, 20, text);
-        DrawText(TextFormat("grabación: %s   pasos: %llu%s", recording_.name().c_str(),
-                            static_cast<unsigned long long>(recording_.steps()),
-                            recording_.error().empty()
-                                ? ""
-                                : TextFormat("   ERROR: %s", recording_.error().c_str())),
-                 16, 334, 20, text);
-        DrawText(car_message_.c_str(), 16, 360, 20,
-                 car_message_error_ ? Color{255, 110, 90, 255} : text);
-        if (zone_mode_) {
-            draw_zone_overlay(386);
-        }
-        const Color help = Color{150, 156, 168, 255};
-        DrawText("W/S o gatillos: acelerar/frenar   A/D o stick: girar   Espacio o abajo: freno de "
-                 "mano   Q/E o hombros: R – N – adelante   R o arriba: recolocar",
-                 16, GetScreenHeight() - 140, 20, help);
-        DrawText("F5: recargar el coche   Retroceso: reiniciar el mundo   K: zona/recinto   "
-                 "G: superficie de la pista ciega (a ciegas: siguiente prueba)   M: modo a ciegas",
-                 16, GetScreenHeight() - 114, 20, help);
-        DrawText(
-            "Tab: cámara   J: render en float del mundo   F: monitor/30 fps   I: interpolación", 16,
-            GetScreenHeight() - 88, 20, help);
-        DrawText("V: sincronización vertical   N: ajuste al refresco   L: registro   "
-                 "B: bosque y O: origen/20 km (en el recinto)",
-                 16, GetScreenHeight() - 62, 20, help);
-        DrawText(TextFormat("F1: rendimiento   F11 o Alt+Intro: pantalla completa   P: pausa   "
-                            "C: captura   H: texto%s   Esc: salir",
-                            blind_mode_ ? "" : "   T: gráficas"),
-                 16, GetScreenHeight() - 36, 20, help);
+    // Texto en pantalla: cada capa en su sitio (platform/screen_layout).
+    overlay_.begin(GetScreenWidth(), GetScreenHeight());
+    draw_indicator();
+    const UiRect& hint = overlay_.rect(Layer::HelpHint);
+    overlay_.text(Layer::HelpHint, hint.x, hint.y, layer_samples(Layer::HelpHint)[0], kDim);
+    if (help_visible_) {
+        draw_help();
     }
-
+    if (debug_visible_) {
+        draw_debug(steps, pacer, driver, input, frame_impact, eye);
+    }
     if (graphs_.visible(blind_mode_) >= 0) {
-        draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_),
-                              GetScreenWidth() - (perf.visible() ? PerfCounter::kPanelWidth : 0));
+        draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_), overlay_);
     }
-    perf.draw(pacer, clock, snap_, render_width(), render_height());
+    perf.draw(pacer, clock, snap_, render_width(), render_height(), overlay_);
+    if (!recording_.error().empty()) {
+        overlay_.set_message(Overlay::Message::Recording, "grabación: ERROR: " + recording_.error(),
+                             kError);
+    }
+    overlay_.draw_messages();
     if (capture_requested_) {
         save_screenshot();
         capture_requested_ = false;
@@ -753,48 +770,171 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
     perf.end_present();
 }
 
-void DriveDemo::draw_zone_overlay(int y) const {
-    const Color text = Color{220, 223, 228, 255};
-    const Color strong = Color{250, 200, 90, 255};
-    const sim::TestZone& zone = *world_->zone();
-    struct LapText {
-        char text[24];
-    };
-    // Tiempo en pasos como segundos, o "--" si no hay.
-    const auto lap_text = [](std::int64_t steps) {
-        LapText out{};
-        if (steps < 0) {
-            std::snprintf(out.text, sizeof(out.text), "--");
-        } else {
-            std::snprintf(out.text, sizeof(out.text), "%.2f s",
-                          static_cast<double>(steps) / kStepsPerSecond);
-        }
-        return out;
-    };
-    const sim::LapState& lap = *world_->lap();
-    // A ciegas no se dice la superficie ni la configuración: solo la prueba en curso.
-    if (blind_mode_) {
-        DrawText(TextFormat("MODO A CIEGAS   Prueba %d/%d", blind_trial_ + 1, sim::kBlindTrials),
-                 16, y, 24, strong);
-    } else {
-        const Pose& car = current_car_;
-        const int area = zone.area_at(car.position.x, car.position.z);
-        const char* where = area < 0 ? "fondo" : zone.areas()[static_cast<std::size_t>(area)].name;
-        DrawText(TextFormat("zona: %s (%s)   pista ciega (G): %s", where,
-                            sim::surface_name(zone.surface_at(car.position.x, car.position.z)),
-                            sim::surface_name(zone.blind_surface())),
-                 16, y, 20, text);
+void DriveDemo::draw_indicator() {
+    // Velocidad horizontal y selector tras el último paso; en la zona, la vuelta en curso y la
+    // mejor (contadas en pasos por la simulación); a ciegas, la prueba.
+    const sim::BodyVelocity v = world_->car_velocity();
+    const double speed = std::sqrt(static_cast<double>(v.vx * v.vx + v.vz * v.vz));
+    const sim::Gear gear = world_->car_controller().gear();
+    const char* gear_name = gear == sim::Gear::Reverse   ? "R"
+                            : gear == sim::Gear::Neutral ? "N"
+                                                         : "adelante";
+    char text[160];
+    int used = std::snprintf(text, sizeof(text), "%.0f km/h   %s", speed * 3.6, gear_name);
+    if (zone_mode_) {
+        const sim::LapState& lap = *world_->lap();
+        used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
+                              "   vuelta %s   mejor %s", lap_text(lap.current()).text,
+                              lap_text(lap.best_lap).text);
     }
-    // Vueltas de la pista ciega, contadas en pasos de 1/240 s por la simulación.
-    DrawText(TextFormat("vuelta: %s   última: %s   mejor: %s   vueltas: %d",
-                        lap_text(lap.current()).text, lap_text(lap.last_lap).text,
-                        lap_text(lap.best_lap).text, lap.laps),
-             16, y + 28, 24, strong);
-    DrawText(TextFormat("dibujo del suelo (CPU): %.2f ms   media %.2f ms   máximo %.2f ms "
-                        "(últimos %d fotogramas)",
-                        zone_draw_.last_cpu_ms(), zone_draw_.mean_cpu_ms(), zone_draw_.max_cpu_ms(),
-                        ZoneDraw::kStatsFrames),
-             16, y + 58, 20, text);
+    if (blind_mode_) {
+        std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
+                      "   A CIEGAS · Prueba %d/%d", blind_trial_ + 1, sim::kBlindTrials);
+    }
+    const UiRect& r = overlay_.rect(Layer::Indicator);
+    overlay_.text(Layer::Indicator, r.x, r.y, text, kStrong, true);
+}
+
+void DriveDemo::draw_help() {
+    // Encabezados de bloque en el color de los títulos; las teclas que no valen en el contexto
+    // actual, en gris.
+    const ScreenLayout& layout = overlay_.layout();
+    const HelpGrid& grid = layout.help;
+    const std::span<const KeyBinding> table = key_table();
+    const std::uint8_t context = key_context();
+    overlay_.panel(Layer::Help, kPanelBackground);
+    const int x0 = overlay_.content_x(Layer::Help);
+    const int y0 = overlay_.content_y(Layer::Help);
+    for (const HelpCell& cell : grid.cells) {
+        const int x = x0 + cell.column * (grid.column_width + grid.column_gap);
+        const int y = y0 + cell.row * layout.m.line;
+        if (cell.binding < 0) {
+            overlay_.text(Layer::Help, x, y, key_block_name(cell.block), kTitle);
+            continue;
+        }
+        const KeyBinding& b = table[static_cast<std::size_t>(cell.binding)];
+        const Color color = (b.contexts & context) != 0 ? kText : kUnavailable;
+        overlay_.text(Layer::Help, x, y, binding_label_short(b), color);
+        overlay_.text(Layer::Help, x + grid.text_x, y, b.text, color);
+    }
+}
+
+void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
+                           const DriverInput& driver, const sim::SimInput& input,
+                           float frame_impact, const Vec3d& eye) {
+    // Las mismas líneas que las muestras de layer_samples(Layer::Debug), en el mismo orden.
+    const UiMetrics& m = overlay_.metrics();
+    overlay_.panel(Layer::Debug, kPanelBackground);
+    const int x = overlay_.content_x(Layer::Debug);
+    int y = overlay_.content_y(Layer::Debug);
+    const auto line = [&](const char* text, Color color = kText) {
+        overlay_.text(Layer::Debug, x, y, text, color);
+        y += m.line;
+    };
+    const auto line_fit = [&](const char* text) {
+        overlay_.text_fit(Layer::Debug, x, y, text, kText);
+        y += m.line;
+    };
+
+    line("DEPURACIÓN (F3)", kTitle);
+    const Gamepads& pads = driver.gamepads();
+    if (pads.active_name() != nullptr) {
+        line_fit(TextFormat("mando: %s (%s)", pads.active_name(), pads.active_type()));
+        line(TextFormat("gatillos: RT %s, LT %s   conectados: %d",
+                        pads.active_throttle_digital() ? "digital" : "analógico",
+                        pads.active_brake_digital() ? "digital" : "analógico", pads.connected()));
+    } else {
+        line("mando: ninguno activo");
+        line(TextFormat("gatillos: -   conectados: %d", pads.connected()));
+    }
+    // Barras: dirección, acelerador y freno; blanco el objetivo y naranja el aplicado.
+    const sim::ControlState& controls = world_->controls();
+    constexpr float kAxisScale = 1.0f / sim::kAxisMax;
+    const int bar_width = axis_bar_width(m);
+    const int bar_height = m.font * 4 / 5;
+    const int bar_y = y + (m.line - bar_height) / 2;
+    draw_axis_bar(x, bar_y, bar_width, bar_height, input.steer * kAxisScale,
+                  controls.steer.applied * kAxisScale);
+    draw_axis_bar(x + bar_width + m.font, bar_y, bar_width, bar_height, input.throttle * kAxisScale,
+                  controls.throttle.applied * kAxisScale);
+    draw_axis_bar(x + 2 * (bar_width + m.font), bar_y, bar_width, bar_height,
+                  input.brake * kAxisScale, controls.brake.applied * kAxisScale);
+    y += m.line;
+    const auto mode = [&input](std::uint16_t bit) {
+        return (input.buttons & bit) != 0 ? "digital" : "analógico";
+    };
+    line(TextFormat("barras: dirección %s, acelerador %s, freno %s", mode(sim::kButtonSteerDigital),
+                    mode(sim::kButtonThrottleDigital), mode(sim::kButtonBrakeDigital)));
+    line(TextFormat("freno de mano: %3.0f %%   subir %d, bajar %d, recolocar %d",
+                    100.0f * controls.handbrake * kAxisScale, shift_up_presses_,
+                    shift_down_presses_, reset_presses_));
+    line(TextFormat("impacto: %.2f m/s   último que vibró: %.2f m/s (umbral %.1f)", frame_impact,
+                    last_rumble_impact_, kImpactThreshold));
+    line_fit(TextFormat("grabación: %s   pasos: %llu", recording_.name().c_str(),
+                        static_cast<unsigned long long>(recording_.steps())));
+    line_fit(
+        TextFormat("coche: %s (%d kg)", file_name(car_path_).c_str(), static_cast<int>(car_.mass)));
+
+    // Zona: a ciegas no se dice la superficie ni la configuración.
+    if (!zone_mode_) {
+        line("zona: recinto de la fase 1");
+        line("vueltas: -");
+        line("suelo (CPU): -");
+    } else {
+        const sim::TestZone& zone = *world_->zone();
+        if (blind_mode_) {
+            line("zona: a ciegas");
+        } else {
+            const Pose& car = current_car_;
+            const int area = zone.area_at(car.position.x, car.position.z);
+            const char* where =
+                area < 0 ? "fondo" : zone.areas()[static_cast<std::size_t>(area)].name;
+            line(TextFormat("zona: %s (%s)   pista ciega: %s", where,
+                            sim::surface_name(zone.surface_at(car.position.x, car.position.z)),
+                            sim::surface_name(zone.blind_surface())));
+        }
+        const sim::LapState& lap = *world_->lap();
+        line(TextFormat("vueltas: %d   última: %s", lap.laps, lap_text(lap.last_lap).text));
+        line(TextFormat("suelo (CPU): %.2f ms   media %.2f ms   máx. %.2f ms",
+                        zone_draw_.last_cpu_ms(), zone_draw_.mean_cpu_ms(),
+                        zone_draw_.max_cpu_ms()));
+    }
+
+    const char* view_name = zone_bench_   ? "medida del suelo"
+                            : view_ == 0  ? "ojo del conductor"
+                            : view_ == 1  ? "persecución"
+                            : !zone_mode_ ? "fija"
+                                          : "toda la zona";
+    line(TextFormat("cámara: %s   mundo: %s", view_name,
+                    zone_mode_         ? "zona de pruebas"
+                    : far_from_origin_ ? "recinto a 20 km del origen"
+                                       : "recinto en el origen"));
+    line(world_float_ ? "render: FLOAT DEL MUNDO (depuración)" : "render: relativo a la cámara");
+    line(forest_mode_ == ForestMode::Off
+             ? TextFormat("bosque: %s", forest_mode_name(forest_mode_))
+             : TextFormat("bosque: %s, %d árboles de %d triáng.", forest_mode_name(forest_mode_),
+                          kForestTrees, kTreeTriangles));
+    line(TextFormat("ojo: %.3f, %.3f, %.3f m", eye.x, eye.y, eye.z));
+    line(TextFormat("asiento: alto %d cm, adelante %d cm, derecha %d cm", settings_.seat.up,
+                    settings_.seat.forward, settings_.seat.right));
+
+    const char* target =
+        pacer.target() == FrameTarget::MonitorRate ? "frecuencia del monitor" : "30 fps";
+    line(
+        TextFormat("ritmo: %s   sincronización vertical: %s", target, pacer.vsync() ? "sí" : "no"));
+    int actual_interval = 0;
+    const bool interval_known = SDL_GL_GetSwapInterval(&actual_interval);
+    line(TextFormat("monitor: %.2f Hz   intervalo pedido %d, real (SDL) %s", pacer.refresh_rate(),
+                    pacer.swap_interval(),
+                    interval_known ? TextFormat("%d", actual_interval) : "desconocido"));
+    line(!pacer.uses_timer()             ? "temporizador: no"
+         : pacer.high_resolution_timer() ? "temporizador: de alta resolución"
+                                         : "temporizador: de 1 ms");
+    line(TextFormat("interpolación: %s   pantalla: %s", interpolate_ ? "sí" : "no",
+                    IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes"
+                                                                 : "ventana"));
+    line(TextFormat("registro: %s", frame_log_.active() ? frame_log_.name() : "no"));
+    line(TextFormat("pasos en el fotograma: %d   alpha: %.2f", steps.count, steps.alpha));
 }
 
 void DriveDemo::start_zone_bench() {

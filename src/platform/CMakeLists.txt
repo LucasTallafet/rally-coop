@@ -2,7 +2,8 @@
 # la cámara (render relativo), retención de botones en fotogramas sin pasos y forma de la
 # entrada (zona muerta, curva, mezcla de teclado y mando, mando activo, vibración), y la parte
 # del contador de rendimiento y del bosque de medida que se puede probar (estadísticas, reparto
-# de árboles y malla), y la historia y los canales de las gráficas de la telemetría. No enlaza raylib ni SDL, para que los tests lo usen sin ventana
+# de árboles y malla), la historia y los canales de las gráficas de la telemetría, la tabla de teclas, el diseño
+# de la pantalla (con la medida del texto de la fuente de raylib), el asiento y ajustes.txt. No enlaza raylib ni SDL, para que los tests lo usen sin ventana
 # (cmake/CheckBuildRules.cmake); de rally_sim solo usa el PCG32 para el bosque.
 add_library(rally_loop STATIC
     button_latch.cpp
@@ -12,8 +13,13 @@ add_library(rally_loop STATIC
     frame_history.cpp
     input_shaping.cpp
     interpolation.cpp
+    keys.cpp
     perf_stats.cpp
+    player_settings.cpp
+    screen_layout.cpp
+    seat.cpp
     telemetry_history.cpp
+    ui_text.cpp
 )
 target_include_directories(rally_loop PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_loop PRIVATE rally_sim rally_warnings)
@@ -33,6 +39,8 @@ add_library(rally_platform STATIC
     gamepad.cpp
     gl_probe.cpp
     input.cpp
+    keys_raylib.cpp
+    overlay.cpp
     perf_counter.cpp
     process_memory.cpp
     recording_session.cpp

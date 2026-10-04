@@ -15,6 +15,7 @@ add_custom_target(rally_build_info
     VERBATIM)
 
 add_library(rally_io STATIC
+    atomic_file.cpp
     crash_save.cpp
     recording.cpp
     replay.cpp

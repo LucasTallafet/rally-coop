@@ -59,6 +59,13 @@ private:
     std::int64_t steps_ = 0;
 };
 
+// Junta las columnas de `in` en las out.size() de `out` (out.size() ≤ in.size()), para dibujar
+// las gráficas en un panel más estrecho que la historia: la columna i cubre
+// in[i·n/m, (i+1)·n/m), con el mínimo de los mínimos y el máximo de los máximos de las válidas.
+// La envolvente sigue siendo exacta: un pico de un paso no se pierde.
+void merge_columns(std::span<const TelemetryHistory::Range> in,
+                   std::span<TelemetryHistory::Range> out);
+
 // Canales, paneles y páginas de las gráficas. Un canal nuevo (deslizamiento por rueda, RPM,
 // presión del turbo) es una fila más en la tabla de su panel (telemetry_history.cpp); un panel
 // nuevo, otra en la de su página. El dibujo (telemetry_graphs) y la historia no cambian.
