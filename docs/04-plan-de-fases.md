@@ -16,12 +16,12 @@ La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo
 | --- | --- | --- |
 | 0 · Pruebas del concepto | Omitida (ver `05-decisiones.md`) | 0 |
 | 1 · Base del motor | Bucle, render básico, entrada, Jolt configurado, tests | ~6 (real) |
-| 2 · Coche | Coche inspirado en un Grupo B 4×4, neumático Pacejka con cinco superficies, motor con turbo, transmisión, ayudas, telemetría, cuatro configuraciones de prueba | 61–109 |
+| 2 · Coche | Coche inspirado en un Grupo B 4×4, neumático Pacejka con cinco superficies, motor con turbo, transmisión, ayudas, telemetría, cuatro configuraciones de prueba | 64–109 |
 | 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 51–85 |
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 50–90 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 20–40 |
 | 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 50–90 |
-| **Total 1.0** | | **~236–420** |
+| **Total 1.0** | | **~239–420** |
 
 Revisado al cerrar la fase 1 (2026-10-02): el código de infraestructura se comprime mucho con Claude Code; las horas de ajuste jugando, pruebas con otra persona, Blender, sonido y datos reales no. Se revisa de nuevo al cerrar la fase 2.
 
@@ -54,7 +54,7 @@ CMake y presets; raylib con backend SDL; ventana y bucle con paso fijo de 240 Hz
 
 **Terminado cuando:** un cuerpo de Jolt se mueve a 240 Hz sin tirones a 30 y 60 fps, responde igual con mando y teclado, el mando vibra, el contador muestra ms por fotograma, draw calls y memoria, y los tests corren con un comando.
 
-## Fase 2 · Coche (~61–109 h)
+## Fase 2 · Coche (~64–109 h)
 
 Coche de la 1.0 inspirado en el Peugeot 205 T16 Evo 1 (ver `01` §7.1), con física realista y estándar: fuerzas explícitas del neumático con Pacejka simplificada, fricción combinada, relajación, sensibilidad a la carga y resistencia a la rodadura; cinco superficies (asfalto, grava, tierra, nieve y arena); subpasos de rueda y tratamiento de baja velocidad; motor con curva de par y turbo con retardo; cambio automático y secuencial; diferencial central con viscoacoplador y autoblocantes; freno de mano; ABS, control de tracción, dureza de suspensión y ayuda de dirección según la velocidad. Coche definido en datos, con cuatro configuraciones de prueba (205 T16, tipo Quattro S1, tipo Escort Mk2 y tipo Delta Integrale). Entrada con acelerador y freno separados. Telemetría y grabación de entradas. Interior provisional con medidas reales, movimiento de cabeza y sonido sintético provisional del motor y de la rodadura. Máquina de acciones con duraciones en datos y anillo de progreso.
 
@@ -66,15 +66,17 @@ Coche de la 1.0 inspirado en el Peugeot 205 T16 Evo 1 (ver `01` §7.1), con fís
 | 2.2 | Zona de pruebas: círculo de grava de 40 m, explanada de grava de 400 × 80 m (recogida a 100 km/h), eslalon, horquilla, recta con baches y ondulaciones, rampa del 15 %, cresta, parches de tierra, nieve y arena, pista ciega de 785 m con la superficie elegida al construir y recorrido cronometrado, muros perimetrales; superficie por material; `h(x, z)` | 4–6 |
 | 2.3 | Telemetría: CSV por paso, gráficas en pantalla, script de Python | 4–6 |
 | 2.4 | Vehículo base: `VehicleConstraint` y controlador propio, suspensión y barras, frenos, dirección, resistencia aerodinámica, subpasos de rueda, baja velocidad, coche desde archivo de datos y recarga en caliente | 7–11 |
+| 2.4b | Pantalla ordenada (indicador mínimo, ayuda de teclas, depuración) y asiento ajustable por jugador | 2–3 |
 | 2.5 | Neumático: Pacejka, fricción combinada, carga, relajación, rodadura, cinco superficies | 8–13 |
+| 2.5b | Dirección: ayuda (adelantada de la 2.8), teclado según la velocidad y dirección con ratón opcional | 3–4 |
 | 2.6 | Motor y transmisión: par, turbo, cambios, diferencial central y autoblocantes | 6–10 |
 | 2.7 | Conductor en el coche: interior provisional, cabeza, vibración por superficie y deslizamiento, sonido sintético, modo a ciegas (sin color, sonido ni vibración de superficie) | 5–8 |
-| 2.8 | Ayudas y ajustes por jugador: dirección, ABS, control de tracción, suspensión, sensibilidad | 4–6 |
+| 2.8 | Ayudas y ajustes por jugador: ABS, control de tracción, suspensión, sensibilidad | 3–4 |
 | 2.9 | Máquina de acciones con duraciones en datos y anillo de progreso | 3–4 |
 | 2.10 | Ajuste y pruebas de manejo: prueba de derrape medida, las cinco superficies, las cuatro configuraciones con el compañero | 15–28 |
 | 2.11 | Cierre: rendimiento, reproducibilidad, criterio y nueva estimación | 2–3 |
 
-Las tareas suman 61–99 h; el resto, hasta 109, es margen.
+Las tareas suman 64–104 h; el resto, hasta 109, es margen.
 
 **Antes de empezar:** probar los mandos de Xbox, PS5 y Switch Pro (gatillos digitales).
 

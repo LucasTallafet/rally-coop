@@ -36,26 +36,28 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | 2.2 Zona de pruebas | 2.1 | sim, platform, tools | Sí | 4–6 |
 | 2.3 Telemetría | 2.1, 2.2 | sim (lectura), io, platform, tools, Python | Sí (corta) | 4–6 |
 | 2.4 Vehículo base | 2.1, 2.2, 2.3 | sim, platform, data, tools | Sí | 7–11 |
+| 2.4b Pantalla y asiento | 2.4 | platform, docs | Sí (corta) | 2–3 |
 | 2.5 Neumático | 2.4 | sim, data, tools | Sí | 8–13 |
-| 2.6 Motor y transmisión | 2.5 | sim, data, platform | Sí | 6–10 |
+| 2.5b Dirección: ayuda, teclado y ratón | 2.5 | sim, platform | Sí | 3–4 |
+| 2.6 Motor y transmisión | 2.5b | sim, data, platform | Sí | 6–10 |
 | 2.7 Conductor en el coche | 2.6 | platform, data | Sí (larga) | 5–8 |
-| 2.8 Ayudas y ajustes | 2.6 | sim, platform, data | Sí | 4–6 |
+| 2.8 Ayudas y ajustes | 2.6 | sim, platform, data | Sí | 3–4 |
 | 2.9 Máquina de acciones | 2.1 | game, io, platform | Sí (corta) | 3–4 |
 | 2.10 Ajuste y pruebas de manejo | 2.1–2.8 | data, docs, tools | En cada iteración | 15–28 |
 | 2.11 Cierre | Todas | docs | Sí | 2–3 |
-| **Total** | | | | **61–99** (la fase: 61–109, con margen) |
+| **Total** | | | | **64–104** (la fase: 64–109, con margen) |
 
 ```
-2.0 ─► 2.1 ─► 2.2 ─► 2.3 ─► 2.4 ─► 2.5 ─► 2.6 ─┬─► 2.7 ─┬─► 2.10 ─► 2.11
-        │                                     └─► 2.8 ─┘             ▲
-        └─► 2.9 (en cualquier momento) ──────────────────────────────┘
+2.0 ─► 2.1 ─► 2.2 ─► 2.3 ─► 2.4 ─► 2.4b ─► 2.5 ─► 2.5b ─► 2.6 ─┬─► 2.7 ─┬─► 2.10 ─► 2.11
+        │                                                     └─► 2.8 ─┘             ▲
+        └─► 2.9 (en cualquier momento) ──────────────────────────────────────────────┘
 ```
 
 ## Qué puede ir en paralelo
 
 - **2.9** no depende del coche: puede hacerse en cualquier momento después de la 2.1, en otra sesión y otra copia de trabajo. Es lo único que va bien en paralelo con el camino principal.
 - **2.7 y 2.8**, después de la 2.6. La 2.7 no cambia la simulación y la 2.8 sí; tocan los dos `main.cpp` y la demo, así que habrá algún conflicto al fusionar. Se fusiona primero la que se valide antes, y la otra se pone al día con `master` antes de su parada.
-- **Nunca en paralelo:** dos tareas que cambien `kSimVersion` (2.1, 2.4, 2.5, 2.6, 2.8), porque las dos tocan la huella.
+- **Nunca en paralelo:** dos tareas que cambien `kSimVersion` (2.1, 2.4, 2.5, 2.5b, 2.6, 2.8), porque las dos tocan la huella.
 - Paralelo solo si tienes tiempo de validar las dos: lo que limita la fase no es el código, sino tus pruebas.
 
 ## Puntos de parada humanos
@@ -66,10 +68,12 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | 2.2 | La zona se entiende y las medidas convencen; modo a ciegas en el dibujo; vuelta cronometrada |
 | 2.3 | Gráficas en pantalla; CSV, `plot.py` y `drift_check.py` funcionan |
 | 2.4 | Suspensión, baches sin golpes falsos, parado en la rampa, recolocar y F5 (el manejo aún no se valora) |
+| 2.4b | La pantalla se lee de un vistazo; H explica todas las teclas; el panel de depuración tiene lo que hacía falta; el ojo ajustado se conserva al reabrir |
 | 2.5 | Primer derrape en grava y superficies distintas (orientativo) |
+| 2.5b | Con teclado y con ratón, la zona a 100 km/h sin volantazos hasta la horquilla; ayuda activada y desactivada en el círculo y la explanada (contravolante completo, sin sensación de que el coche corrige solo) |
 | 2.6 | Retardo del turbo, cambios, freno de mano en la horquilla, primera vuelta con cada configuración |
 | 2.7 | Vista desde el asiento, cabeza (mareo), sonido, vibración, modo a ciegas completo |
-| 2.8 | Cada ajuste se nota; ayuda de dirección natural; ABS frenando y girando |
+| 2.8 | Cada ajuste se nota; ABS frenando y girando |
 | 2.9 | Anillo de progreso con las teclas de depuración |
 | 2.10 | Sesiones del protocolo; apruebas cada iteración de cambios |
 | 2.11 | Tabla de cierre, decisiones y estimación nueva; das la fase por terminada |
