@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -525,4 +526,115 @@ TEST_CASE("tire: at speed, after 2 s sliding at 20 degrees grip comes back by re
     CHECK(worst_w <= bound * (1.0 + 1e-5));
     CHECK(worst_f <= d * (1.0 + 1e-5));
     CHECK(std::abs(at_six_sigma / final_fy - 1.0) < 0.05);
+}
+
+// --- Toma de contacto (2.5-respuesta-3 §1) ---------------------------------------------------
+
+TEST_CASE("tire: touchdown with constant slip starts at damper plus one substep spring") {
+    // step_tire solo: huella sin deformar y carga que pasa de 0 a F_z0 en el primer subpaso y se
+    // queda; velocidad y deslizamiento fijos (una inercia de rueda enorme mantiene κ). En el
+    // primer subpaso la huella se deforma s·φ (φ = (1 − e^(−a·h))/a, a = |v_x|/σ): la fuerza es la
+    // del amortiguador de la carcasa, c·g·s·φ/h, más la del muelle de esa deformación (la curva
+    // con κ_r = s_x·φ/σ_x y tan α_r = s_y·φ/σ_y; casi k·s·φ, con la rigidez en el origen
+    // k = B·C·D/(κ pico·σ_x) y B·C·D/(tan α pico·σ_y)), recortada a μF_z. A 10 m/s, por
+    // encima de la rampa (g = 0), solo queda el muelle. Después: |F| ≤ μF_z, sin cambios de signo
+    // y, tras rodar 6σ_y, la fuerza de la curva.
+    CarData car = reference_car();
+    car.wheel_inertia = 1.0e9f;
+    std::string table;
+    for (const Surface surface : {Surface::Asphalt, Surface::Gravel}) {
+        const TireSurface& t = car.tire(surface);
+        for (const float speed : {5.0f, 10.0f}) {
+            for (const float alpha_factor : {0.5f, 2.0f}) {
+                for (const float kappa_factor : {0.0f, 0.5f}) {
+                    const double alpha = alpha_factor * t.slip_angle_peak;
+                    const double kappa = kappa_factor * t.slip_ratio_peak;
+                    TireInput in =
+                        wheel_input(surface, speed, -speed * static_cast<float>(std::tan(alpha)));
+                    WheelDynamics state;
+                    state.omega = speed * (1.0f + static_cast<float>(kappa)) / in.radius;
+                    const double d = rally::sim::peak_mu(t, in.load, car.nominal_load) * in.load;
+                    // Lo que usa el código, por separado.
+                    const double stiffness = t.shape_b * t.shape_c * d;
+                    const double corner_mass = in.load / 9.81;
+                    const double k_x = stiffness / (t.slip_ratio_peak * t.relaxation_long);
+                    const double k_y = stiffness / (t.tan_alpha_peak * t.relaxation_lat);
+                    const double c_x =
+                        2.0 * car.carcass_damping_long * std::sqrt(k_x * corner_mass);
+                    const double c_y = 2.0 * car.carcass_damping_lat * std::sqrt(k_y * corner_mass);
+                    const double v_ref = std::max(static_cast<double>(std::hypot(in.vx, in.vy)),
+                                                  static_cast<double>(state.omega) * in.radius);
+                    const double g = std::clamp(1.0 - v_ref / car.carcass_damping_fade, 0.0, 1.0);
+                    const double h = kSubstep;
+                    const auto phi = [&](double sigma) {
+                        const double a = std::abs(in.vx) / sigma;
+                        return (1.0 - std::exp(-a * h)) / a;
+                    };
+                    const double s_x = kappa * speed;
+                    const double s_y = -in.vy;
+                    const double phi_x = phi(t.relaxation_long);
+                    const double phi_y = phi(t.relaxation_lat);
+                    // Muelle: la curva con la deformación del primer subpaso (s·φ).
+                    const TireForce spring = rally::sim::tire_force(
+                        t, static_cast<float>(s_x * phi_x / t.relaxation_long),
+                        static_cast<float>(s_y * phi_y / t.relaxation_lat), in.load,
+                        car.nominal_load);
+                    const double expected =
+                        std::min(std::hypot(c_x * g * phi_x * s_x / h + spring.fx,
+                                            c_y * g * phi_y * s_y / h + spring.fy),
+                                 d);
+
+                    double first = 0.0;
+                    double worst = 0.0;
+                    int changes = 0;
+                    int sign_x = 0;
+                    int sign_y = 0;
+                    double travelled = 0.0;
+                    double at_six_sigma = 0.0;
+                    for (int s = 0; s < 4 * kSubstepsPerSecond; ++s) {
+                        const TireForce f = rally::sim::step_tire(car, in, kSubstep, true, state);
+                        const double size = std::hypot(f.fx, f.fy);
+                        if (s == 0) {
+                            first = size;
+                        }
+                        worst = std::max(worst, size / d);
+                        for (const auto& [value, last] :
+                             {std::pair<float, int*>{f.fx, &sign_x}, {f.fy, &sign_y}}) {
+                            if (value == 0.0f) {
+                                continue;
+                            }
+                            const int sign = value > 0.0f ? 1 : -1;
+                            if (*last != 0 && sign != *last) {
+                                ++changes;
+                            }
+                            *last = sign;
+                        }
+                        travelled += speed * kSubstep;
+                        if (at_six_sigma == 0.0 && travelled >= 6.0 * t.relaxation_lat) {
+                            const TireForce curve = rally::sim::tire_force(
+                                t, static_cast<float>(kappa), static_cast<float>(std::tan(alpha)),
+                                in.load, car.nominal_load);
+                            at_six_sigma = size / std::hypot(curve.fx, curve.fy) - 1.0;
+                        }
+                    }
+                    char row[220];
+                    std::snprintf(row, sizeof(row),
+                                  "%s a %.0f m/s, %.1f × α pico, %.1f × κ pico: g %.2f; primer "
+                                  "subpaso %.0f N (%.1f %% de μF_z; esperado %.0f; solo el "
+                                  "amortiguador %.0f); tras 6σ_y %+.2f %%\n",
+                                  rally::sim::surface_name(surface), static_cast<double>(speed),
+                                  static_cast<double>(alpha_factor),
+                                  static_cast<double>(kappa_factor), g, first, 100.0 * first / d,
+                                  expected, std::min(std::hypot(c_x * g * s_x, c_y * g * s_y), d),
+                                  100.0 * at_six_sigma);
+                    table += row;
+                    CHECK(first == doctest::Approx(expected).epsilon(0.01));
+                    CHECK(worst <= 1.0 + 1e-5);
+                    CHECK(changes == 0);
+                    CHECK(std::abs(at_six_sigma) <= 0.02);
+                }
+            }
+        }
+    }
+    MESSAGE("toma de contacto con F_z0:\n", table);
 }
