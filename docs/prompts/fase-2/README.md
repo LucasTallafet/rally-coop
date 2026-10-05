@@ -40,24 +40,25 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | 2.5 Neumático | 2.4 | sim, data, tools | Sí | 8–13 |
 | 2.5b Dirección: ayuda, teclado y ratón | 2.5 | sim, platform | Sí | 3–4 |
 | 2.6 Motor y transmisión | 2.5b | sim, data, platform | Sí | 6–10 |
-| 2.7 Conductor en el coche | 2.6 | platform, data | Sí (larga) | 5–8 |
-| 2.8 Ayudas y ajustes | 2.6 | sim, platform, data | Sí | 3–4 |
+| 2.6b Carretera de prueba | 2.6 | sim (zona), platform, tools | Sí (corta) | 3–5 |
+| 2.7 Conductor en el coche | 2.6b | platform, data | Sí (larga) | 5–8 |
+| 2.8 Ayudas y ajustes | 2.6b | sim, platform, data | Sí | 3–4 |
 | 2.9 Máquina de acciones | 2.1 | game, io, platform | Sí (corta) | 3–4 |
 | 2.10 Ajuste y pruebas de manejo | 2.1–2.8 | data, docs, tools | En cada iteración | 15–28 |
 | 2.11 Cierre | Todas | docs | Sí | 2–3 |
-| **Total** | | | | **64–104** (la fase: 64–109, con margen) |
+| **Total** | | | | **67–109** (la fase: 67–114, con margen) |
 
 ```
-2.0 ─► 2.1 ─► 2.2 ─► 2.3 ─► 2.4 ─► 2.4b ─► 2.5 ─► 2.5b ─► 2.6 ─┬─► 2.7 ─┬─► 2.10 ─► 2.11
-        │                                                     └─► 2.8 ─┘             ▲
-        └─► 2.9 (en cualquier momento) ──────────────────────────────────────────────┘
+2.0 ─► 2.1 ─► 2.2 ─► 2.3 ─► 2.4 ─► 2.4b ─► 2.5 ─► 2.5b ─► 2.6 ─► 2.6b ─┬─► 2.7 ─┬─► 2.10 ─► 2.11
+        │                                                             └─► 2.8 ─┘             ▲
+        └─► 2.9 (en cualquier momento) ──────────────────────────────────────────────────────┘
 ```
 
 ## Qué puede ir en paralelo
 
 - **2.9** no depende del coche: puede hacerse en cualquier momento después de la 2.1, en otra sesión y otra copia de trabajo. Es lo único que va bien en paralelo con el camino principal.
 - **2.7 y 2.8**, después de la 2.6. La 2.7 no cambia la simulación y la 2.8 sí; tocan los dos `main.cpp` y la demo, así que habrá algún conflicto al fusionar. Se fusiona primero la que se valide antes, y la otra se pone al día con `master` antes de su parada.
-- **Nunca en paralelo:** dos tareas que cambien `kSimVersion` (2.1, 2.4, 2.5, 2.5b, 2.6, 2.8), porque las dos tocan la huella.
+- **Nunca en paralelo:** dos tareas que cambien `kSimVersion` (2.1, 2.4, 2.5, 2.5b, 2.6, 2.8), porque las dos tocan la huella. La 2.6b cambia el hash de la zona y regenera las grabaciones de test: no va en paralelo con otra tarea que las regenere.
 - Paralelo solo si tienes tiempo de validar las dos: lo que limita la fase no es el código, sino tus pruebas.
 
 ## Puntos de parada humanos
@@ -72,6 +73,7 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | 2.5 | Primer derrape en grava y superficies distintas (orientativo) |
 | 2.5b | Con teclado y con ratón, la zona a 100 km/h sin volantazos hasta la horquilla; ayuda activada y desactivada en el círculo y la explanada (contravolante completo, sin sensación de que el coche corrige solo) |
 | 2.6 | Retardo del turbo, cambios, freno de mano en la horquilla, primera vuelta con cada configuración |
+| 2.6b | Recorrer la carretera en grava y en asfalto: se entiende como una carretera estrecha de rally, la curva tras la cresta no se ve, salirse cuesta; 3 pasadas con road_check.py |
 | 2.7 | Vista desde el asiento, cabeza (mareo), sonido, vibración, modo a ciegas completo |
 | 2.8 | Cada ajuste se nota; ABS frenando y girando |
 | 2.9 | Anillo de progreso con las teclas de depuración |
@@ -99,6 +101,7 @@ La pregunta exacta de cada uno está en su prompt.
 | 2.4 | La rueda oscila a baja velocidad; el coche repta en la rampa; golpes falsos en bordes de triángulos |
 | 2.5 | Grava y tierra iguales; trompos con la tracción provisional |
 | 2.6 | El tren motriz oscila; el freno de mano no gira el coche; turbo frustrante |
+| 2.6b | La carretera no cabe en la zona; bordes de material en escalera o cuneta con golpes falsos por la rejilla de 0,75 m |
 | 2.7 | La cabeza marea; cortes de audio |
 | 2.8 | La ayuda de dirección contravolantea sola; ABS en grava |
 | 2.9 | Ampliar el formato de grabación rompe las grabaciones de test |

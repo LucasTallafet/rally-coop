@@ -118,3 +118,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-04 | Estimación 1.0 | ~236–420 h | ~239–420 h | Ídem |
 | 2026-10-05 | Física del coche (neumático) | Fricción combinada por deslizamiento normalizado (módulo y dirección) | Módulo por deslizamiento normalizado; dirección de la velocidad de deslizamiento al deslizar (mezcla entre ρ = 1,5 y 3) | Con la dirección normalizada, una rueda bloqueada a 30° en grava tenía un 23 % menos de fuerza lateral que con Coulomb (freno de mano, frenar girando) |
 | 2026-10-05 | Física del coche (carcasa) | Amortiguamiento sobre la velocidad de deslizamiento hasta 3 m/s | Sobre la velocidad de deformación de la huella, hasta 10 m/s de v_ref | Serpenteo de la guiñada a baja velocidad (4,5 Hz, ζ ≈ 0,15 a 10 km/h); con 10 m/s, ζ ≥ 0,54 de 5 a 20 km/h |
+| 2026-10-05 | Entrada | Stick sin límite de velocidad de giro (tope en 8 pasos) | Velocidad máxima de giro de las ruedas según la velocidad también con stick y ratón (2.5b) | Parada de la 2.5: 30 de 54 sucesos venían de la dirección (900°/s con stick, 248°/s con teclado) |
+| 2026-10-05 | Estimación fase 2 | 64–109 h | 67–114 h | Tarea 2.6b (carretera de prueba): el manejo se ajusta y se juzga también en una carretera estrecha, no solo en la zona abierta |
+| 2026-10-05 | Estimación 1.0 | ~239–420 h | ~242–425 h | Ídem |
+| 2026-10-05 | Criterio de la fase 2 | — | 3 pasadas seguidas de la carretera de prueba sin recolocar por jugador, con la configuración elegida | Ídem |

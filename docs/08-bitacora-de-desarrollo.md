@@ -191,9 +191,9 @@ La fase 1 costó ~6 h frente a 60. Claude Code comprime mucho el código de infr
 | Fase | Antes | Propuesta | Motivo |
 | --- | --- | --- | --- |
 | 1 · Base del motor | 60 | ~6 (real) | |
-| 2 · Coche | 130–160 | 64–109 | El ajuste del neumático jugando no se comprime. Ampliada el 2026-10-02: arena, turbo y configuraciones de prueba; y en la revisión del diseño: zona de pruebas, `rally_replay` y chasis completo. El 2026-10-04, tareas 2.4b (pantalla y asiento) y 2.5b (dirección) |
+| 2 · Coche | 130–160 | 67–114 | El ajuste del neumático jugando no se comprime. Ampliada el 2026-10-02: arena, turbo y configuraciones de prueba; y en la revisión del diseño: zona de pruebas, `rally_replay` y chasis completo. El 2026-10-04, tareas 2.4b (pantalla y asiento) y 2.5b (dirección) |
 | 3 · Corte vertical | 110–130 | 51–85 | Las pruebas con el compañero no se comprimen; capa de irregularidad del trazado (2026-10-04) |
 | 4 · Generador | 120–150 | 50–90 | Datos reales y validación de semillas jugando |
 | 5 · Entre casas | 60–80 | 20–40 | Casi todo es infraestructura |
 | 6 · Calidad visual y sonora | 80–120 | 50–90 | Blender y sonido son trabajo manual |
-| **Total 1.0** | **560–700** | **~239–420** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |
+| **Total 1.0** | **560–700** | **~242–425** | Se revisa de nuevo al cerrar la fase 2. Ampliada el 2026-10-02 con la fase 2 |
