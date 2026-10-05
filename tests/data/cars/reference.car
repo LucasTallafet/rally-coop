@@ -54,7 +54,7 @@ ackermann = 0.5           # fracción de Ackermann. Estimado
 [tire]
 carcass_damping_long = 0.6 # ζ del modo carrocería-huella, longitudinal. Valor de partida, se ajusta en 2.10
 carcass_damping_lat = 0.6 # ζ del modo carrocería-huella, lateral. Valor de partida, se ajusta en 2.10
-carcass_damping_fade = 3  # m/s: el amortiguamiento de la carcasa baja a 0 aquí y el recorte de la huella llega a 1/κ pico. Valor de partida, se ajusta en 2.10
+carcass_damping_fade = 10 # m/s de v_ref = max(|v|, |ω|·r): el amortiguamiento de la carcasa baja a 0 aquí y el recorte de la huella llega a la rueda bloqueada a 75°. 2.5: quita el serpenteo de baja velocidad; ver 05. Se ajusta en 2.10
 
 # Un juego por superficie. Claves:
 #   mu_peak: μ pico a la carga estática media por rueda (F_z0 = m·g/4).

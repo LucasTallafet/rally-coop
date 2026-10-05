@@ -421,18 +421,20 @@ TEST_CASE("car: released on the ramp it rolls back") {
     CHECK(rolled.z - held.z > 0.5);
 }
 
-TEST_CASE("car: on flat ground with no input for 60 s it moves less than 1 mm and does not turn") {
+TEST_CASE(
+    "car: on flat ground with no input for 180 s it moves less than 0.01 mm and does not turn") {
     const rally::sim::JoltRuntime runtime;
     SimWorld world;
     world.build(flat_world(Surface::Asphalt, true));
     world.seal();
     run(world, SimInput{}, 3 * kStepsPerSecond);
     const BodyPose start = world.car_pose();
-    // Asentamiento desde el equilibrio a 1, 10, 30 y 60 s (hallazgo de la 2.4: 0,023, 0,174,
-    // 0,293 y 0,365 mm con el neumático provisional).
+    // Asentamiento desde el equilibrio a 1, 10, 30, 60 y 180 s. Con la zona muerta del giro de
+    // Jolt sin tratar, el coche se trasladaba sobre la huella: 0,365 mm a 60 s en la 2.4 y
+    // 1,45 mm a 180 s con la Pacejka (car_controller.cpp; 2.5-respuesta-1 §3). Regresión.
     std::string settling;
     int elapsed = 0;
-    for (const int mark : {1, 10, 30, 60}) {
+    for (const int mark : {1, 10, 30, 60, 180}) {
         run(world, SimInput{}, (mark - elapsed) * kStepsPerSecond);
         elapsed = mark;
         const BodyPose now = world.car_pose();
@@ -446,7 +448,7 @@ TEST_CASE("car: on flat ground with no input for 60 s it moves less than 1 mm an
     MESSAGE("sin entradas: ", settling, "|v| final ",
             std::sqrt(static_cast<double>(v.vx * v.vx + v.vy * v.vy + v.vz * v.vz)) * 1e6,
             " µm/s; giro ", turned, "°");
-    CHECK(moved(start, end) < 0.001);
+    CHECK(moved(start, end) < 0.00001);
     CHECK(turned < 0.01);
 }
 
@@ -1491,15 +1493,21 @@ TEST_CASE("car: launching at full throttle from rest goes straight with no wheel
 }
 
 // Régimen de baja velocidad: sin serpenteo. El modo es la guiñada del coche sobre la rigidez
-// lateral de la huella (4,5 Hz en asfalto); ζ sale de la razón entre el segundo y el tercer
-// extremo de la guiñada tras soltar (medio ciclo libre). 30 km/h solo se mide.
-TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
+// lateral de la huella (4,5 Hz en asfalto, 2,4 Hz en grava). ζ por decremento logarítmico entre
+// los dos primeros extremos libres de la guiñada tras soltar la dirección (el segundo y el
+// tercero: el primero es el final del pulso), separados medio ciclo:
+//   δ = ln|r₁/r₂| y ζ = δ/√(π² + δ²).
+// Sin un segundo extremo libre, el modo no oscila (ζ ≥ 1). Exige ζ ≥ 0,5 hasta 20 km/h, dentro de
+// la rampa del amortiguamiento de la carcasa, y ζ ≥ 0,4 a 30 y 50 km/h, donde solo amortigua la
+// relajación (2.5-respuesta-2 §2). Los cambios de signo con |r| > 0,2°/s son solo un dato.
+TEST_CASE(
+    "car: a steer pulse from 5 to 50 km/h dies out with damping ratio 0.5 or 0.4 above the ramp") {
     const rally::sim::JoltRuntime runtime;
     const CarData& car = reference_car();
     const double threshold = 0.2 * kPi / 180.0; // rad/s
     std::string table;
     for (const Surface surface : kAllSurfaces) {
-        for (const double kmh : {5.0, 10.0, 20.0, 30.0}) {
+        for (const double kmh : {5.0, 10.0, 20.0, 30.0, 50.0}) {
             SimWorld world;
             world.build(flat_world(surface, false, static_cast<float>(kmh / 3.6)));
             world.seal();
@@ -1551,7 +1559,6 @@ TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
                     last_above = static_cast<double>(s + 1) / kStepsPerSecond;
                 }
             }
-            // ζ del medio ciclo libre: |r3/r2| = exp(−ζπ/√(1 − ζ²)).
             double zeta = 1.0;
             if (extreme_count >= 3 && first_extremes[1] != 0.0 && first_extremes[2] != 0.0) {
                 const double decrement = std::log(std::abs(first_extremes[1] / first_extremes[2]));
@@ -1565,10 +1572,7 @@ TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
                           zeta);
             table += row;
             table += extremes.substr(0, 120) + "\n";
-            if (kmh <= 20.0) {
-                CHECK(changes <= 1);
-                CHECK(last_above < 2.0);
-            }
+            CHECK(zeta >= (kmh <= 20.0 ? 0.5 : 0.4));
         }
     }
     MESSAGE("pulso de dirección de 5° durante 0,25 s y suelta:\n", table);
@@ -1746,4 +1750,188 @@ TEST_CASE("car: crossing between asphalt and gravel in a steady curve gives no f
         CHECK(worst_over <= 1.0001);
         CHECK(sign_changes == 0);
     }
+}
+
+// --- Zona muerta del giro de Jolt (2.5-respuesta-1 §3, 2.5-respuesta-2 §3) ------------------
+
+namespace {
+
+// Giro mínimo por paso que Jolt 5.6.0 aplica (Body.inl:93): |ω|·dt > 1e-6 rad.
+constexpr double kJoltRotationThreshold = 1.0e-6 * kStepsPerSecond; // rad/s
+
+// Coche de referencia en `desc`, asentado 3 s (o cayendo, si sale alto), con la velocidad del
+// coche sustituida por una guiñada de `factor` veces el umbral; da un paso.
+struct ThresholdStep {
+    bool skipped = false;                   // el controlador usó la velocidad lineal
+    bool rotated = false;                   // Jolt giró el cuerpo en el paso
+    double before = 0.0;                    // |ω| puesta (rad/s)
+    double after = 0.0;                     // |ω| tras el paso
+    std::array<double, kWheelCount> slip{}; // |s| que vio el neumático (m/s)
+};
+
+ThresholdStep threshold_step(const WorldDesc& desc, int settle_steps, double factor) {
+    SimWorld world;
+    world.build(desc);
+    world.seal();
+    run(world, SimInput{}, settle_steps);
+    rally::sim::BodyVelocity v = world.car_velocity();
+    v.wx = 0.0f;
+    v.wy = static_cast<float>(factor * kJoltRotationThreshold);
+    v.wz = 0.0f;
+    if (settle_steps >= kStepsPerSecond) {
+        v.vx = v.vy = v.vz = 0.0f; // en el suelo: solo la guiñada
+    }
+    world.set_car_velocity(v);
+    const BodyPose before = world.car_pose();
+    world.step(SimInput{});
+    const BodyPose after = world.car_pose();
+    ThresholdStep r;
+    r.skipped = world.car_controller().rotation_skipped();
+    r.rotated = before.qx != after.qx || before.qy != after.qy || before.qz != after.qz ||
+                before.qw != after.qw;
+    r.before = factor * kJoltRotationThreshold;
+    const rally::sim::BodyVelocity w = world.car_velocity();
+    r.after = std::sqrt(static_cast<double>(w.wx * w.wx + w.wy * w.wy + w.wz * w.wz));
+    for (int i = 0; i < kWheelCount; ++i) {
+        const WheelOutput& out = world.car_controller().wheel(i);
+        r.slip[static_cast<std::size_t>(i)] = std::hypot(out.slip_x, out.slip_y);
+    }
+    return r;
+}
+
+} // namespace
+
+TEST_CASE("car: the tire skips the body rotation exactly when Jolt does, in the air") {
+    // En el aire nada cambia la guiñada en el paso: la ω que decide el controlador (antes del
+    // paso) es la que integra Jolt (después), y las dos condiciones se pueden comparar a ±1 %.
+    const rally::sim::JoltRuntime runtime;
+    WorldDesc desc = flat_world(Surface::Asphalt);
+    desc.car_spawn.y = 20.0;
+    for (const double factor : {1.01, 0.99}) {
+        const ThresholdStep r = threshold_step(desc, 1, factor);
+        MESSAGE("en el aire, ×", factor, " del umbral: ω ", r.before, " → ", r.after,
+                " rad/s; Jolt gira: ", r.rotated, "; el neumático usa la lineal: ", r.skipped);
+        CHECK(r.after == doctest::Approx(r.before).epsilon(1e-4));
+        CHECK(r.rotated == (factor > 1.0));
+        CHECK(r.skipped == !r.rotated);
+    }
+}
+
+TEST_CASE("car: on the ground the tire sees the contact velocity that Jolt integrates") {
+    // Apoyado, el paso frena una guiñada de 1,01 veces el umbral un 27 % (amortiguamiento de
+    // neumático y suspensión): el controlador decide con la ω de antes del paso, la única que
+    // conoce, y Jolt gira con la de después. Justo por encima del umbral (de 1 a ~1,4 veces) el
+    // neumático usa v + ω×r en un paso en que Jolt no gira; es una franja de un paso, muy lejos
+    // del resto de ~35 µrad/s del coche parado. Se comprueba a 0,99 y a 1,5 veces el umbral,
+    // donde los dos están del mismo lado; 1,01 solo se mide.
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    // Distancia horizontal del centro de masas a los contactos delanteros y traseros.
+    const double com_z = (1.0 - car.front_weight) * car.wheelbase - 0.5 * car.wheelbase;
+    const double half_track = 0.5 * car.track;
+    const double front = std::hypot(half_track, 0.5 * car.wheelbase + com_z);
+    const double rear = std::hypot(half_track, 0.5 * car.wheelbase - com_z);
+    for (const double factor : {0.99, 1.01, 1.5}) {
+        const ThresholdStep r =
+            threshold_step(flat_world(Surface::Asphalt), 3 * kStepsPerSecond, factor);
+        MESSAGE("en el suelo, ×", factor, " del umbral: ω ", r.before, " → ", r.after, " (×",
+                r.after / kJoltRotationThreshold, "); Jolt gira: ", r.rotated,
+                "; el neumático usa la lineal: ", r.skipped, "; |s| ", r.slip[0], " ", r.slip[1],
+                " ", r.slip[2], " ", r.slip[3], " m/s");
+        if (factor == 1.01) {
+            continue; // la franja de un paso: solo se mide
+        }
+        CHECK(r.skipped == !r.rotated);
+        for (int i = 0; i < kWheelCount; ++i) {
+            // Sin giro, el cuerpo parado no traslada los contactos y el neumático ve 0; con giro,
+            // ve ω·d, lo que se mueve el contacto.
+            const double expected = r.skipped ? 0.0 : r.before * (i < 2 ? front : rear);
+            CHECK(r.slip[static_cast<std::size_t>(i)] ==
+                  doctest::Approx(expected).epsilon(0.02).scale(1e-6));
+        }
+    }
+}
+
+// Aterrizaje dentro de la rampa del amortiguamiento de la carcasa (2.5-respuesta-2 §2): a 5 m/s
+// la fuerza del primer paso es la del amortiguador, no la de la relajación, así que el criterio
+// no es una fracción pequeña de μ·F_z sino que la fuerza no pase del límite, no cambie de signo y
+// llegue a la de la curva tras rodar 6σ_y.
+TEST_CASE("car: landing at 5 m/s stays within mu Fz without sign changes and reaches the curve") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    std::string table;
+    for (const Surface surface : {Surface::Asphalt, Surface::Gravel}) {
+        const rally::sim::TireSurface& t = car.tire(surface);
+        WorldDesc desc = flat_world(surface, false, 5.0f);
+        desc.car_spawn.y = 0.6; // cae desde 0,6 m rodando a 5 m/s
+        SimWorld world;
+        world.build(desc);
+        world.seal();
+        SimInput steer;
+        steer.steer = kAxisMax / 4;
+        std::array<bool, kWheelCount> landed{};
+        std::array<bool, kWheelCount> done{};
+        std::array<double, kWheelCount> first{};  // |F| / (μF_z) en el primer paso con carga
+        std::array<double, kWheelCount> rolled{}; // m rodados desde el aterrizaje
+        std::array<int, kWheelCount> sign_x{};
+        std::array<int, kWheelCount> sign_y{};
+        std::array<double, kWheelCount> at_six_sigma{};
+        int sign_changes = 0;
+        double worst = 0.0;
+        for (int s = 0; s < 3 * kStepsPerSecond; ++s) {
+            world.step(steer);
+            for (int i = 0; i < kWheelCount; ++i) {
+                const auto k = static_cast<std::size_t>(i);
+                const WheelOutput& w = world.car_controller().wheel(i);
+                if (done[k] || !(w.contact && w.load > 0.0f)) {
+                    continue;
+                }
+                const double force = std::hypot(w.fx, w.fy);
+                const double limit = static_cast<double>(w.mu) * w.load;
+                worst = std::max(worst, force / limit);
+                if (!landed[k]) {
+                    landed[k] = true;
+                    first[k] = force / limit;
+                }
+                // Cambios de signo de cada componente que no sea casi nula (1 % de μF_z).
+                for (const auto& [value, last] :
+                     {std::pair<float, int*>{w.fx, &sign_x[k]}, {w.fy, &sign_y[k]}}) {
+                    if (std::abs(value) < 0.01 * limit) {
+                        continue;
+                    }
+                    const int sign = value > 0.0f ? 1 : -1;
+                    if (*last != 0 && sign != *last) {
+                        ++sign_changes;
+                    }
+                    *last = sign;
+                }
+                const double vx = w.omega * car.wheel_radius - w.slip_x;
+                rolled[k] += std::abs(vx) / kStepsPerSecond;
+                if (rolled[k] >= 6.0 * t.relaxation_lat) {
+                    const rally::sim::TireForce steady = rally::sim::tire_force(
+                        t, static_cast<float>(w.slip_x / std::abs(vx)),
+                        static_cast<float>(w.slip_y / std::abs(vx)), w.load, car.nominal_load);
+                    at_six_sigma[k] = force / std::hypot(steady.fx, steady.fy) - 1.0;
+                    done[k] = true;
+                }
+            }
+        }
+        char row[260];
+        std::snprintf(row, sizeof(row),
+                      "%s: primer paso con carga %.1f / %.1f / %.1f / %.1f %% de μF_z; |F|/(μF_z) "
+                      "máximo %.4f; tras 6σ_y %+.1f / %+.1f / %+.1f / %+.1f %% de la curva\n",
+                      name(surface).c_str(), 100.0 * first[0], 100.0 * first[1], 100.0 * first[2],
+                      100.0 * first[3], worst, 100.0 * at_six_sigma[0], 100.0 * at_six_sigma[1],
+                      100.0 * at_six_sigma[2], 100.0 * at_six_sigma[3]);
+        table += row;
+        CHECK(worst <= 1.0001);
+        for (int i = 0; i < kWheelCount; ++i) {
+            const auto k = static_cast<std::size_t>(i);
+            REQUIRE(done[k]);
+            CHECK(std::abs(at_six_sigma[k]) <= 0.05);
+        }
+        CHECK(sign_changes == 0);
+    }
+    MESSAGE("aterrizaje desde 0,6 m rodando a 5 m/s (cambios de signo de F_x o F_y: ",
+            "ver CHECK):\n", table);
 }

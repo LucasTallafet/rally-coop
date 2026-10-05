@@ -117,6 +117,9 @@ public:
     const WheelOutput& wheel(int index) const { return outputs_[static_cast<std::size_t>(index)]; }
     // Suma de las fuerzas propias del último paso (neumático y aire), en el mundo.
     JPH::Vec3 applied_force() const { return applied_force_; }
+    // Si en el último paso el neumático usó la velocidad lineal del cuerpo porque Jolt no lo iba a
+    // girar (zona muerta del giro, car_controller.cpp). Diagnóstico de los tests.
+    bool rotation_skipped() const { return rotation_skipped_; }
     const CarData& car() const { return car_; }
 
     // Lo escribe el tester de las ruedas al encontrar el suelo.
@@ -154,6 +157,7 @@ private:
     std::array<float, kWheelCount> contact_h_{};
     std::array<Surface, kWheelCount> contact_surface_{};
     JPH::Vec3 applied_force_ = JPH::Vec3::sZero();
+    bool rotation_skipped_ = false;
 };
 
 // Tester de las ruedas: un cilindro como el de VehicleCollisionTesterCastCylinder de Jolt, pero

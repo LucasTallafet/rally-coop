@@ -36,7 +36,7 @@ using rally::sim::WorldDesc;
 // pseudoaleatorias (run_random_inputs).
 // Si el test de huella falla por un cambio intencionado, se copia aquí el valor nuevo y se
 // dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedFingerprint = 0xd444d0bb614b14a8ull;
+constexpr std::uint64_t kExpectedFingerprint = 0x1696b7d8b21e520cull;
 
 constexpr int kSecondsOfInput = 60;
 constexpr int kStepsPerFrame = 4; // la entrada cambia cada fotograma de 60 fps

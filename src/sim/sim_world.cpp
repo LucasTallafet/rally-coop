@@ -458,6 +458,13 @@ void SimWorld::set_wheel_radius(int index, float radius) {
     impl_->car_controller->set_wheel_radius(index, radius);
 }
 
+void SimWorld::set_car_velocity(const BodyVelocity& velocity) {
+    RALLY_CHECK(has_car(), "SimWorld::set_car_velocity: el mundo no tiene coche");
+    impl_->system.GetBodyInterfaceNoLock().SetLinearAndAngularVelocity(
+        impl_->car, JPH::Vec3(velocity.vx, velocity.vy, velocity.vz),
+        JPH::Vec3(velocity.wx, velocity.wy, velocity.wz));
+}
+
 int SimWorld::body_count() const { return static_cast<int>(impl_->bodies.size()); }
 
 std::uint32_t SimWorld::body_id(int index) const {

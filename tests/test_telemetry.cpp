@@ -35,7 +35,7 @@ using rally::sim::Surface;
 // (telemetry_csv_for_random_inputs). Tiene que ser el mismo en Debug y en Release. Cambia
 // cuando una tarea añade columnas o cambia la simulación: se copia aquí el valor nuevo y va en
 // el mensaje del commit («Telemetry hash: 0x... -> 0x...»).
-constexpr std::uint64_t kExpectedTelemetryHash = 0xec98c492cbf8f9ffull;
+constexpr std::uint64_t kExpectedTelemetryHash = 0x82ad266eac451494ull;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = 180.0 / kPi;

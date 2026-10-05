@@ -52,7 +52,8 @@ public:
 
 float magnitude(float x, float y) { return rmath::sqrt(x * x + y * y); }
 
-// Giro mínimo de un cuerpo en un paso que Jolt 5.6.0 aplica (Body::AddRotationStep), rad.
+// Giro mínimo de un cuerpo en un paso que Jolt 5.6.0 aplica (Body.inl:93,
+// Body::AddRotationStep), rad.
 constexpr float kJoltMinRotationStep = 1.0e-6f;
 
 } // namespace
@@ -179,12 +180,17 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         drive = 0.0f;
     }
 
-    // Jolt no gira un cuerpo cuyo giro en el paso es |ω|·dt ≤ 1e-6 rad
-    // (Body::AddRotationStep): por debajo de ~0,24 mrad/s a 240 Hz el giro no ocurre, pero su
-    // traslación sí. Con ese giro, v + ω×r en el contacto da cero mientras el cuerpo se
-    // traslada (el coche parado se deslizaba ~4 µm/s sobre la huella sin que el neumático lo
-    // viera). Entonces el neumático usa la velocidad que Jolt integra de verdad: la lineal.
-    const bool rotation_skipped = body->GetAngularVelocity().Length() * dt <= kJoltMinRotationStep;
+    // Jolt no gira un cuerpo si su giro en el paso es pequeño: PhysicsSystem.cpp:1641 llama a
+    // body.AddRotationStep(body.GetAngularVelocity() * delta_time), y Body.inl:92-93 solo gira
+    // si (ω·dt).Length() > 1e-6 (Jolt 5.6.0; con un paso de colisión, delta_time es el dt del
+    // paso). Por debajo (~0,24 mrad/s a 240 Hz) el giro no ocurre, pero su traslación sí: con
+    // v + ω×r el contacto daba cero mientras el cuerpo se trasladaba (el coche parado se
+    // deslizaba ~4 µm/s sobre la huella sin que el neumático lo viera). Entonces el neumático
+    // usa la velocidad que Jolt integra de verdad: la lineal. La misma expresión que Jolt, con
+    // la velocidad angular de antes del paso (la de después aún no se conoce).
+    const bool rotation_skipped =
+        !((body->GetAngularVelocity() * dt).Length() > kJoltMinRotationStep);
+    rotation_skipped_ = rotation_skipped;
 
     applied_force_ = JPH::Vec3::sZero();
     for (int i = 0; i < kWheelCount; ++i) {

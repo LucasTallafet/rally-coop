@@ -174,6 +174,9 @@ public:
     // Condición de la rueda `index`: su radio efectivo (al construir, el del archivo).
     // Recolocar no lo cambia. Hasta los daños (fase 4) solo lo usan los tests; fuera del paso.
     void set_wheel_radius(int index, float radius);
+    // Solo los tests, fuera del paso: pone la velocidad lineal y angular del coche (la zona
+    // muerta del giro de Jolt, sim/car_controller.cpp).
+    void set_car_velocity(const BodyVelocity& velocity);
 
     int body_count() const;
     // Índice y número de secuencia del BodyID de Jolt del cuerpo `index` de la descripción.
