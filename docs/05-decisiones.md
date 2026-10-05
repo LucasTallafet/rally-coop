@@ -65,7 +65,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Monedas | Por minuto de tramo, con tiempo de referencia del coche elegido; medallas como rangos | Provisional hasta la fase 4 |
 | Tienda | Abre con la personalización, después de la 1.0; coches nuevos de uno en uno | Cerrada |
 | Ayudas | Configurables por cada jugador; registradas con cada pasada; en modo difícil, ABS y control de tracción bloqueados (la ayuda de dirección no) | Cerrada |
-| Dirección | Ayuda ajustable por cada jugador (activada por defecto) y registrada con la pasada: limita el ángulo de las ruedas delanteras al de máximo agarre de la superficie respecto a su velocidad; desde unos 30 km/h, mezcla de 15 a 30, giro completo por debajo y en marcha atrás | Provisional hasta la fase 2 |
+| Dirección | Ayuda ajustable por cada jugador (activada por defecto) y registrada con la pasada: limita el ángulo de las ruedas delanteras al de máximo agarre de la superficie respecto a su velocidad, calculado en la rueda exterior y solo hacia el centro (nunca gira más de lo pedido ni cruza el 0); sin límite en contravolante (girar hacia el lado de la trasera cuando esta pasa de su pico); desde unos 30 km/h, mezcla de 15 a 30, giro completo por debajo y en marcha atrás | Provisional hasta la fase 2 |
 | Freno de mano y marcha atrás | Freno de mano en las traseras; en 4×4 desacopla el diferencial central y el embrague. Caja R – N – 1ª–5ª en los dos modos: bajar de 1ª da punto muerto y bajar de N parado da marcha atrás; se sale en 1ª | Provisional hasta la fase 2 |
 | Cambio automático | Retrasa el cambio en derrape como mucho 0,5–1 s; nunca contra el limitador | Cerrada |
 | Acciones | Todas con fases de duración en datos; la duración es la regla | Cerrada |
@@ -122,3 +122,5 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-05 | Estimación fase 2 | 64–109 h | 67–114 h | Tarea 2.6b (carretera de prueba): el manejo se ajusta y se juzga también en una carretera estrecha, no solo en la zona abierta |
 | 2026-10-05 | Estimación 1.0 | ~239–420 h | ~242–425 h | Ídem |
 | 2026-10-05 | Criterio de la fase 2 | — | 3 pasadas seguidas de la carretera de prueba sin recolocar por jugador, con la configuración elegida | Ídem |
+| 2026-10-05 | Dirección | Ventana ± α_pico alrededor de la velocidad del eje delantero | Recorte solo hacia el centro, en la rueda exterior; contravolante sin recorte cuando la trasera pasa de su pico | La ventana simétrica giraba las ruedas sola con el volante centrado y cortaba el contravolante; con la guiñada como criterio, el teclado se pasaba del pico en cada cambio de lado (2.5b) |
+| 2026-10-05 | Entrada | Teclado al tope en 0,25 s y de vuelta en 0,12 s a cualquier velocidad | Según la velocidad, de parado a 100 km/h: teclado al tope de 0,25 a 0,6 s y de vuelta de 0,12 a 0,3 s; stick y ratón de 0,10 a 0,35 s; un solo limitador, después de la ayuda | Paradas de la 2.4 y la 2.5 (2.5b) |

@@ -48,6 +48,8 @@ Espera mi visto bueno si la tarea toca más de un módulo (casi todas). No empie
 
 Antes de asignar una tecla, mira la tabla de `docs/07-entorno-y-portabilidad.md` §8 y la demo actual. Si añades o cambias teclas, actualiza esa tabla en el mismo commit. Nada de teclas de depuración en el mando.
 
+La tabla de `keys.cpp` y su test no admiten teclas repetidas: si un prompt propone una tecla ya usada, elige una libre y dilo en el plan. Si la ayuda (H) deja de caber en 1920×1080, pasa a páginas (H: página siguiente, como T) en lugar de tapar más capas.
+
 ## 7. Dependencias
 
 Ninguna nueva sin preguntarme: tampoco paquetes de Python. Si una tarea la necesita, va en el plan como pregunta.
