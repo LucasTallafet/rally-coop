@@ -116,3 +116,4 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-04 | Entrada | Teclado o mando | Además, dirección con ratón opcional en PC; velocidades del teclado según la velocidad | Parada de la 2.4: con teclado, el coche era casi incontrolable a velocidad |
 | 2026-10-04 | Estimación fase 2 | 61–109 h | 64–109 h | Tareas 2.4b (pantalla y asiento) y 2.5b (dirección); la ayuda de dirección pasa de la 2.8 a la 2.5b |
 | 2026-10-04 | Estimación 1.0 | ~236–420 h | ~239–420 h | Ídem |
+| 2026-10-05 | Física del coche (neumático) | Fricción combinada por deslizamiento normalizado (módulo y dirección) | Módulo por deslizamiento normalizado; dirección de la velocidad de deslizamiento al deslizar (mezcla entre ρ = 1,5 y 3) | Con la dirección normalizada, una rueda bloqueada a 30° en grava tenía un 23 % menos de fuerza lateral que con Coulomb (freno de mano, frenar girando) |

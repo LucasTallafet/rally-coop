@@ -1,6 +1,7 @@
 #include "sim/car_data.h"
 
 #include "sim/check.h"
+#include "sim/tire.h"
 
 #include <array>
 #include <charconv>
@@ -25,6 +26,7 @@ struct KeySpec {
 
 constexpr float kDeg = kPi / 180.0f;
 constexpr float kBig = 1.0e9f;
+constexpr int kWheelsPerCar = 4;
 
 // El orden es el de las secciones en el archivo; el lector no depende de él.
 constexpr std::array kKeys = {
@@ -56,16 +58,6 @@ constexpr std::array kKeys = {
     KeySpec{"brakes", "handbrake_torque", &CarData::handbrake_torque, 1.0f, 0.0f, kBig},
     KeySpec{"steering", "max_steer_deg", &CarData::max_steer, kDeg, 1.0f * kDeg, 60.0f * kDeg},
     KeySpec{"steering", "ackermann", &CarData::ackermann, 1.0f, 0.0f, 1.0f},
-    KeySpec{"tire", "long_stiffness", &CarData::long_stiffness, 1.0f, 0.1f, 1000.0f},
-    KeySpec{"tire", "lat_stiffness", &CarData::lat_stiffness, 1.0f, 0.1f, 1000.0f},
-    KeySpec{"tire", "mu_asphalt", &CarData::mu_asphalt, 1.0f, 0.01f, 5.0f},
-    KeySpec{"tire", "mu_dirt", &CarData::mu_dirt, 1.0f, 0.01f, 5.0f},
-    KeySpec{"tire", "mu_gravel", &CarData::mu_gravel, 1.0f, 0.01f, 5.0f},
-    KeySpec{"tire", "mu_snow", &CarData::mu_snow, 1.0f, 0.01f, 5.0f},
-    KeySpec{"tire", "mu_sand", &CarData::mu_sand, 1.0f, 0.01f, 5.0f},
-    KeySpec{"tire", "rolling_resistance", &CarData::rolling_resistance, 1.0f, 0.0f, 1.0f},
-    KeySpec{"tire", "relaxation_long", &CarData::relaxation_long, 1.0f, 0.01f, 5.0f},
-    KeySpec{"tire", "relaxation_lat", &CarData::relaxation_lat, 1.0f, 0.01f, 5.0f},
     KeySpec{"tire", "carcass_damping_long", &CarData::carcass_damping_long, 1.0f, 0.0f, 5.0f},
     KeySpec{"tire", "carcass_damping_lat", &CarData::carcass_damping_lat, 1.0f, 0.0f, 5.0f},
     KeySpec{"tire", "carcass_damping_fade", &CarData::carcass_damping_fade, 1.0f, 0.1f, 50.0f},
@@ -76,6 +68,39 @@ constexpr std::array kKeys = {
     KeySpec{"driver", "eye_height", &CarData::eye_height, 1.0f, 0.1f, 5.0f},
     KeySpec{"driver", "eye_behind_front_axle", &CarData::eye_behind_front_axle, 1.0f, -5.0f, 10.0f},
 };
+
+// Claves de cada sección [tire.<superficie>] (las cinco llevan las mismas).
+struct TireKeySpec {
+    std::string_view name;
+    float TireSurface::* field;
+    float scale;
+    float min;
+    float max;
+};
+
+constexpr std::array kTireKeys = {
+    TireKeySpec{"mu_peak", &TireSurface::mu_peak, 1.0f, 0.05f, 3.0f},
+    TireKeySpec{"slip_angle_peak_deg", &TireSurface::slip_angle_peak, kDeg, 1.0f * kDeg,
+                45.0f * kDeg},
+    TireKeySpec{"slip_ratio_peak", &TireSurface::slip_ratio_peak, 1.0f, 0.01f, 0.5f},
+    TireKeySpec{"slide_ratio", &TireSurface::slide_ratio, 1.0f, 0.5f, 0.99f},
+    // E >= 1 lo rechaza derive_tire_shape con su propio mensaje.
+    TireKeySpec{"curvature_e", &TireSurface::curvature_e, 1.0f, -5.0f, 5.0f},
+    TireKeySpec{"load_sensitivity", &TireSurface::load_sensitivity, 1.0f, 0.0f, 0.3f},
+    TireKeySpec{"relaxation_long", &TireSurface::relaxation_long, 1.0f, 0.01f, 5.0f},
+    TireKeySpec{"relaxation_lat", &TireSurface::relaxation_lat, 1.0f, 0.01f, 5.0f},
+    TireKeySpec{"rolling_resistance", &TireSurface::rolling_resistance, 1.0f, 0.0f, 1.0f},
+};
+
+// Secciones del archivo. Las de los neumáticos van en el orden de Surface.
+constexpr std::size_t kFirstTireSection = 8;
+constexpr std::array<std::string_view, kFirstTireSection + static_cast<std::size_t>(kSurfaceCount)>
+    kSections = {"chassis",   "wheels",    "suspension", "brakes",       "steering",
+                 "tire",      "drive",     "driver",     "tire.asphalt", "tire.gravel",
+                 "tire.dirt", "tire.snow", "tire.sand"};
+
+// Gravedad para F_z0 (la de Jolt por defecto).
+constexpr float kGravity = 9.81f;
 
 constexpr std::string_view kWhitespace = " \t\r";
 
@@ -96,30 +121,18 @@ CarParseResult fail(int line, const std::string& message) {
 
 } // namespace
 
-float CarData::mu(Surface surface) const {
-    switch (surface) {
-    case Surface::Asphalt:
-        return mu_asphalt;
-    case Surface::Gravel:
-        return mu_gravel;
-    case Surface::Dirt:
-        return mu_dirt;
-    case Surface::Snow:
-        return mu_snow;
-    case Surface::Sand:
-        return mu_sand;
-    }
-    return mu_dirt;
-}
-
 CarParseResult parse_car(std::string_view text) {
     CarData car;
-    std::array<int, kKeys.size()> seen_line{}; // línea de cada clave leída; 0 si falta
+    // Línea de cada clave leída (0 si falta): primero las de kKeys y después las de kTireKeys
+    // de cada superficie.
+    constexpr std::size_t kSlots =
+        kKeys.size() + static_cast<std::size_t>(kSurfaceCount) * kTireKeys.size();
+    std::array<int, kSlots> seen_line{};
     std::string_view section;
+    std::size_t section_index = 0;
     int line_number = 0;
-    // Última línea de cada sección vista, para el error de una clave que falta.
-    constexpr std::array<std::string_view, 8> kSections = {
-        "chassis", "wheels", "suspension", "brakes", "steering", "tire", "drive", "driver"};
+    // Primera y última línea de cada sección vista, para los errores.
+    std::array<int, kSections.size()> section_start{};
     std::array<int, kSections.size()> section_end{};
 
     std::size_t pos = 0;
@@ -150,7 +163,9 @@ CarParseResult parse_car(std::string_view text) {
                     if (section_end[s] != 0) {
                         return fail(line_number, "sección [" + std::string(section) + "] repetida");
                     }
+                    section_start[s] = line_number;
                     section_end[s] = line_number;
+                    section_index = s;
                 }
             }
             if (!known) {
@@ -167,14 +182,37 @@ CarParseResult parse_car(std::string_view text) {
         if (section.empty()) {
             return fail(line_number, "clave '" + std::string(key) + "' fuera de una sección");
         }
-        std::size_t index = kKeys.size();
-        for (std::size_t k = 0; k < kKeys.size(); ++k) {
-            if (kKeys[k].section == section && kKeys[k].name == key) {
-                index = k;
-                break;
+        // Hueco de la clave en seen_line y su especificación.
+        std::size_t index = kSlots;
+        float scale = 1.0f;
+        float min = 0.0f;
+        float max = 0.0f;
+        float* target = nullptr;
+        if (section_index < kFirstTireSection) {
+            for (std::size_t k = 0; k < kKeys.size(); ++k) {
+                if (kKeys[k].section == section && kKeys[k].name == key) {
+                    index = k;
+                    scale = kKeys[k].scale;
+                    min = kKeys[k].min;
+                    max = kKeys[k].max;
+                    target = &(car.*kKeys[k].field);
+                    break;
+                }
+            }
+        } else {
+            const std::size_t surface = section_index - kFirstTireSection;
+            for (std::size_t k = 0; k < kTireKeys.size(); ++k) {
+                if (kTireKeys[k].name == key) {
+                    index = kKeys.size() + surface * kTireKeys.size() + k;
+                    scale = kTireKeys[k].scale;
+                    min = kTireKeys[k].min;
+                    max = kTireKeys[k].max;
+                    target = &(car.tires[surface].*kTireKeys[k].field);
+                    break;
+                }
             }
         }
-        if (index == kKeys.size()) {
+        if (index == kSlots) {
             return fail(line_number, "clave desconocida '" + std::string(key) + "' en [" +
                                          std::string(section) + "]");
         }
@@ -190,19 +228,14 @@ CarParseResult parse_car(std::string_view text) {
             return fail(line_number, "número mal escrito en '" + std::string(key) + "': '" +
                                          std::string(value) + "'");
         }
-        const KeySpec& spec = kKeys[index];
-        const float si = number * spec.scale;
-        if (!(si >= spec.min && si <= spec.max)) {
+        const float si = number * scale;
+        if (!(si >= min && si <= max)) {
             return fail(line_number,
                         "'" + std::string(key) + "' fuera de rango: " + std::string(value));
         }
-        car.*spec.field = si;
+        *target = si;
         seen_line[index] = line_number;
-        for (std::size_t s = 0; s < kSections.size(); ++s) {
-            if (kSections[s] == section) {
-                section_end[s] = line_number;
-            }
-        }
+        section_end[section_index] = line_number;
     }
 
     for (std::size_t k = 0; k < kKeys.size(); ++k) {
@@ -218,6 +251,22 @@ CarParseResult parse_car(std::string_view text) {
         return fail(line, "falta la clave '" + std::string(kKeys[k].name) + "' en [" +
                               std::string(kKeys[k].section) + "]");
     }
+    for (std::size_t surface = 0; surface < static_cast<std::size_t>(kSurfaceCount); ++surface) {
+        const std::size_t s = kFirstTireSection + surface;
+        for (std::size_t k = 0; k < kTireKeys.size(); ++k) {
+            if (seen_line[kKeys.size() + surface * kTireKeys.size() + k] != 0) {
+                continue;
+            }
+            const int line = section_end[s] != 0 ? section_end[s] : line_number;
+            return fail(line, "falta la clave '" + std::string(kTireKeys[k].name) + "' en [" +
+                                  std::string(kSections[s]) + "]");
+        }
+        std::string error;
+        if (!derive_tire_shape(car.tires[surface], error)) {
+            return fail(section_start[s], "[" + std::string(kSections[s]) + "]: " + error);
+        }
+    }
+    car.nominal_load = car.mass * kGravity / static_cast<float>(kWheelsPerCar);
     CarParseResult result;
     result.ok = true;
     result.car = car;

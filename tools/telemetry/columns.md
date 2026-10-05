@@ -67,6 +67,9 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `slip_y_fl` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_fl` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_fl` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
+| `fx_pure_fl` | N | + hacia delante de la rueda | Fuerza longitudinal que daría κ_r solo, sin la combinada (media de los subpasos) |
+| `fy_pure_fl` | N | + hacia la derecha de la rueda | Fuerza lateral que daría α_r solo, sin la combinada (media de los subpasos) |
+| `mu_fl` | — | ≥ 0 | μ efectivo: pico de la superficie con la sensibilidad a la carga, μ(F_z); 0 en el aire |
 | `omega_fl` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_fl` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_fl` | m | + arriba | Media del microrrelieve h sobre la huella |
@@ -80,6 +83,9 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `slip_y_fr` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_fr` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_fr` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
+| `fx_pure_fr` | N | + hacia delante de la rueda | Fuerza longitudinal que daría κ_r solo, sin la combinada (media de los subpasos) |
+| `fy_pure_fr` | N | + hacia la derecha de la rueda | Fuerza lateral que daría α_r solo, sin la combinada (media de los subpasos) |
+| `mu_fr` | — | ≥ 0 | μ efectivo: pico de la superficie con la sensibilidad a la carga, μ(F_z); 0 en el aire |
 | `omega_fr` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_fr` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_fr` | m | + arriba | Media del microrrelieve h sobre la huella |
@@ -93,6 +99,9 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `slip_y_rl` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_rl` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_rl` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
+| `fx_pure_rl` | N | + hacia delante de la rueda | Fuerza longitudinal que daría κ_r solo, sin la combinada (media de los subpasos) |
+| `fy_pure_rl` | N | + hacia la derecha de la rueda | Fuerza lateral que daría α_r solo, sin la combinada (media de los subpasos) |
+| `mu_rl` | — | ≥ 0 | μ efectivo: pico de la superficie con la sensibilidad a la carga, μ(F_z); 0 en el aire |
 | `omega_rl` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_rl` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_rl` | m | + arriba | Media del microrrelieve h sobre la huella |
@@ -106,6 +115,9 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `slip_y_rr` | m/s | + la rueda va hacia su izquierda | Velocidad de deslizamiento lateral −v_y |
 | `fx_rr` | N | + hacia delante de la rueda | Fuerza longitudinal del neumático (media de los subpasos) |
 | `fy_rr` | N | + hacia la derecha de la rueda | Fuerza lateral del neumático (media de los subpasos) |
+| `fx_pure_rr` | N | + hacia delante de la rueda | Fuerza longitudinal que daría κ_r solo, sin la combinada (media de los subpasos) |
+| `fy_pure_rr` | N | + hacia la derecha de la rueda | Fuerza lateral que daría α_r solo, sin la combinada (media de los subpasos) |
+| `mu_rr` | — | ≥ 0 | μ efectivo: pico de la superficie con la sensibilidad a la carga, μ(F_z); 0 en el aire |
 | `omega_rr` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_rr` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_rr` | m | + arriba | Media del microrrelieve h sobre la huella |

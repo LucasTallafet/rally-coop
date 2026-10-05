@@ -50,116 +50,9 @@ public:
     }
 };
 
-// Gravedad para la masa de esquina del amortiguamiento de la carcasa (la de Jolt por defecto).
-constexpr float kGravity = 9.81f;
-
-// Paso de Coulomb: `base` es el giro sin los pares de Coulomb y `stop`, lo que esos pares
-// quitan en el paso. Nunca invierten el giro: si no llegan a moverla, la rueda queda en 0.
-float coulomb(float base, float stop) {
-    if (base > stop) {
-        return base - stop;
-    }
-    if (base < -stop) {
-        return base + stop;
-    }
-    return 0.0f;
-}
-
-// Relajación exponencial exacta en h con tasa a: x ← x·e + entrada·φ.
-struct Relax {
-    float e = 1.0f;
-    float phi = 0.0f;
-};
-
-Relax relax(float a, float h) {
-    Relax r;
-    if (a * h < 1.0e-6f) {
-        r.e = 1.0f - a * h;
-        r.phi = h;
-    } else {
-        r.e = rmath::exp(-a * h);
-        r.phi = (1.0f - r.e) / a;
-    }
-    return r;
-}
-
 float magnitude(float x, float y) { return rmath::sqrt(x * x + y * y); }
 
 } // namespace
-
-TireForce step_tire(const CarData& car, const TireInput& in, float h, bool implicit,
-                    WheelDynamics& state) {
-    const float r = in.radius;
-    const float inertia = car.wheel_inertia;
-    TireForce force;
-    if (!(in.load > 0.0f)) {
-        // Sin carga (en el aire): límite 0, sin deformación ni fuerza. El motor acelera la
-        // rueda y el freno la para.
-        state.u = 0.0f;
-        state.w = 0.0f;
-        const float k = h / inertia;
-        state.omega = coulomb(state.omega + k * in.drive_torque, k * in.stop_torque);
-        return force;
-    }
-    const float limit = in.mu * in.load;
-    const float sigma_x = car.relaxation_long;
-    const float sigma_y = car.relaxation_lat;
-    const float c_kappa = car.long_stiffness * in.load;
-    const float c_alpha = car.lat_stiffness * in.load;
-    const float k_x = c_kappa / sigma_x; // N/m: rigidez longitudinal de la huella
-    // Amortiguamiento de la carcasa con ζ del modo carrocería–huella (masa de esquina F_z/g):
-    // c = 2·ζ·√(k·m), proporcional a la carga.
-    const float c_x = 2.0f * car.carcass_damping_long * in.load *
-                      rmath::sqrt(car.long_stiffness / sigma_x / kGravity);
-    const float c_y = 2.0f * car.carcass_damping_lat * in.load *
-                      rmath::sqrt(car.lat_stiffness / sigma_y / kGravity);
-    const float speed = magnitude(in.vx, in.vy);
-    const float fade = rmath::clamp(1.0f - speed / car.carcass_damping_fade, 0.0f, 1.0f);
-    const Relax rx = relax(rmath::abs(in.vx) / sigma_x, h);
-    const Relax ry = relax(rmath::abs(in.vx) / sigma_y, h);
-    const float s_y = -in.vy;
-
-    // Predicción con el giro sin cambiar, para el giro semi-implícito.
-    const float s_x0 = state.omega * r - in.vx;
-    const float u_p = state.u * rx.e + s_x0 * rx.phi;
-    const float w_p = state.w * ry.e + s_y * ry.phi;
-    float fx0 = k_x * u_p + c_x * fade * s_x0;
-    const float fy0 = c_alpha * rmath::atan(w_p / sigma_y) + c_y * fade * s_y;
-    float slope = k_x * r * rx.phi + c_x * r * fade; // ∂F_x/∂ω
-    const float predicted = magnitude(fx0, fy0);
-    if (predicted > limit) {
-        fx0 *= limit / predicted;
-        slope = 0.0f;
-    }
-    if (!implicit) {
-        slope = 0.0f;
-    }
-    const float k = h / (inertia + h * r * slope);
-    state.omega = coulomb(state.omega + k * (in.drive_torque - r * fx0), k * in.stop_torque);
-
-    // Deformación con el giro nuevo y límite de Coulomb: la huella desliza y no acumula.
-    const float s_x = state.omega * r - in.vx;
-    state.u = state.u * rx.e + s_x * rx.phi;
-    state.w = state.w * ry.e + s_y * ry.phi;
-    float elastic_x = k_x * state.u;
-    float elastic_y = c_alpha * rmath::atan(state.w / sigma_y);
-    const float elastic = magnitude(elastic_x, elastic_y);
-    if (elastic > limit) {
-        const float scale = limit / elastic;
-        elastic_x *= scale;
-        elastic_y *= scale;
-        state.u = elastic_x / k_x;
-        state.w = sigma_y * rmath::tan(elastic_y / c_alpha);
-    }
-    force.fx = elastic_x + c_x * fade * s_x;
-    force.fy = elastic_y + c_y * fade * s_y;
-    const float total = magnitude(force.fx, force.fy);
-    if (total > limit) {
-        force.fx *= limit / total;
-        force.fy *= limit / total;
-    }
-    return force;
-}
 
 double ReliefSource::height(MicroRelief relief, Surface surface, double x, double z) const {
     switch (relief) {
@@ -311,7 +204,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
             // anterior.
             in.load = rmath::max(0.0f, w->GetSuspensionLambda() / dt);
             const Surface surface = contact_surface_[index];
-            in.mu = car_.mu(surface);
+            in.surface = surface;
             point = w->GetContactPosition();
             longitudinal = w->GetContactLongitudinal();
             lateral = w->GetContactLateral();
@@ -325,16 +218,21 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
             out.compression = w->GetSettings()->mSuspensionMaxLength - w->GetSuspensionLength();
         }
         // Freno, freno de mano y rodadura: pares de Coulomb sobre la rueda.
-        in.stop_torque = brake + car_.rolling_resistance * in.load * r;
+        const TireSurface& tire = car_.tire(in.surface);
+        in.stop_torque = brake + tire.rolling_resistance * in.load * r;
 
         // Giro y huella en subpasos con la velocidad del cuerpo fija; al cuerpo, la media.
         WheelDynamics state{w->GetAngularVelocity(), u_[index], w_[index]};
         float sum_fx = 0.0f;
         float sum_fy = 0.0f;
+        float sum_fx_pure = 0.0f;
+        float sum_fy_pure = 0.0f;
         for (int s = 0; s < kWheelSubsteps; ++s) {
             const TireForce f = step_tire(car_, in, h, !explicit_wheels_, state);
             sum_fx += f.fx;
             sum_fy += f.fy;
+            sum_fx_pure += f.fx_pure;
+            sum_fy_pure += f.fy_pure;
         }
         w->SetAngularVelocity(state.omega);
         u_[index] = state.u;
@@ -346,13 +244,16 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         out.locked = state.omega == 0.0f;
         out.u = state.u;
         out.w = state.w;
-        out.kappa = state.u / car_.relaxation_long;
-        out.alpha = rmath::atan(state.w / car_.relaxation_lat);
+        out.kappa = state.u / tire.relaxation_long;
+        out.alpha = rmath::atan(state.w / tire.relaxation_lat);
         out.slip_x = state.omega * r - in.vx;
         out.slip_y = -in.vy;
         out.contact_speed = magnitude(in.vx, in.vy);
         out.fx = fx;
         out.fy = fy;
+        out.fx_pure = sum_fx_pure / kWheelSubsteps;
+        out.fy_pure = sum_fy_pure / kWheelSubsteps;
+        out.mu = out.contact ? peak_mu(tire, in.load, car_.nominal_load) : 0.0f;
         if (out.contact) {
             const JPH::Vec3 force = longitudinal * fx + lateral * fy;
             body->AddForce(force, point);

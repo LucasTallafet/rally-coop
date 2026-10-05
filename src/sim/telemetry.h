@@ -14,12 +14,15 @@ struct WheelTelemetry {
     std::int8_t surface = -1;  // superficie del material del contacto (Surface), -1 en el aire
     float load = 0.0f;         // N: carga normal (suspensión del paso anterior)
     float compression = 0.0f;  // m desde la extensión máxima de la suspensión
-    float kappa = 0.0f;        // deslizamiento relajado κ_r = u / σ_x
+    float kappa = 0.0f;        // deslizamiento relajado κ_r = u / σ_x (σ de la superficie)
     float alpha = 0.0f;        // rad: α_r = atan(w / σ_y), < 0 yendo hacia su derecha
     float slip_x = 0.0f;       // m/s: velocidad de deslizamiento ω·r − v_x
     float slip_y = 0.0f;       // m/s: velocidad de deslizamiento −v_y
     float fx = 0.0f;           // N: fuerza longitudinal media de los subpasos (adelante +)
     float fy = 0.0f;           // N: fuerza lateral media de los subpasos (derecha +)
+    float fx_pure = 0.0f;      // N: la longitudinal que daría κ_r solo (sin la combinada)
+    float fy_pure = 0.0f;      // N: la lateral que daría α_r solo (sin la combinada)
+    float mu = 0.0f;           // μ efectivo: pico con la sensibilidad a la carga, 0 en el aire
     float omega = 0.0f;        // rad/s: giro de la rueda (> 0 rodando hacia delante)
     float brake_torque = 0.0f; // N·m pedido por el freno y el freno de mano
     float h = 0.0f;            // m: media del microrrelieve sobre la huella
@@ -38,8 +41,8 @@ struct WheelTelemetry {
 //              del morro. Sin suavizar ni recortar a baja velocidad.
 //   a        = dv/dt del centro de masas en el paso (cinemática, sin la gravedad); 0 en el
 //              paso que recoloca.
-// Las tareas que añaden estado al coche (ruedas en la 2.4, motor en la 2.5, transmisión en la
-// 2.6, ayudas en la 2.8) añaden aquí sus campos y sus columnas.
+// Las tareas que añaden estado al coche (ruedas en la 2.4, neumático en la 2.5, motor y
+// transmisión en la 2.6, ayudas en la 2.8) añaden aquí sus campos y sus columnas.
 struct CarTelemetry {
     std::int64_t step = 0; // pasos desde que se construyó el mundo (1 tras el primero)
 

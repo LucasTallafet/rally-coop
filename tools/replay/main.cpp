@@ -14,6 +14,9 @@
 //   rally_replay columns --md [<archivo>]    tabla de columnas de la telemetría en Markdown
 //                                            (tools/telemetry/columns.md); sin archivo, a la
 //                                            salida estándar
+//   rally_replay tire-curves <archivo.car> [--csv <salida.csv>]
+//                                            resumen del neumático por superficie; con --csv,
+//                                            las curvas (tools/telemetry/tire_curves.py)
 // Códigos de salida: 0 bien, 1 el hash no cuadra, 2 error de uso o de archivo.
 
 #include "io/build_info.h"
@@ -28,6 +31,7 @@
 #include "sim/sim_world.h"
 #include "sim/surface.h"
 #include "sim/test_zone.h"
+#include "sim/tire.h"
 
 #include <algorithm>
 #include <charconv>
@@ -54,7 +58,8 @@ int usage() {
                "  rally_replay rewrite <archivo.rrec>\n"
                "  rally_replay synth <salida.rrec> --car <archivo.car>\n"
                "  rally_replay zone --json <archivo.json> [--blind <superficie>]\n"
-               "  rally_replay columns --md [<archivo.md>]\n",
+               "  rally_replay columns --md [<archivo.md>]\n"
+               "  rally_replay tire-curves <archivo.car> [--csv <salida.csv>]\n",
                stderr);
     return 2;
 }
@@ -496,6 +501,104 @@ int columns_md(const char* path) {
     return 0;
 }
 
+// Curvas del neumático de un .car, con el mismo código que la simulación (sim/tire.h). Sin
+// `csv_path`, el resumen por superficie en la salida estándar; con él, además, las curvas pura
+// lateral (α de 0 a 60°) y longitudinal (κ de 0 a 1) a 0,5, 1 y 1,5·F_z0 en CSV
+// (tools/telemetry/tire_curves.py las dibuja).
+int tire_curves(const char* car_path, const char* csv_path) {
+    std::string text;
+    std::string error;
+    if (!rally::io::read_file(car_path, text, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 2;
+    }
+    const rally::sim::CarParseResult parsed = rally::sim::parse_car(text);
+    if (!parsed.ok) {
+        std::fprintf(stderr, "error: %s: %s\n", car_path, parsed.error.c_str());
+        return 2;
+    }
+    const rally::sim::CarData& car = parsed.car;
+    const float nominal = car.nominal_load;
+    constexpr float kDeg = 3.14159265358979323846f / 180.0f;
+    const auto lateral = [&](const rally::sim::TireSurface& t, float alpha, float load) {
+        return rally::sim::tire_force(t, 0.0f, std::tan(alpha), load, nominal).fy;
+    };
+    const auto longitudinal = [&](const rally::sim::TireSurface& t, float kappa, float load) {
+        return rally::sim::tire_force(t, kappa, 0.0f, load, nominal).fx;
+    };
+
+    std::printf("neumático de %s, F_z0 = %.0f N (fuerza / pico a F_z0)\n", car_path,
+                static_cast<double>(nominal));
+    std::printf("superficie | μ pico | α pico | κ pico | C | B | E | lateral a 1,5 / 2 / 3 / 4 × "
+                "α pico | longitudinal a 1,5 / 2 / 3 / 4 × κ pico | asíntota | κ = 1 | "
+                "combinada (κ pico, α pico)\n");
+    for (int s = 0; s < rally::sim::kSurfaceCount; ++s) {
+        const auto surface = static_cast<rally::sim::Surface>(s);
+        const rally::sim::TireSurface& t = car.tire(surface);
+        const float d = t.mu_peak * nominal;
+        const auto lat = [&](float factor) {
+            return lateral(t, factor * t.slip_angle_peak, nominal) / d;
+        };
+        const auto lon = [&](float factor) {
+            return longitudinal(t, factor * t.slip_ratio_peak, nominal) / d;
+        };
+        const float combined =
+            rally::sim::tire_force(t, t.slip_ratio_peak, t.tan_alpha_peak, nominal, nominal).fy / d;
+        std::printf(
+            "%s | %.2f | %.1f° | %.3f | %.3f | %.3f | %.2f | %.3f / %.3f / %.3f / %.3f | "
+            "%.3f / %.3f / %.3f / %.3f | %.2f | %.3f | %.3f\n",
+            rally::sim::surface_name(surface), static_cast<double>(t.mu_peak),
+            static_cast<double>(t.slip_angle_peak / kDeg), static_cast<double>(t.slip_ratio_peak),
+            static_cast<double>(t.shape_c), static_cast<double>(t.shape_b),
+            static_cast<double>(t.curvature_e), static_cast<double>(lat(1.5f)),
+            static_cast<double>(lat(2.0f)), static_cast<double>(lat(3.0f)),
+            static_cast<double>(lat(4.0f)), static_cast<double>(lon(1.5f)),
+            static_cast<double>(lon(2.0f)), static_cast<double>(lon(3.0f)),
+            static_cast<double>(lon(4.0f)), static_cast<double>(t.slide_ratio),
+            static_cast<double>(longitudinal(t, 1.0f, nominal) / d), static_cast<double>(combined));
+    }
+    if (csv_path == nullptr) {
+        return 0;
+    }
+
+    std::string csv = "surface,direction,load_ratio,load,slip,force,force_over_peak\n";
+    char row[160];
+    for (int s = 0; s < rally::sim::kSurfaceCount; ++s) {
+        const auto surface = static_cast<rally::sim::Surface>(s);
+        const rally::sim::TireSurface& t = car.tire(surface);
+        for (const float ratio : {0.5f, 1.0f, 1.5f}) {
+            const float load = ratio * nominal;
+            const float d = rally::sim::peak_mu(t, load, nominal) * load;
+            // Lateral: slip en grados.
+            for (int i = 0; i <= 240; ++i) {
+                const float alpha_deg = 0.25f * static_cast<float>(i);
+                const float f = lateral(t, alpha_deg * kDeg, load);
+                std::snprintf(row, sizeof(row), "%s,lateral,%.1f,%.1f,%.2f,%.2f,%.5f\n",
+                              rally::sim::surface_key(surface), static_cast<double>(ratio),
+                              static_cast<double>(load), static_cast<double>(alpha_deg),
+                              static_cast<double>(f), static_cast<double>(f / d));
+                csv += row;
+            }
+            // Longitudinal: slip = κ.
+            for (int i = 0; i <= 200; ++i) {
+                const float kappa = 0.005f * static_cast<float>(i);
+                const float f = longitudinal(t, kappa, load);
+                std::snprintf(row, sizeof(row), "%s,longitudinal,%.1f,%.1f,%.3f,%.2f,%.5f\n",
+                              rally::sim::surface_key(surface), static_cast<double>(ratio),
+                              static_cast<double>(load), static_cast<double>(kappa),
+                              static_cast<double>(f), static_cast<double>(f / d));
+                csv += row;
+            }
+        }
+    }
+    if (!rally::io::write_file(csv_path, csv, error)) {
+        std::fprintf(stderr, "error: %s\n", error.c_str());
+        return 2;
+    }
+    std::printf("curvas escritas: %s\n", csv_path);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -517,6 +620,15 @@ int main(int argc, char** argv) {
         if (argc == 6 && std::strcmp(argv[2], "--json") == 0 &&
             std::strcmp(argv[4], "--blind") == 0) {
             return zone_json(argv[3], argv[5]);
+        }
+        return usage();
+    }
+    if (std::strcmp(command, "tire-curves") == 0) {
+        if (argc == 3) {
+            return tire_curves(argv[2], nullptr);
+        }
+        if (argc == 5 && std::strcmp(argv[3], "--csv") == 0) {
+            return tire_curves(argv[2], argv[4]);
         }
         return usage();
     }

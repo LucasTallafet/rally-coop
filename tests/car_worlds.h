@@ -58,10 +58,11 @@ inline sim::WorldDesc flat_world(sim::Surface surface, bool micro = false, float
 // Pendiente de la rampa de los tests (15 %).
 inline constexpr double kRampGrade = 0.15;
 
-// Rampa de asfalto de pendiente `grade` (por defecto el 15 %) y 40 m que sube hacia -z, con el
-// coche parado en su mitad mirando cuesta arriba. La caja de la rampa gira alrededor de x; el
-// coche sale apoyado en ella.
-inline sim::WorldDesc ramp_world(double grade = kRampGrade) {
+// Rampa de `surface` (por defecto asfalto) de pendiente `grade` (por defecto el 15 %) y 40 m
+// que sube hacia -z, con el coche parado en su mitad mirando cuesta arriba. La caja de la rampa
+// gira alrededor de x; el coche sale apoyado en ella.
+inline sim::WorldDesc ramp_world(double grade = kRampGrade,
+                                 sim::Surface surface = sim::Surface::Asphalt) {
     const double angle = std::atan(grade);
     sim::WorldDesc desc;
     sim::BoxDesc ramp;
@@ -73,8 +74,24 @@ inline sim::WorldDesc ramp_world(double grade = kRampGrade) {
     // Cara de arriba pasando por el origen.
     ramp.y = -0.5 * std::cos(angle);
     ramp.z = -0.5 * std::sin(angle);
-    ramp.surface = sim::Surface::Asphalt;
+    ramp.surface = surface;
     desc.bodies = {ramp};
+    desc.car = true;
+    desc.car_data = reference_car();
+    return desc;
+}
+
+// Dos losas de 400 m de largo a lo largo de z: `left` en x < 0 y `right` en x > 0. Con el coche
+// en x = 0, las ruedas de cada lado pisan una superficie.
+inline sim::WorldDesc split_world(sim::Surface left, sim::Surface right) {
+    sim::WorldDesc desc;
+    sim::BoxDesc a = slab(left, false, 400.0);
+    a.half_x = 10.0f;
+    a.x = -10.0;
+    sim::BoxDesc b = slab(right, false, 400.0);
+    b.half_x = 10.0f;
+    b.x = 10.0;
+    desc.bodies = {a, b};
     desc.car = true;
     desc.car_data = reference_car();
     return desc;

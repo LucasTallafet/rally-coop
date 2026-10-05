@@ -21,6 +21,14 @@ bool build_world(const Recording& recording, sim::SimWorld& world, std::string& 
         const sim::CarParseResult car = sim::parse_car(recording.header.car_text);
         if (!car.ok) {
             error = "coche de la grabación: " + car.error;
+            if (recording.header.sim_version != sim::kSimVersion) {
+                // Una grabación de otra versión lleva el .car de entonces: desde la 3 (tarea
+                // 2.5) el neumático tiene otras claves y no se puede repetir.
+                error += " (grabación de la versión de la simulación " +
+                         std::to_string(recording.header.sim_version) + ", esta es la " +
+                         std::to_string(sim::kSimVersion) +
+                         ": su coche usa claves que ya no existen; rally_replay info sí la lee)";
+            }
             return false;
         }
         desc.car_data = car.car;

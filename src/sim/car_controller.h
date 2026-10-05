@@ -4,6 +4,7 @@
 #include "sim/jolt_config.h"
 #include "sim/surface.h"
 #include "sim/surface_material.h"
+#include "sim/tire.h"
 
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Vehicle/VehicleCollisionTester.h>
@@ -52,13 +53,16 @@ struct WheelOutput {
     Surface surface = Surface::Dirt; // la del material del contacto
     float load = 0.0f;               // N: carga normal (suspensión del paso anterior)
     float compression = 0.0f;        // m desde la extensión máxima
-    float kappa = 0.0f;              // deslizamiento relajado κ_r = u/σ_x
+    float kappa = 0.0f;              // deslizamiento relajado κ_r = u/σ_x (σ de la superficie)
     float alpha = 0.0f;              // rad: α_r = atan(w/σ_y), < 0 con la rueda yendo a la derecha
     float slip_x = 0.0f;             // m/s: s_x = ω·r − v_x al final del paso
     float slip_y = 0.0f;             // m/s: s_y = −v_y
     float contact_speed = 0.0f;      // m/s: |v| del cuerpo en el contacto, en su plano
     float fx = 0.0f;                 // N, media de los subpasos (adelante +)
     float fy = 0.0f;                 // N, media de los subpasos (derecha +)
+    float fx_pure = 0.0f;            // N: la que daría κ_r solo, media de los subpasos
+    float fy_pure = 0.0f;            // N: la que daría α_r solo, media de los subpasos
+    float mu = 0.0f;                 // μ(F_z): pico con la sensibilidad a la carga
     float omega = 0.0f;              // rad/s al final del paso (adelante +)
     bool locked = false;             // rueda parada por fricción estática al final del paso
     float u = 0.0f;                  // m: deformación longitudinal de la huella
@@ -66,45 +70,6 @@ struct WheelOutput {
     float brake_torque = 0.0f;       // N·m pedido (freno y freno de mano)
     float h = 0.0f;                  // m: media de h sobre la huella
 };
-
-// Estado dinámico de una rueda: giro (rad/s, > 0 rodando hacia delante) y deformación de la
-// huella, longitudinal u y lateral w (m). Recolocar lo pone a cero.
-struct WheelDynamics {
-    float omega = 0.0f;
-    float u = 0.0f;
-    float w = 0.0f;
-};
-
-// Entradas del neumático de una rueda, fijas durante los subpasos de un paso.
-struct TireInput {
-    float vx = 0.0f;           // m/s: velocidad del cuerpo respecto al suelo en el contacto,
-    float vy = 0.0f;           //      longitudinal (adelante +) y lateral (derecha +)
-    float load = 0.0f;         // N (0 en el aire)
-    float mu = 0.0f;           // de la superficie del contacto
-    float radius = 0.0f;       // m: radio efectivo (condición)
-    float drive_torque = 0.0f; // N·m
-    float stop_torque = 0.0f;  // N·m: freno, freno de mano y rodadura, pares de Coulomb (≥ 0)
-};
-
-// Fuerza del neumático en un subpaso (ejes del contacto).
-struct TireForce {
-    float fx = 0.0f;
-    float fy = 0.0f;
-};
-
-// Un subpaso h de una rueda con el neumático provisional (deformación de la huella como
-// estado, modelo transitorio). Vale a cualquier velocidad, parado incluido:
-//   s_x = ω·r − v_x, s_y = −v_y; du/dt = s_x − (|v_x|/σ_x)·u y dw/dt = s_y − (|v_x|/σ_y)·w,
-//   integradas de forma exponencial;
-//   F_x = (Cκ/σ_x)·u + c_x·s_x·g y F_y = Cα·atan(w/σ_y) + c_y·s_y·g, con Cκ y Cα
-//   proporcionales a la carga y g = 1 parado, 0 a partir de carcass_damping_fade (|v| total);
-//   límite de Coulomb μ·F_z: la parte elástica se recorta (y u y w con ella) y la total también.
-// El giro de la rueda es semi-implícito en F_x (con ∂F_x/∂ω = 0 si la fuerza está en el
-// límite; `implicit` = false lo quita, solo para el diagnóstico de los tests). El freno y la
-// rodadura son pares de Coulomb: nunca invierten el giro y bloquean la rueda (ω = 0) mientras
-// el par que la mueve no los supere. Sin carga (en el aire), u = w = 0 y la fuerza es 0.
-TireForce step_tire(const CarData& car, const TireInput& in, float h, bool implicit,
-                    WheelDynamics& state);
 
 // Ajustes del controlador (los construye make_car).
 class CarControllerSettings final : public JPH::VehicleControllerSettings {

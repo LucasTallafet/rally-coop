@@ -375,6 +375,9 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
         wt.slip_y = out.slip_y;
         wt.fx = out.fx;
         wt.fy = out.fy;
+        wt.fx_pure = out.fx_pure;
+        wt.fy_pure = out.fy_pure;
+        wt.mu = out.mu;
         wt.omega = out.omega;
         wt.brake_torque = out.brake_torque;
         wt.h = out.h;

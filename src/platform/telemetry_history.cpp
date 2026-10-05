@@ -25,11 +25,25 @@ template <int W>
 float compression_cm(const sim::CarTelemetry& t) {
     return t.wheels[W].compression * 100.0f;
 }
+// Ángulo de deriva relajado medio de un eje (ruedas A y B), con el signo de beta: α_r es < 0
+// con la rueda yendo hacia su derecha y beta > 0 con la velocidad a la derecha del morro.
+template <int A, int B>
+float axle_slip_deg(const sim::CarTelemetry& t) {
+    return -0.5f * (t.wheels[A].alpha + t.wheels[B].alpha) * kRadToDeg;
+}
+template <int W>
+float kappa_percent(const sim::CarTelemetry& t) {
+    return t.wheels[W].kappa * 100.0f;
+}
 
-// Página 1 · Manejo. Nombres sin β: la fuente por defecto de raylib no lo tiene. La 2.5 añade
-// al panel de beta el ángulo de deriva medio del eje delantero y del trasero (subviraje y
-// sobreviraje).
-constexpr std::array kBetaChannels = {GraphChannel{"beta", graph_beta_deg, 0xffa040ffu}};
+// Página 1 · Manejo. Nombres sin β: la fuente por defecto de raylib no lo tiene. En el panel de
+// beta, el ángulo de deriva relajado medio del eje delantero y del trasero (tarea 2.5), con el
+// signo de beta: el delantero por encima del trasero es subviraje y por debajo, sobreviraje.
+constexpr std::array kBetaChannels = {
+    GraphChannel{"beta", graph_beta_deg, 0xffa040ffu},
+    GraphChannel{"eje del.", axle_slip_deg<0, 1>, 0x60c0ffffu},
+    GraphChannel{"eje tras.", axle_slip_deg<2, 3>, 0xff5050ffu},
+};
 constexpr std::array kYawChannels = {GraphChannel{"guiñada", yaw_rate_deg, 0x60c0ffffu}};
 constexpr std::array kSpeedChannels = {GraphChannel{"velocidad", speed_kmh, 0xf0f0f0ffu}};
 constexpr std::array kInputChannels = {
@@ -69,11 +83,21 @@ constexpr std::array kSuspensionPanels = {
     GraphPanel{"compresión", "cm", 0.0f, 20.0f, kCompressionChannels},
 };
 
-// Página 2 · Tren motriz: RPM y marcha, presión del turbo y deslizamiento longitudinal por
-// rueda (tareas 2.5 y 2.6). Vacía hasta entonces: T la salta.
+// Página 2 · Tren motriz: deslizamiento longitudinal relajado κ_r por rueda (tarea 2.5); la
+// 2.6 añade las RPM, la marcha y la presión del turbo.
+constexpr std::array kKappaChannels = {
+    GraphChannel{"DI", kappa_percent<0>, kFrontLeftColor},
+    GraphChannel{"DD", kappa_percent<1>, kFrontRightColor},
+    GraphChannel{"TI", kappa_percent<2>, kRearLeftColor},
+    GraphChannel{"TD", kappa_percent<3>, kRearRightColor},
+};
+constexpr std::array kDrivetrainPanels = {
+    GraphPanel{"deslizamiento", "%", -50.0f, 50.0f, kKappaChannels},
+};
+
 constexpr std::array kPages = {
     GraphPage{"manejo", kHandlingPanels},
-    GraphPage{"tren motriz", {}},
+    GraphPage{"tren motriz", kDrivetrainPanels},
     GraphPage{"suspensión", kSuspensionPanels},
 };
 

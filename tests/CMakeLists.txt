@@ -24,6 +24,7 @@ add_executable(rally_tests
     test_sim_world.cpp
     test_telemetry.cpp
     test_test_zone.cpp
+    test_tire.cpp
     test_ui_text.cpp
 )
 target_link_libraries(rally_tests PRIVATE rally_sim rally_io rally_loop doctest::doctest
@@ -159,9 +160,17 @@ foreach(_run first second)
                 ${CMAKE_CURRENT_BINARY_DIR}/telemetry_${_run}.csv)
     set_tests_properties(replay.telemetry_${_run} PROPERTIES
         FIXTURES_SETUP telemetry_csv
-        PASS_REGULAR_EXPRESSION "telemetría: .*86 columnas.*hash OK"
+        PASS_REGULAR_EXPRESSION "telemetría: .*98 columnas.*hash OK"
         FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 endforeach()
+# Curvas del neumático (tarea 2.5) del coche congelado, para tools/telemetry/tire_curves.py.
+set(_tire_curves_csv ${CMAKE_CURRENT_BINARY_DIR}/tire_curves.csv)
+add_test(NAME replay.tire_curves
+    COMMAND rally_replay tire-curves ${CMAKE_CURRENT_SOURCE_DIR}/data/cars/reference.car
+            --csv ${_tire_curves_csv})
+set_tests_properties(replay.tire_curves PROPERTIES
+    FIXTURES_SETUP tire_curves
+    PASS_REGULAR_EXPRESSION "asfalto \\| 1.10 \\| 7.0.*curvas escritas: ")
 add_test(NAME replay.telemetry_twice_identical
     COMMAND ${CMAKE_COMMAND} -E compare_files ${CMAKE_CURRENT_BINARY_DIR}/telemetry_first.csv
             ${CMAKE_CURRENT_BINARY_DIR}/telemetry_second.csv)
@@ -190,6 +199,12 @@ if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.12)
                 FIXTURES_REQUIRED telemetry_csv
                 PASS_REGULAR_EXPRESSION "imagen correcta: ")
         endforeach()
+        add_test(NAME telemetry_py.tire_curves
+            COMMAND ${Python3_EXECUTABLE} ${_telemetry_dir}/test_plots.py tire_curves
+                    ${_tire_curves_csv} ${CMAKE_CURRENT_BINARY_DIR}/plots)
+        set_tests_properties(telemetry_py.tire_curves PROPERTIES
+            FIXTURES_REQUIRED tire_curves
+            PASS_REGULAR_EXPRESSION "imagen correcta: ")
     else()
         message(WARNING "matplotlib no está en ${Python3_EXECUTABLE}: los tests "
             "telemetry_py.plot y telemetry_py.compare no se añaden "

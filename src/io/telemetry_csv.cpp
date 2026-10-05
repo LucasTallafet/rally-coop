@@ -74,6 +74,15 @@ constexpr ColumnKind kReal = ColumnKind::Real;
     C{"fy_" SUFFIX, "N", "+ hacia la derecha de la rueda", "Fuerza lateral del neumático (media de los subpasos)", kReal, 1, \
       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fy); }, \
       nullptr}, \
+    C{"fx_pure_" SUFFIX, "N", "+ hacia delante de la rueda", "Fuerza longitudinal que daría κ_r solo, sin la combinada (media de los subpasos)", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fx_pure); }, \
+      nullptr}, \
+    C{"fy_pure_" SUFFIX, "N", "+ hacia la derecha de la rueda", "Fuerza lateral que daría α_r solo, sin la combinada (media de los subpasos)", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].fy_pure); }, \
+      nullptr}, \
+    C{"mu_" SUFFIX, "", "≥ 0", "μ efectivo: pico de la superficie con la sensibilidad a la carga, μ(F_z); 0 en el aire", kReal, 4, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].mu); }, \
+      nullptr}, \
     C{"omega_" SUFFIX, "rad/s", "+ rodando hacia delante", "Giro de la rueda al final del paso", kReal, 4, \
       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].omega); }, \
       nullptr}, \

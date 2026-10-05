@@ -8,7 +8,8 @@ namespace rally::sim {
 // resultado de una simulación (y con ello la huella de tests/test_sim_world.cpp). Va en la
 // cabecera de las grabaciones: rally_replay no compara el hash final de una grabación de
 // otra versión, porque no tiene por qué coincidir.
-// Versiones: 1 (tarea 2.1, la caja controlada); 2 (tarea 2.4, el coche).
-inline constexpr std::uint32_t kSimVersion = 2;
+// Versiones: 1 (tarea 2.1, la caja controlada); 2 (tarea 2.4, el coche); 3 (tarea 2.5, el
+// neumático).
+inline constexpr std::uint32_t kSimVersion = 3;
 
 } // namespace rally::sim

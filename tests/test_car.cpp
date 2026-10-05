@@ -1,5 +1,7 @@
-// Coche base (tarea 2.4): lector del .car y criterios de aceptación de docs/prompts/fase-2/2.4.md
-// con el coche congelado tests/data/cars/reference.car en mundos pequeños.
+// Coche base (tarea 2.4) y neumático en el coche (tarea 2.5): lector del .car y criterios de
+// aceptación de docs/prompts/fase-2/2.4.md y 2.5.md con el coche congelado
+// tests/data/cars/reference.car en mundos pequeños. Las pruebas del neumático solo están en
+// test_tire.cpp.
 
 #include "car_worlds.h"
 #include "sim/car_controller.h"
@@ -18,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -39,6 +42,9 @@ using rally::tests::reference_car_text;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kGravity = 9.81;
+
+constexpr std::array kAllSurfaces = {Surface::Asphalt, Surface::Dirt, Surface::Gravel,
+                                     Surface::Snow, Surface::Sand};
 
 void run(SimWorld& world, const SimInput& input, int steps) {
     for (int i = 0; i < steps; ++i) {
@@ -135,7 +141,9 @@ TEST_CASE("car_data: the reference car reads whole and degrees become radians") 
     CHECK(car.front_weight == 0.45f);
     CHECK(car.max_steer == doctest::Approx(0.5236).epsilon(1e-4));
     CHECK(car.drive_power == 250000.0f);
-    CHECK(car.mu(Surface::Snow) == 0.45f);
+    CHECK(car.tire(Surface::Snow).mu_peak == 0.45f);
+    CHECK(car.tire(Surface::Sand).slip_angle_peak == doctest::Approx(0.27925).epsilon(1e-4));
+    CHECK(car.nominal_load == doctest::Approx(1100.0 * 9.81 / 4.0));
     CHECK(car.eye_height == 1.05f);
 }
 
@@ -212,7 +220,7 @@ TEST_CASE("car_data: a Spanish process locale reads the same numbers") {
     REQUIRE(r.ok);
     CHECK(r.car.track == reference_car().track);
     CHECK(r.car.max_steer == reference_car().max_steer);
-    CHECK(r.car.mu_gravel == reference_car().mu_gravel);
+    CHECK(r.car.tire(Surface::Gravel).mu_peak == reference_car().tire(Surface::Gravel).mu_peak);
 }
 
 // --- 2. Equilibrio ---------------------------------------------------------------------------
@@ -327,8 +335,9 @@ struct Hold {
     std::array<int, kWheelCount> locked_steps{};
 };
 
-Hold hold_on_ramp(const SimInput& input, double grade = rally::tests::kRampGrade) {
-    WorldDesc desc = rally::tests::ramp_world(grade);
+Hold hold_on_ramp(const SimInput& input, double grade = rally::tests::kRampGrade,
+                  Surface surface = Surface::Asphalt) {
+    WorldDesc desc = rally::tests::ramp_world(grade, surface);
     desc.car_spawn.y = 0.25; // sale por encima y cae sobre la rampa
     SimWorld world;
     world.build(desc);
@@ -354,17 +363,23 @@ Hold hold_on_ramp(const SimInput& input, double grade = rally::tests::kRampGrade
 
 } // namespace
 
-TEST_CASE("car: parked on the 15 percent ramp it moves less than 1 cm in 10 s") {
+TEST_CASE("car: parked on the 15 percent ramp it moves less than 1 cm in 10 s on five surfaces") {
     const rally::sim::JoltRuntime runtime;
-    const Hold with_brake = hold_on_ramp(pedal(0, kAxisMax));
-    const Hold with_handbrake = hold_on_ramp(pedal(0, 0, rally::sim::kButtonHandbrake));
-    MESSAGE("en la rampa del 15 % en 10 s: con el freno ", with_brake.moved * 1000.0,
-            " mm; con el freno de mano ", with_handbrake.moved * 1000.0, " mm");
-    CHECK(with_brake.moved < 0.01);
-    CHECK(with_handbrake.moved < 0.01);
-    // Con el freno, las cuatro ruedas quedan bloqueadas por fricción estática: ω = 0 exacto.
-    for (const int locked : with_brake.locked_steps) {
-        CHECK(locked == 10 * kStepsPerSecond);
+    // Parado, la rigidez de la huella es B·C·D/σ de cada superficie: en grava y arena, de 3 a 6
+    // veces más blanda que en asfalto.
+    for (const Surface surface : kAllSurfaces) {
+        const Hold with_brake = hold_on_ramp(pedal(0, kAxisMax), rally::tests::kRampGrade, surface);
+        const Hold with_handbrake = hold_on_ramp(pedal(0, 0, rally::sim::kButtonHandbrake),
+                                                 rally::tests::kRampGrade, surface);
+        MESSAGE(std::string(rally::sim::surface_name(surface)),
+                ": en la rampa del 15 % en 10 s, con el freno ", with_brake.moved * 1000.0,
+                " mm; con el freno de mano ", with_handbrake.moved * 1000.0, " mm");
+        CHECK(with_brake.moved < 0.01);
+        CHECK(with_handbrake.moved < 0.01);
+        // Con el freno, las cuatro ruedas quedan bloqueadas por fricción estática: ω = 0 exacto.
+        for (const int locked : with_brake.locked_steps) {
+            CHECK(locked == 10 * kStepsPerSecond);
+        }
     }
 }
 
@@ -376,6 +391,19 @@ TEST_CASE("car: without brakes it stays on a 1 percent slope and rolls down a 3 
             " m (la rodadura sujeta hasta el 1,5 %)");
     CHECK(one.moved < 0.001);
     CHECK(three.moved > 0.1);
+    // La rodadura es un par de Coulomb: en arena (c_rr = 0,15) sujeta el coche sin freno en
+    // pendientes de hasta el 14 % (en el 15 % rueda). Se revisa en la 2.10
+    // (2.5-respuesta-plan §4.7).
+    std::string sand;
+    for (const double grade : {0.10, 0.12, 0.13, 0.14, 0.15}) {
+        const Hold hold = hold_on_ramp(SimInput{}, grade, Surface::Sand);
+        sand += std::to_string(static_cast<int>(grade * 100.0 + 0.5)) +
+                " %: " + std::to_string(hold.moved * 1000.0) + " mm; ";
+        if (grade <= 0.14) {
+            CHECK(hold.moved < 0.01);
+        }
+    }
+    MESSAGE("sin freno en arena en 10 s: ", sand);
 }
 
 TEST_CASE("car: released on the ramp it rolls back") {
@@ -400,10 +428,24 @@ TEST_CASE("car: on flat ground with no input for 60 s it moves less than 1 mm an
     world.seal();
     run(world, SimInput{}, 3 * kStepsPerSecond);
     const BodyPose start = world.car_pose();
-    run(world, SimInput{}, 60 * kStepsPerSecond);
+    // Asentamiento desde el equilibrio a 1, 10, 30 y 60 s (hallazgo de la 2.4: 0,023, 0,174,
+    // 0,293 y 0,365 mm con el neumático provisional).
+    std::string settling;
+    int elapsed = 0;
+    for (const int mark : {1, 10, 30, 60}) {
+        run(world, SimInput{}, (mark - elapsed) * kStepsPerSecond);
+        elapsed = mark;
+        const BodyPose now = world.car_pose();
+        settling += std::to_string(mark) + " s: " + std::to_string(moved(start, now) * 1000.0) +
+                    " mm (x " + std::to_string((now.x - start.x) * 1000.0) + ", z " +
+                    std::to_string((now.z - start.z) * 1000.0) + "); ";
+    }
     const BodyPose end = world.car_pose();
+    const rally::sim::BodyVelocity v = world.car_velocity();
     const double turned = std::abs(heading(end) - heading(start)) * 180.0 / kPi;
-    MESSAGE("60 s sin entradas: ", moved(start, end) * 1000.0, " mm, giro ", turned, "°");
+    MESSAGE("sin entradas: ", settling, "|v| final ",
+            std::sqrt(static_cast<double>(v.vx * v.vx + v.vy * v.vy + v.vz * v.vz)) * 1e6,
+            " µm/s; giro ", turned, "°");
     CHECK(moved(start, end) < 0.001);
     CHECK(turned < 0.01);
 }
@@ -488,7 +530,7 @@ std::string sweep_table(bool explicit_wheels, int& worst_changes, double& worst_
     worst_changes = 0;
     worst_std = 0.0;
     worst_anchored_speed = 0.0;
-    for (const Surface surface : {Surface::Asphalt, Surface::Snow}) {
+    for (const Surface surface : kAllSurfaces) {
         for (const float speed : kSweepSpeeds) {
             const SweepResult t = sweep_case(surface, speed, Case::Throttle, explicit_wheels);
             const SweepResult b = sweep_case(surface, speed, Case::Brake, explicit_wheels);
@@ -515,7 +557,7 @@ std::string sweep_table(bool explicit_wheels, int& worst_changes, double& worst_
 
 } // namespace
 
-TEST_CASE("car: the wheels are stable from 0.5 to 60 m/s on asphalt and snow") {
+TEST_CASE("car: the wheels are stable from 0.5 to 60 m/s on the five surfaces") {
     const rally::sim::JoltRuntime runtime;
     int changes = 0;
     double kappa_std = 0.0;
@@ -742,7 +784,7 @@ TEST_CASE("car: coasting at 150 km/h decelerates by drag and rolling resistance"
     const CarData& car = reference_car();
     const double mean_v2 = sum_v2 / kStepsPerSecond;
     const double force = 0.5 * rally::sim::kAirDensity * car.cda * mean_v2 +
-                         car.rolling_resistance * car.mass * kGravity;
+                         car.tire(Surface::Asphalt).rolling_resistance * car.mass * kGravity;
     const double effective_mass =
         car.mass + kWheelCount * car.wheel_inertia / (car.wheel_radius * car.wheel_radius);
     const double expected = force / effective_mass;
@@ -968,146 +1010,52 @@ TEST_CASE("car impact: falling from 3 m is above the rumble threshold, resting b
     CHECK(resting < 0.1f);
 }
 
-// --- Neumático: deformación de la huella (2.4-respuesta-2) -----------------------------------
-
-namespace {
-
-constexpr float kSubstep = rally::sim::kStepSeconds / rally::sim::kWheelSubsteps;
-
-// Rueda rodando a `vx` sin deslizar, con carga fija en asfalto.
-rally::sim::TireInput rolling_input(float vx, float vy) {
-    rally::sim::TireInput in;
-    in.vx = vx;
-    in.vy = vy;
-    in.load = 3000.0f;
-    in.mu = reference_car().mu_asphalt;
-    in.radius = reference_car().wheel_radius;
-    return in;
-}
-
-} // namespace
-
-TEST_CASE("tire: after a steer step the lateral force reaches 63 percent after rolling sigma") {
-    const CarData& car = reference_car();
-    const float alpha = 5.0f * static_cast<float>(kPi) / 180.0f;
-    for (const float vx : {20.0f, 60.0f}) {
-        const rally::sim::TireInput in = rolling_input(vx, vx * std::tan(alpha));
-        rally::sim::WheelDynamics state;
-        state.omega = vx / in.radius;
-        // Fuerza final: Cα·α (con la rueda girando libre, sin fuerza longitudinal).
-        const double final_fy = -car.lat_stiffness * in.load * alpha;
-        double previous = 0.0;
-        double crossing = -1.0; // distancia rodada al pasar del 63 %
-        double peak = 0.0;
-        double travelled = 0.0;
-        for (int s = 0; s < 4000; ++s) {
-            const rally::sim::TireForce f = rally::sim::step_tire(car, in, kSubstep, true, state);
-            travelled += vx * kSubstep;
-            const double ratio = f.fy / final_fy;
-            peak = std::max(peak, ratio);
-            if (crossing < 0.0 && ratio >= 0.632) {
-                // Interpolación lineal dentro del subpaso.
-                crossing = travelled - vx * kSubstep * (ratio - 0.632) / (ratio - previous);
-            }
-            previous = ratio;
-        }
-        MESSAGE("a ", vx, " m/s: 63 % tras rodar ", crossing, " m (σ_y = ", car.relaxation_lat,
-                " m); máximo ", peak, " del final; ω final ", state.omega, " rad/s");
-        if (vx == 20.0f) {
-            CHECK(std::abs(crossing - car.relaxation_lat) / car.relaxation_lat < 0.05);
-        } else {
-            CHECK(peak <= 1.0 + 1.0e-6);
-        }
-    }
-}
-
-TEST_CASE("tire: after 2 s of saturated sliding there is no rope when grip comes back") {
-    const CarData& car = reference_car();
-    const float vx = 20.0f;
-    const float sliding = 20.0f * static_cast<float>(kPi) / 180.0f;
-    const float gripping = 2.0f * static_cast<float>(kPi) / 180.0f;
-    // A: 2 s deslizando a 20° (saturado) y vuelta a 2°.
-    rally::sim::WheelDynamics a;
-    a.omega = vx / reference_car().wheel_radius;
-    const int slide_steps = 2 * kStepsPerSecond * rally::sim::kWheelSubsteps;
-    rally::sim::TireForce last;
-    for (int s = 0; s < slide_steps; ++s) {
-        last = rally::sim::step_tire(car, rolling_input(vx, vx * std::tan(sliding)), kSubstep, true,
-                                     a);
-    }
-    const double limit = car.mu_asphalt * 3000.0;
-    REQUIRE(std::abs(last.fy) == doctest::Approx(limit).epsilon(1e-4)); // saturado
-    // B: la deformación justo en el límite, sin historia de deslizamiento.
-    rally::sim::WheelDynamics b = a;
-    b.w = -car.relaxation_lat * std::tan(static_cast<float>(limit) / (car.lat_stiffness * 3000.0f));
-    MESSAGE("deformación lateral tras 2 s saturado: ", a.w * 1000.0,
-            " mm; en el límite: ", b.w * 1000.0, " mm");
-    CHECK(a.w == doctest::Approx(b.w).epsilon(1e-4)); // no acumula: se queda en el límite
-    const double final_fy = car.lat_stiffness * 3000.0 * gripping;
-    double max_diff = 0.0;
-    double travelled = 0.0;
-    double at_four_sigma = 0.0;
-    for (int s = 0; s < 2000; ++s) {
-        const rally::sim::TireInput in = rolling_input(vx, vx * std::tan(gripping));
-        const rally::sim::TireForce fa = rally::sim::step_tire(car, in, kSubstep, true, a);
-        const rally::sim::TireForce fb = rally::sim::step_tire(car, in, kSubstep, true, b);
-        max_diff = std::max(max_diff, static_cast<double>(std::abs(fa.fy - fb.fy)));
-        CHECK(std::abs(fa.fy) <= limit * (1.0 + 1e-6));
-        travelled += vx * kSubstep;
-        if (at_four_sigma == 0.0 && travelled >= 4.0 * car.relaxation_lat) {
-            at_four_sigma = std::abs(fa.fy);
-        }
-    }
-    MESSAGE("vuelta a 2°: diferencia máxima con la huella recién en el límite ", max_diff,
-            " N; tras rodar 4σ_y, ", at_four_sigma, " N frente a la estacionaria ", final_fy,
-            " N (", 100.0 * (at_four_sigma / final_fy - 1.0), " %)");
-    CHECK(max_diff < 1.0);
-    CHECK(std::abs(at_four_sigma / final_fy - 1.0) < 0.05);
-}
-
 TEST_CASE("car: in the air the footprint is undeformed and landing gives no force jump") {
     const rally::sim::JoltRuntime runtime;
-    WorldDesc desc = flat_world(Surface::Asphalt, false, 10.0f);
-    desc.car_spawn.y = 0.6; // cae desde 0,6 m rodando a 10 m/s
-    SimWorld world;
-    world.build(desc);
-    world.seal();
-    SimInput steer;
-    steer.steer = kAxisMax / 4;
-    int airborne = 0;
-    // En el paso del aterrizaje de cada rueda, su fuerza sale de la deformación que acumula ese
-    // paso desde u = w = 0: una fracción del límite, no un salto. Se mide como fracción de
-    // μ·F_z.
-    double worst_landing = 0.0;
-    std::array<bool, kWheelCount> was_airborne{};
-    for (int s = 0; s < 2 * kStepsPerSecond; ++s) {
-        world.step(steer);
-        for (int i = 0; i < kWheelCount; ++i) {
-            const auto k = static_cast<std::size_t>(i);
-            const WheelOutput& w = world.car_controller().wheel(i);
-            if (!w.contact) {
-                ++airborne;
-                was_airborne[k] = true;
-                CHECK(w.u == 0.0f);
-                CHECK(w.w == 0.0f);
-                CHECK(w.fx == 0.0f);
-                CHECK(w.fy == 0.0f);
-            } else if (was_airborne[k] && w.load > 0.0f) {
-                // Primer paso con carga (en el primero con contacto aún es la del paso
-                // anterior, 0).
-                was_airborne[k] = false;
-                const double force = std::sqrt(static_cast<double>(w.fx * w.fx + w.fy * w.fy));
-                const double fraction = force / (reference_car().mu_asphalt * w.load);
-                MESSAGE("rueda ", i, " aterriza: F_z ", w.load, " N, fuerza ", force, " N (",
-                        100.0 * fraction, " % de μ·F_z)");
-                worst_landing = std::max(worst_landing, fraction);
+    for (const Surface surface : {Surface::Asphalt, Surface::Gravel}) {
+        WorldDesc desc = flat_world(surface, false, 10.0f);
+        desc.car_spawn.y = 0.6; // cae desde 0,6 m rodando a 10 m/s
+        SimWorld world;
+        world.build(desc);
+        world.seal();
+        SimInput steer;
+        steer.steer = kAxisMax / 4;
+        int airborne = 0;
+        // En el paso del aterrizaje de cada rueda, su fuerza sale de la deformación que acumula ese
+        // paso desde u = w = 0: una fracción del límite, no un salto. Se mide como fracción de
+        // μ·F_z.
+        double worst_landing = 0.0;
+        std::array<bool, kWheelCount> was_airborne{};
+        for (int s = 0; s < 2 * kStepsPerSecond; ++s) {
+            world.step(steer);
+            for (int i = 0; i < kWheelCount; ++i) {
+                const auto k = static_cast<std::size_t>(i);
+                const WheelOutput& w = world.car_controller().wheel(i);
+                if (!w.contact) {
+                    ++airborne;
+                    was_airborne[k] = true;
+                    CHECK(w.u == 0.0f);
+                    CHECK(w.w == 0.0f);
+                    CHECK(w.fx == 0.0f);
+                    CHECK(w.fy == 0.0f);
+                } else if (was_airborne[k] && w.load > 0.0f) {
+                    // Primer paso con carga (en el primero con contacto aún es la del paso
+                    // anterior, 0).
+                    was_airborne[k] = false;
+                    const double force = std::sqrt(static_cast<double>(w.fx * w.fx + w.fy * w.fy));
+                    const double fraction = force / (w.mu * w.load);
+                    MESSAGE("rueda ", i, " aterriza: F_z ", w.load, " N, fuerza ", force, " N (",
+                            100.0 * fraction, " % de μ·F_z)");
+                    worst_landing = std::max(worst_landing, fraction);
+                }
             }
         }
+        MESSAGE(std::string(rally::sim::surface_name(surface)),
+                ": pasos × ruedas en el aire: ", airborne);
+        CHECK(airborne > 0);
+        // Un paso a 10 m/s son 4 cm: el 10 % de σ_y y el 28 % de σ_x en asfalto (menos en grava).
+        CHECK(worst_landing < 0.3);
     }
-    MESSAGE("pasos × ruedas en el aire: ", airborne);
-    CHECK(airborne > 0);
-    // Un paso a 10 m/s son 4 cm: el 10 % de σ_y y el 28 % de σ_x.
-    CHECK(worst_landing < 0.3);
 }
 
 TEST_CASE("car: reset clears the dynamic state and keeps the wheel condition") {
@@ -1142,4 +1090,640 @@ TEST_CASE("car: reset clears the dynamic state and keeps the wheel condition") {
     const std::string nominal = other.save_state();
     other.set_wheel_radius(rally::sim::kFrontLeft, 0.29f);
     CHECK(other.save_state() != nominal);
+}
+
+// --- Neumático en el coche (tarea 2.5) -------------------------------------------------------
+
+namespace {
+
+double horizontal_speed(const SimWorld& world) {
+    const rally::sim::BodyVelocity v = world.car_velocity();
+    return std::sqrt(static_cast<double>(v.vx * v.vx + v.vz * v.vz));
+}
+
+double horizontal_distance(const BodyPose& a, const BodyPose& b) {
+    return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
+}
+
+SimInput axes_input(double steer, double throttle, double brake, std::uint16_t buttons = 0) {
+    SimInput input;
+    input.steer = static_cast<std::int16_t>(std::clamp(steer, -1.0, 1.0) * kAxisMax);
+    input.throttle = static_cast<std::int16_t>(std::clamp(throttle, 0.0, 1.0) * kAxisMax);
+    input.brake = static_cast<std::int16_t>(std::clamp(brake, 0.0, 1.0) * kAxisMax);
+    input.buttons = buttons;
+    return input;
+}
+
+// Controlador de velocidad solo para los tests: PI sobre la velocidad horizontal.
+struct SpeedHold {
+    double target = 0.0; // m/s
+    double integral = 0.0;
+
+    double throttle(const SimWorld& world) {
+        const double error = target - horizontal_speed(world);
+        integral = std::clamp(integral + error / kStepsPerSecond, -2.0, 2.0);
+        return std::clamp(0.5 * error + 0.5 * integral, 0.0, 1.0);
+    }
+};
+
+// Ángulo de deriva relajado medio de un eje, con el signo de beta (grados).
+double axle_slip_deg(const SimWorld& world, int a, int b) {
+    const CarController& c = world.car_controller();
+    return -0.5 * (c.wheel(a).alpha + c.wheel(b).alpha) * 180.0 / kPi;
+}
+
+std::string name(Surface surface) { return rally::sim::surface_name(surface); }
+
+} // namespace
+
+// Criterio 5.
+TEST_CASE("car: locked-wheel braking from 100 km/h stops in v squared over 2 mu slide g") {
+    const rally::sim::JoltRuntime runtime;
+    const double v0 = 100.0 / 3.6;
+    std::string table;
+    for (const Surface surface : kAllSurfaces) {
+        const rally::sim::TireSurface& t = reference_car().tire(surface);
+        SimWorld world;
+        world.build(flat_world(surface, false, static_cast<float>(v0)));
+        world.seal();
+        const BodyPose start = world.car_pose();
+        int steps = 0;
+        int locked = 0;
+        while (horizontal_speed(world) > 0.05 && steps < 30 * kStepsPerSecond) {
+            world.step(pedal(0, kAxisMax, rally::sim::kButtonHandbrake));
+            ++steps;
+            bool all = true;
+            for (int i = 0; i < kWheelCount; ++i) {
+                all = all && world.car_controller().wheel(i).omega == 0.0f;
+            }
+            locked += all ? 1 : 0;
+        }
+        const double distance = horizontal_distance(start, world.car_pose());
+        const double expected = v0 * v0 / (2.0 * t.mu_peak * t.slide_ratio * kGravity);
+        char row[160];
+        std::snprintf(row, sizeof(row),
+                      "%s: %.1f m (esperado %.1f m, %+.1f %%); cuatro ruedas bloqueadas en el "
+                      "%.0f %% de los pasos\n",
+                      name(surface).c_str(), distance, expected,
+                      100.0 * (distance / expected - 1.0), 100.0 * locked / std::max(steps, 1));
+        table += row;
+        CHECK(std::abs(distance / expected - 1.0) <= 0.15);
+    }
+    MESSAGE("frenada con las ruedas bloqueadas desde 100 km/h:\n", table);
+}
+
+// Criterio 6.
+namespace {
+
+struct ThresholdStop {
+    double distance = 0.0;
+    std::array<double, kWheelCount> kappa{}; // κ_r / κ pico medio por rueda
+    double level = 0.0;                      // freno medio
+};
+
+// Frenada desde `v0` con el controlador de deslizamiento solo para el test: el freno total
+// sube o baja para que el |κ_r| mayor de las cuatro ruedas se quede en κ pico.
+constexpr double kThresholdGain = 0.008;
+
+ThresholdStop threshold_stop(Surface surface, double v0, double front_share) {
+    const rally::sim::TireSurface& t = reference_car().tire(surface);
+    WorldDesc desc = flat_world(surface, false, static_cast<float>(v0));
+    desc.car_data.brake_front_share = static_cast<float>(front_share);
+    SimWorld world;
+    world.build(desc);
+    world.seal();
+    const BodyPose start = world.car_pose();
+    double level = 0.5;
+    ThresholdStop stop;
+    int steps = 0;
+    while (horizontal_speed(world) > 0.3 && steps < 30 * kStepsPerSecond) {
+        double worst = 0.0;
+        for (int i = 0; i < kWheelCount; ++i) {
+            worst = std::max(worst, -static_cast<double>(world.car_controller().wheel(i).kappa));
+        }
+        level = std::clamp(level + kThresholdGain * (t.slip_ratio_peak - worst) / t.slip_ratio_peak,
+                           0.0, 1.0);
+        world.step(axes_input(0.0, 0.0, level));
+        for (int i = 0; i < kWheelCount; ++i) {
+            stop.kappa[static_cast<std::size_t>(i)] +=
+                -world.car_controller().wheel(i).kappa / t.slip_ratio_peak;
+        }
+        stop.level += level;
+        ++steps;
+    }
+    for (double& k : stop.kappa) {
+        k /= std::max(steps, 1);
+    }
+    stop.level /= std::max(steps, 1);
+    stop.distance = horizontal_distance(start, world.car_pose());
+    return stop;
+}
+
+} // namespace
+
+TEST_CASE("car: threshold braking from 100 km/h stops in v squared over 2 mu peak plus rolling") {
+    const rally::sim::JoltRuntime runtime;
+    const double v0 = 100.0 / 3.6;
+    std::string table;
+    for (const Surface surface : kAllSurfaces) {
+        const rally::sim::TireSurface& t = reference_car().tire(surface);
+        // Reparto de freno ideal para esta superficie, solo en la copia del coche del test: el
+        // que da la frenada más corta, con los dos ejes a la vez en el pico (2.5-respuesta-plan
+        // §4.5). El criterio mide el neumático, no el reparto. Búsqueda de la sección áurea en
+        // [0,4, 0,9].
+        double lo = 0.4;
+        double hi = 0.9;
+        constexpr double kGolden = 0.6180339887498949;
+        double a = hi - kGolden * (hi - lo);
+        double b = lo + kGolden * (hi - lo);
+        ThresholdStop sa = threshold_stop(surface, v0, a);
+        ThresholdStop sb = threshold_stop(surface, v0, b);
+        for (int i = 0; i < 10; ++i) {
+            if (sa.distance < sb.distance) {
+                hi = b;
+                b = a;
+                sb = sa;
+                a = hi - kGolden * (hi - lo);
+                sa = threshold_stop(surface, v0, a);
+            } else {
+                lo = a;
+                a = b;
+                sa = sb;
+                b = lo + kGolden * (hi - lo);
+                sb = threshold_stop(surface, v0, b);
+            }
+        }
+        const ThresholdStop& best = sa.distance < sb.distance ? sa : sb;
+        const double share = sa.distance < sb.distance ? a : b;
+        const double distance = best.distance;
+        const double expected = v0 * v0 / (2.0 * (t.mu_peak + t.rolling_resistance) * kGravity);
+        const double friction_only = v0 * v0 / (2.0 * t.mu_peak * kGravity);
+        char row[240];
+        std::snprintf(row, sizeof(row),
+                      "%s: %.1f m (esperado %.1f m, %+.1f %%; con μ pico solo %.1f m, %+.1f %%); "
+                      "reparto delantero %.3f; κ_r/κ pico medio %.2f %.2f %.2f %.2f\n",
+                      name(surface).c_str(), distance, expected,
+                      100.0 * (distance / expected - 1.0), friction_only,
+                      100.0 * (distance / friction_only - 1.0), share, best.kappa[0], best.kappa[1],
+                      best.kappa[2], best.kappa[3]);
+        table += row;
+        CHECK(std::abs(distance / expected - 1.0) <= 0.15);
+    }
+    MESSAGE("frenada en el umbral desde 100 km/h (reparto ideal por superficie):\n", table);
+}
+
+// Criterio 7.
+TEST_CASE("car: maximum lateral acceleration at 60 km/h with a 2 degrees per second steer ramp") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    struct Range {
+        Surface surface;
+        double low;
+        double high;
+    };
+    const std::array<Range, 5> ranges = {
+        Range{Surface::Asphalt, 0.95, 1.15}, Range{Surface::Dirt, 0.68, 0.82},
+        Range{Surface::Gravel, 0.62, 0.75}, Range{Surface::Snow, 0.38, 0.47},
+        Range{Surface::Sand, 0.42, 0.52}};
+    std::string table;
+    for (const Range& range : ranges) {
+        SimWorld world;
+        WorldDesc desc = flat_world(range.surface, false, 60.0f / 3.6f);
+        desc.bodies[0].half_x = 300.0f; // el círculo de ~30 m de radio cabe entero
+        world.build(desc);
+        world.seal();
+        world.set_telemetry(true);
+        SpeedHold hold{60.0 / 3.6};
+        constexpr int kWindow = kStepsPerSecond / 4; // media de 0,25 s
+        std::array<double, kWindow> window{};
+        double window_sum = 0.0;
+        double best = 0.0;
+        double best_front = 0.0;
+        double best_rear = 0.0;
+        double best_kappa = 0.0;
+        double best_share = 0.0;
+        double best_throttle = 0.0;
+        double best_angle = 0.0;
+        for (int s = 0; s < 15 * kStepsPerSecond; ++s) {
+            const double angle = 2.0 * kPi / 180.0 * s / kStepsPerSecond; // rueda interior
+            if (angle > car.max_steer) {
+                break;
+            }
+            const double throttle = hold.throttle(world);
+            world.step(axes_input(angle / car.max_steer, throttle, 0.0));
+            const rally::sim::CarTelemetry& t = world.telemetry();
+            const double speed = std::sqrt(static_cast<double>(t.vx * t.vx + t.vz * t.vz));
+            // Aceleración normal a la trayectoria, en el plano.
+            const double a_lat =
+                speed > 1.0 ? std::abs(static_cast<double>(t.vx * t.az - t.vz * t.ax)) / speed
+                            : 0.0;
+            const std::size_t k = static_cast<std::size_t>(s % kWindow);
+            window_sum += a_lat - window[k];
+            window[k] = a_lat;
+            if (s >= kWindow && window_sum / kWindow > best) {
+                best = window_sum / kWindow;
+                best_front = axle_slip_deg(world, 0, 1);
+                best_rear = axle_slip_deg(world, 2, 3);
+                const WheelOutput& rl = world.car_controller().wheel(rally::sim::kRearLeft);
+                const WheelOutput& rr = world.car_controller().wheel(rally::sim::kRearRight);
+                best_kappa = 0.5 * (rl.kappa + rr.kappa);
+                // Parte de la lateral que deja la combinada en el eje trasero.
+                const double pure = std::abs(rl.fy_pure) + std::abs(rr.fy_pure);
+                best_share = pure > 0.0 ? (std::abs(rl.fy) + std::abs(rr.fy)) / pure : 1.0;
+                best_throttle = throttle;
+                best_angle = angle * 180.0 / kPi;
+            }
+            if (std::abs(t.beta) > 45.0 * kPi / 180.0) {
+                break; // trompo
+            }
+        }
+        const double g_max = best / kGravity;
+        char row[240];
+        std::snprintf(row, sizeof(row),
+                      "%s: %.3f g (rango %.2f–%.2f) con la dirección a %.1f°; deriva delantera "
+                      "%.1f°, trasera %.1f°; κ_r trasero %.3f; lateral trasera / pura %.2f; "
+                      "acelerador %.2f\n",
+                      name(range.surface).c_str(), g_max, range.low, range.high, best_angle,
+                      best_front, best_rear, best_kappa, best_share, best_throttle);
+        table += row;
+        CHECK(g_max >= range.low);
+        CHECK(g_max <= range.high);
+    }
+    MESSAGE("aceleración lateral máxima a 60 km/h (media de 0,25 s):\n", table);
+}
+
+// Criterio 8.
+TEST_CASE("car: coasting at 50 km/h decelerates by rolling resistance and drag on each surface") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    const double v0 = 50.0 / 3.6;
+    std::string table;
+    for (const Surface surface : kAllSurfaces) {
+        const double c_rr = car.tire(surface).rolling_resistance;
+        SimWorld world;
+        // Sale algo más rápido para que la media de la medida quede en 50 km/h.
+        world.build(flat_world(surface, false,
+                               static_cast<float>(v0 + 0.5 * (c_rr * kGravity + 0.1) + 0.2)));
+        world.seal();
+        run(world, SimInput{}, kStepsPerSecond / 2);
+        const double before = forward_speed(world);
+        double sum_v2 = 0.0;
+        for (int s = 0; s < kStepsPerSecond; ++s) {
+            world.step(SimInput{});
+            const double v = forward_speed(world);
+            sum_v2 += v * v;
+        }
+        const double measured = before - forward_speed(world); // en 1 s
+        const double mean_v2 = sum_v2 / kStepsPerSecond;
+        const double force =
+            0.5 * rally::sim::kAirDensity * car.cda * mean_v2 + c_rr * car.mass * kGravity;
+        // Las ruedas también se frenan: masa equivalente m + ΣI/r², como en la deceleración
+        // por el aire de la 2.4 (2.5-respuesta-plan §4.4). Sin ella el valor es un 4,5 % menor.
+        const double effective_mass =
+            car.mass + kWheelCount * car.wheel_inertia / (car.wheel_radius * car.wheel_radius);
+        const double expected = force / effective_mass;
+        char row[200];
+        std::snprintf(row, sizeof(row),
+                      "%s a %.1f km/h: %.4f m/s² (%.4f g); esperado %.4f m/s² (%+.1f %%)\n",
+                      name(surface).c_str(), std::sqrt(mean_v2) * 3.6, measured,
+                      measured / kGravity, expected, 100.0 * (measured / expected - 1.0));
+        table += row;
+        CHECK(std::abs(measured / expected - 1.0) <= 0.05);
+        if (surface == Surface::Sand) {
+            CHECK(measured / kGravity >= 0.1);
+        }
+    }
+    MESSAGE("deceleración en punto muerto (sin acelerador):\n", table);
+}
+
+// Criterio 9.
+TEST_CASE("car: astride asphalt and gravel each wheel reports the surface it stands on") {
+    const rally::sim::JoltRuntime runtime;
+    SimWorld world;
+    world.build(rally::tests::split_world(Surface::Asphalt, Surface::Gravel));
+    world.seal();
+    world.set_telemetry(true);
+    run(world, SimInput{}, kStepsPerSecond);
+    const CarController& c = world.car_controller();
+    const rally::sim::CarTelemetry& t = world.telemetry();
+    for (int i = 0; i < kWheelCount; ++i) {
+        const bool left = i == rally::sim::kFrontLeft || i == rally::sim::kRearLeft;
+        const Surface expected = left ? Surface::Asphalt : Surface::Gravel;
+        const WheelOutput& w = c.wheel(i);
+        MESSAGE("rueda ", i, ": ", name(w.surface), ", μ efectivo ", w.mu);
+        CHECK(w.surface == expected);
+        CHECK(t.wheels[static_cast<std::size_t>(i)].surface == static_cast<std::int8_t>(expected));
+        CHECK(w.mu == doctest::Approx(rally::sim::peak_mu(reference_car().tire(expected), w.load,
+                                                          reference_car().nominal_load)));
+    }
+}
+
+// Régimen de arranque (2.5-respuesta-plan §1).
+TEST_CASE("car: launching at full throttle from rest goes straight with no wheel reversal") {
+    const rally::sim::JoltRuntime runtime;
+    std::string table;
+    for (const Surface surface : kAllSurfaces) {
+        const rally::sim::TireSurface& t = reference_car().tire(surface);
+        SimWorld world;
+        world.build(flat_world(surface));
+        world.seal();
+        run(world, SimInput{}, kStepsPerSecond); // se asienta
+        const BodyPose start = world.car_pose();
+        double lowest_omega = 0.0;
+        double best_kappa = 0.0;  // κ_r mayor de las traseras en el primer medio segundo
+        double worst_curve = 0.0; // |F − curva| / D trasera al final del primer medio segundo
+        double share = 0.0;       // F_x / D trasera al final del primer medio segundo
+        for (int s = 0; s < 3 * kStepsPerSecond; ++s) {
+            world.step(pedal(kAxisMax, 0));
+            const CarController& c = world.car_controller();
+            for (int i = 0; i < kWheelCount; ++i) {
+                lowest_omega = std::min(lowest_omega, static_cast<double>(c.wheel(i).omega));
+            }
+            if (s >= kStepsPerSecond / 2) {
+                continue;
+            }
+            for (const int i : {rally::sim::kRearLeft, rally::sim::kRearRight}) {
+                const WheelOutput& w = c.wheel(i);
+                best_kappa = std::max(best_kappa, static_cast<double>(w.kappa));
+                const double d = w.mu * w.load;
+                if (s == kStepsPerSecond / 2 - 1) {
+                    // La fuerza es la media de los 4 subpasos y κ_r el del final del paso: se
+                    // comparan al final del medio segundo, con κ_r ya casi quieto.
+                    const rally::sim::TireForce curve = rally::sim::tire_force(
+                        t, w.kappa, std::tan(w.alpha), w.load, reference_car().nominal_load);
+                    worst_curve =
+                        std::max(worst_curve, std::hypot(w.fx - curve.fx, w.fy - curve.fy) / d);
+                    share = std::max(share, w.fx / d);
+                }
+            }
+        }
+        const BodyPose end = world.car_pose();
+        const Axes a = axes(start);
+        // Desvío lateral respecto a la recta de salida y giro.
+        const double dx = end.x - start.x;
+        const double dz = end.z - start.z;
+        const double lateral = std::abs(dx * a.rx + dz * a.rz);
+        const double turned = std::abs(heading(end) - heading(start)) * 180.0 / kPi;
+        char row[220];
+        std::snprintf(row, sizeof(row),
+                      "%s: %.1f m en 3 s, desvío %.1f mm, giro %.3f°, ω mínima %.3f rad/s; "
+                      "primer 0,5 s: κ_r trasero máximo %.2f (%.1f × κ pico), F_x/D trasera al "
+                      "final %.3f, |F − curva| máx %.4f D\n",
+                      name(surface).c_str(), horizontal_distance(start, end), lateral * 1000.0,
+                      turned, lowest_omega, best_kappa, best_kappa / t.slip_ratio_peak, share,
+                      worst_curve);
+        table += row;
+        CHECK(lateral < 0.05);
+        CHECK(turned < 0.5);
+        CHECK(lowest_omega >= 0.0);
+        if (surface == Surface::Gravel || surface == Surface::Sand) {
+            // La rueda que patina desliza: pasa del pico y da la fuerza de la curva en su
+            // κ_r, no la del pico (2.5-respuesta-plan §1).
+            CHECK(best_kappa > t.slip_ratio_peak);
+            CHECK(worst_curve <= 0.01);
+            CHECK(share < 0.99);
+        }
+    }
+    MESSAGE("salida con el acelerador a fondo:\n", table);
+}
+
+// Régimen de baja velocidad: sin serpenteo.
+TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    const double threshold = 0.2 * kPi / 180.0; // rad/s
+    std::string table;
+    for (const Surface surface : kAllSurfaces) {
+        for (const double kmh : {5.0, 10.0, 20.0}) {
+            SimWorld world;
+            world.build(flat_world(surface, false, static_cast<float>(kmh / 3.6)));
+            world.seal();
+            world.set_telemetry(true);
+            SpeedHold hold{kmh / 3.6};
+            for (int s = 0; s < kStepsPerSecond; ++s) {
+                world.step(axes_input(0.0, hold.throttle(world), 0.0));
+            }
+            // Pulso de 5° en las ruedas durante 0,25 s.
+            const double pulse = 5.0 * kPi / 180.0 / car.max_steer;
+            for (int s = 0; s < kStepsPerSecond / 4; ++s) {
+                world.step(axes_input(pulse, hold.throttle(world), 0.0));
+            }
+            int changes = 0;
+            int last_sign = 0;
+            double last_above = 0.0; // s desde soltar hasta la última vez con |r| ≥ umbral
+            double peak = 0.0;
+            std::string extremes; // extremos de r entre cruces por 0 (°/s, en s)
+            double extreme = 0.0;
+            double extreme_t = 0.0;
+            double previous_r = 0.0;
+            for (int s = 0; s < 3 * kStepsPerSecond; ++s) {
+                world.step(axes_input(0.0, hold.throttle(world), 0.0));
+                const double r = world.telemetry().yaw_rate;
+                peak = std::max(peak, std::abs(r));
+                if ((r > 0.0) != (previous_r > 0.0) && s > 0) {
+                    char e[48];
+                    std::snprintf(e, sizeof(e), " %.3f (%.2f s)", extreme * 180.0 / kPi, extreme_t);
+                    extremes += e;
+                    extreme = 0.0;
+                }
+                if (std::abs(r) > std::abs(extreme)) {
+                    extreme = r;
+                    extreme_t = static_cast<double>(s + 1) / kStepsPerSecond;
+                }
+                previous_r = r;
+                if (std::abs(r) >= threshold) {
+                    const int sign = r > 0.0 ? 1 : -1;
+                    if (last_sign != 0 && sign != last_sign) {
+                        ++changes;
+                    }
+                    last_sign = sign;
+                    last_above = static_cast<double>(s + 1) / kStepsPerSecond;
+                }
+            }
+            char row[200];
+            std::snprintf(row, sizeof(row),
+                          "%s a %.0f km/h: guiñada máxima %.2f°/s, %d cambios de signo, "
+                          "|r| < 0,2°/s desde %.2f s; extremos:",
+                          name(surface).c_str(), kmh, peak * 180.0 / kPi, changes, last_above);
+            table += row;
+            table += extremes.substr(0, 160) + "\n";
+            CHECK(changes <= 1);
+            CHECK(last_above < 2.0);
+        }
+    }
+    MESSAGE("pulso de dirección de 5° durante 0,25 s y suelta:\n", table);
+}
+
+// Cambio de superficie con la huella deformada (2.5-respuesta-plan §3).
+namespace {
+
+// Curva estable a 60 km/h: la dirección sube a 4°/s hasta que la deriva media delantera llega
+// a α pico del asfalto y se queda ahí.
+struct CurveDrive {
+    SpeedHold hold{60.0 / 3.6};
+    double angle = 0.0;
+    bool holding = false;
+    int held_steps = 0;
+
+    SimInput next(const SimWorld& world) {
+        const CarData& car = reference_car();
+        if (!holding) {
+            if (std::abs(axle_slip_deg(world, 0, 1)) * kPi / 180.0 >=
+                car.tire(Surface::Asphalt).slip_angle_peak) {
+                holding = true;
+            } else {
+                angle += 4.0 * kPi / 180.0 / kStepsPerSecond;
+            }
+        } else {
+            ++held_steps;
+        }
+        return axes_input(angle / car.max_steer, hold.throttle(world), 0.0);
+    }
+};
+
+WorldDesc wide_world(const std::vector<rally::sim::BoxDesc>& boxes, float yaw) {
+    WorldDesc desc;
+    desc.bodies = boxes;
+    desc.car = true;
+    desc.car_spawn.speed = 60.0f / 3.6f;
+    desc.car_spawn.yaw = yaw;
+    desc.car_data = reference_car();
+    return desc;
+}
+
+rally::sim::BoxDesc flat_box(Surface surface, double z_min, double z_max) {
+    rally::sim::BoxDesc box;
+    box.x = 0.0;
+    box.y = -0.5;
+    box.z = 0.5 * (z_min + z_max);
+    box.half_x = 300.0f;
+    box.half_y = 0.5f;
+    box.half_z = static_cast<float>(0.5 * (z_max - z_min));
+    box.surface = surface;
+    return box;
+}
+
+} // namespace
+
+TEST_CASE("car: crossing between asphalt and gravel in a steady curve gives no force spike") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    for (const auto& [from, to] : {std::pair{Surface::Asphalt, Surface::Gravel},
+                                   std::pair{Surface::Gravel, Surface::Asphalt}}) {
+        // Pasada previa en la primera superficie: dónde está el coche y hacia dónde va tras 1 s de
+        // curva estable.
+        BodyPose cross;
+        rally::sim::BodyVelocity cross_v;
+        {
+            SimWorld world;
+            world.build(wide_world({flat_box(from, -300.0, 300.0)}, 0.0f));
+            world.seal();
+            CurveDrive drive;
+            for (int s = 0; s < 10 * kStepsPerSecond && drive.held_steps < kStepsPerSecond; ++s) {
+                world.step(drive.next(world));
+            }
+            REQUIRE(drive.held_steps == kStepsPerSecond);
+            cross = world.car_pose();
+            cross_v = world.car_velocity();
+            MESSAGE("curva estable: dirección a ", drive.angle * 180.0 / kPi,
+                    "°, deriva delantera ", axle_slip_deg(world, 0, 1), "°, trasera ",
+                    axle_slip_deg(world, 2, 3), "°");
+        }
+        // Segunda pasada girada para que en ese punto vaya hacia -z: frontera recta en z.
+        const double yaw =
+            std::atan2(static_cast<double>(cross_v.vx), -static_cast<double>(cross_v.vz));
+        const double c = std::cos(yaw);
+        const double s = std::sin(yaw);
+        const double border = -cross.x * s + cross.z * c;
+        SimWorld world;
+        // Las losas se solapan 0,5 m a cada lado de la frontera: con dos cajas que solo se tocan,
+        // los cantos redondeados (radio convexo de Jolt) hacen un surco en el que la rueda pierde
+        // la carga un paso. El suelo de la zona es un solo HeightFieldShape y no tiene juntas.
+        world.build(wide_world({flat_box(from, border - 0.5, border + 400.0),
+                                flat_box(to, border - 300.0, border + 0.5)},
+                               static_cast<float>(yaw)));
+        world.seal();
+        CurveDrive drive;
+        const rally::sim::TireSurface& target = car.tire(to);
+        std::array<int, kWheelCount> crossed_at{};
+        crossed_at.fill(-1);
+        std::array<double, kWheelCount> rolled{};
+        std::array<int, kWheelCount> last_sign{};
+        std::array<WheelOutput, kWheelCount> before{}; // la rueda en el paso anterior
+        std::array<double, kWheelCount> at_six_sigma{};
+        std::array<bool, kWheelCount> measured{};
+        int sign_changes = 0;
+        double worst_over = 0.0; // máximo de |F| / (μ(F_z)·F_z) desde el cruce
+        std::string rows;
+        for (int step = 0; step < 15 * kStepsPerSecond; ++step) {
+            world.step(drive.next(world));
+            bool all_done = true;
+            for (int i = 0; i < kWheelCount; ++i) {
+                const auto k = static_cast<std::size_t>(i);
+                const WheelOutput& w = world.car_controller().wheel(i);
+                if (crossed_at[k] < 0 && w.contact && w.surface == to) {
+                    crossed_at[k] = step;
+                    last_sign[k] = before[k].fy > 0.0f ? 1 : -1;
+                }
+                if (crossed_at[k] < 0 || step - crossed_at[k] > kStepsPerSecond) {
+                    all_done = all_done && crossed_at[k] >= 0;
+                    continue;
+                }
+                all_done = false;
+                const double force = std::hypot(w.fx, w.fy);
+                worst_over = std::max(worst_over, force / (w.mu * w.load));
+                const int sign = w.fy > 0.0f ? 1 : -1;
+                if (last_sign[k] != 0 && sign != last_sign[k]) {
+                    ++sign_changes;
+                    char row[160];
+                    std::snprintf(row, sizeof(row),
+                                  "rueda %d: F_y cambia de signo %d pasos tras el cruce: de %.0f N "
+                                  "(α_r %.3f°, κ_r %.4f, %s) a %.0f N (α_r %.3f°, κ_r %.4f, %s), "
+                                  "carga %.0f N\n",
+                                  i, step - crossed_at[k], static_cast<double>(before[k].fy),
+                                  before[k].alpha * 180.0 / kPi,
+                                  static_cast<double>(before[k].kappa),
+                                  name(before[k].surface).c_str(), static_cast<double>(w.fy),
+                                  w.alpha * 180.0 / kPi, static_cast<double>(w.kappa),
+                                  name(w.surface).c_str(), static_cast<double>(w.load));
+                    rows += row;
+                }
+                last_sign[k] = sign;
+                const double vx = w.omega * car.wheel_radius - w.slip_x;
+                rolled[k] += std::abs(vx) / kStepsPerSecond;
+                if (!measured[k] && rolled[k] >= 6.0 * target.relaxation_lat) {
+                    measured[k] = true;
+                    // Estacionaria en la superficie nueva con el deslizamiento cinemático de ahora.
+                    const rally::sim::TireForce steady = rally::sim::tire_force(
+                        target, static_cast<float>(w.slip_x / std::abs(vx)),
+                        static_cast<float>(w.slip_y / std::abs(vx)), w.load, car.nominal_load);
+                    const double expected = std::hypot(steady.fx, steady.fy);
+                    at_six_sigma[k] = force / expected - 1.0;
+                    char row[160];
+                    std::snprintf(row, sizeof(row),
+                                  "rueda %d: tras rodar 6σ_y, |F| %.0f N frente a la "
+                                  "estacionaria %.0f N (%+.1f %%)\n",
+                                  i, force, expected, 100.0 * at_six_sigma[k]);
+                    rows += row;
+                }
+            }
+            for (int i = 0; i < kWheelCount; ++i) {
+                before[static_cast<std::size_t>(i)] = world.car_controller().wheel(i);
+            }
+            if (all_done) {
+                break;
+            }
+        }
+        MESSAGE("cruce de ", name(from), " a ", name(to), " a 60 km/h: |F|/(μF_z) máximo ",
+                worst_over, "; cambios de signo de F_y en el segundo siguiente ", sign_changes,
+                "\n", rows);
+        for (int i = 0; i < kWheelCount; ++i) {
+            const auto k = static_cast<std::size_t>(i);
+            REQUIRE(crossed_at[k] >= 0);
+            CHECK(measured[k]);
+            CHECK(std::abs(at_six_sigma[k]) <= 0.05);
+        }
+        CHECK(worst_over <= 1.0001);
+        CHECK(sign_changes == 0);
+    }
 }

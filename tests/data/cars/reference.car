@@ -1,4 +1,4 @@
-# Copia congelada de data/cars/mid_awd_turbo.car (tarea 2.4) para la huella y los tests.
+# Copia congelada de data/cars/mid_awd_turbo.car (tarea 2.4; neumático de la tarea 2.5) para la huella y los tests.
 # No se toca al ajustar el manejo (2.10); solo la cambian las tareas que cambian el código de
 # la simulación (por ejemplo, al añadir claves).
 # Coche de la 1.0: 4x4 con motor central y turbo, inspirado en el Peugeot 205 T16 Evo 1.
@@ -46,25 +46,86 @@ handbrake_torque = 1500   # N·m por rueda trasera. Estimado
 max_steer_deg = 30        # ángulo de la rueda interior. Estimado
 ackermann = 0.5           # fracción de Ackermann. Estimado
 
-# Neumático provisional (la Pacejka de la tarea 2.5 sustituye la fuerza estacionaria lineal):
-# deformación de la huella como estado (modelo transitorio), rigideces lineales limitadas
-# por el círculo de fricción y un μ por superficie. Con estas rigideces la fuerza
-# lateral satura a ~4° con μ = 0,7; en grava, un neumático real llega a su máximo con más
-# ángulo (8-12°). Lo resuelve la Pacejka por superficie de la 2.5: no se compensa aquí.
+# Neumático (tarea 2.5): Pacejka simplificada con una curva normalizada por superficie,
+# fricción combinada por deslizamiento normalizado, sensibilidad a la carga, deformación de la
+# huella como estado (relajación) y rodadura como par de Coulomb. Neumático de grava de rally,
+# el mismo en todas las superficies. El lector calcula B y C de la curva al cargar.
+# Lo común a todas las superficies:
 [tire]
-long_stiffness = 12       # Cκ / Fz, por unidad de κ. Valor de partida (provisional)
-lat_stiffness = 10        # Cα / Fz, por radián. Valor de partida (provisional)
-mu_asphalt = 1.0          # Valor de partida (provisional)
-mu_dirt = 0.75            # Valor de partida (provisional)
-mu_gravel = 0.7           # Valor de partida (provisional)
-mu_snow = 0.45            # Valor de partida (provisional)
-mu_sand = 0.5             # Valor de partida (provisional)
-rolling_resistance = 0.015 # coeficiente × carga. Valor de partida (provisional)
-relaxation_long = 0.15    # m: σ_x, longitud de relajación longitudinal. Valor de partida, se ajusta en 2.10
-relaxation_lat = 0.40     # m: σ_y, longitud de relajación lateral. Valor de partida, se ajusta en 2.10
 carcass_damping_long = 0.6 # ζ del modo carrocería-huella, longitudinal. Valor de partida, se ajusta en 2.10
 carcass_damping_lat = 0.6 # ζ del modo carrocería-huella, lateral. Valor de partida, se ajusta en 2.10
-carcass_damping_fade = 3  # m/s: el amortiguamiento de la carcasa baja a 0 aquí. Valor de partida, se ajusta en 2.10
+carcass_damping_fade = 3  # m/s: el amortiguamiento de la carcasa baja a 0 aquí y el recorte de la huella llega a 1/κ pico. Valor de partida, se ajusta en 2.10
+
+# Un juego por superficie. Claves:
+#   mu_peak: μ pico a la carga estática media por rueda (F_z0 = m·g/4).
+#   slip_angle_peak_deg y slip_ratio_peak: ángulo de deriva y deslizamiento longitudinal del
+#   pico.
+#   slide_ratio: μ deslizando / μ pico, la asíntota de la curva (entre 0,5 y 0,99).
+#   curvature_e: E de la curva (< 1); mueve poco la caída tras el pico.
+#   load_sensitivity: k en μ(F_z) = μ pico·(1 − k·(F_z/F_z0 − 1)), con F_z/F_z0 en [0, 3].
+#   relaxation_lat y relaxation_long: σ_y y σ_x (m); σ_x = 0,375·σ_y, la proporción de la 2.4.
+#   rolling_resistance: coeficiente × carga.
+# Todos son valores de partida (tabla del prompt de la 2.5) y se ajustan en la 2.10.
+
+# Mucho agarre, pico temprano, se va de golpe.
+[tire.asphalt]
+mu_peak = 1.10
+slip_angle_peak_deg = 7
+slip_ratio_peak = 0.10
+slide_ratio = 0.80
+curvature_e = 0
+load_sensitivity = 0.10
+relaxation_lat = 0.40
+relaxation_long = 0.15
+rolling_resistance = 0.015
+
+# Agarra bastante y suelta con una caída marcada.
+[tire.dirt]
+mu_peak = 0.80
+slip_angle_peak_deg = 10
+slip_ratio_peak = 0.14
+slide_ratio = 0.75
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.50
+relaxation_long = 0.1875
+rolling_resistance = 0.030
+
+# Flotante y progresiva: se desliza mucho sin perderse.
+[tire.gravel]
+mu_peak = 0.72
+slip_angle_peak_deg = 14
+slip_ratio_peak = 0.18
+slide_ratio = 0.90
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.60
+relaxation_long = 0.225
+rolling_resistance = 0.045
+
+# Nieve con clavos: poco agarre, muy progresiva, frena poco.
+[tire.snow]
+mu_peak = 0.45
+slip_angle_peak_deg = 12
+slip_ratio_peak = 0.15
+slide_ratio = 0.90
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.60
+relaxation_long = 0.225
+rolling_resistance = 0.035
+
+# Frena el coche; castiga perder las vueltas.
+[tire.sand]
+mu_peak = 0.50
+slip_angle_peak_deg = 16
+slip_ratio_peak = 0.22
+slide_ratio = 0.95
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.70
+relaxation_long = 0.2625
+rolling_resistance = 0.15
 
 # Tracción provisional (la sustituyen el motor y la transmisión de la tarea 2.6).
 [drive]

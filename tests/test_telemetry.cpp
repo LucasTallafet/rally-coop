@@ -35,7 +35,7 @@ using rally::sim::Surface;
 // (telemetry_csv_for_random_inputs). Tiene que ser el mismo en Debug y en Release. Cambia
 // cuando una tarea añade columnas o cambia la simulación: se copia aquí el valor nuevo y va en
 // el mensaje del commit («Telemetry hash: 0x... -> 0x...»).
-constexpr std::uint64_t kExpectedTelemetryHash = 0x41f6a819c5da1a2aull;
+constexpr std::uint64_t kExpectedTelemetryHash = 0x0806a8e5b3c9db67ull;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = 180.0 / kPi;
@@ -394,27 +394,37 @@ TEST_CASE("telemetry_history: the game history holds 10 s and every page channel
     CHECK(history.columns() * rally::platform::kGraphStepsPerColumn == 10 * kStepsPerSecond);
     CHECK(history.channel_count() ==
           static_cast<int>(rally::platform::default_graph_channels().size()));
-    // Páginas: 1 · manejo (beta, guiñada, velocidad, entradas aplicadas), 2 · tren motriz,
-    // vacía hasta la 2.5–2.6, y 3 · suspensión (carga y compresión por rueda).
+    // Páginas: 1 · manejo (beta con la deriva media de cada eje, guiñada, velocidad, entradas
+    // aplicadas), 2 · tren motriz (κ_r por rueda; la 2.6 añade el motor) y 3 · suspensión
+    // (carga y compresión por rueda).
     const auto pages = rally::platform::default_graph_pages();
     REQUIRE(pages.size() == 3);
     CHECK(std::string(pages[0].title) == "manejo");
     CHECK(pages[0].panels.size() == 4);
+    CHECK(pages[0].panels[0].channels.size() == 3);
     CHECK(pages[0].panels[3].channels.size() == 4);
-    CHECK(pages[1].panels.empty());
+    REQUIRE(pages[1].panels.size() == 1);
+    CHECK(pages[1].panels[0].channels.size() == 4);
     CHECK(std::string(pages[2].title) == "suspensión");
     REQUIRE(pages[2].panels.size() == 2);
     CHECK(pages[2].panels[0].channels.size() == 4);
     CHECK(pages[2].panels[1].channels.size() == 4);
     CHECK(rally::platform::first_graph_channel(0) == 0);
-    CHECK(rally::platform::first_graph_channel(1) == 7);
-    CHECK(rally::platform::first_graph_channel(2) == 7);
+    CHECK(rally::platform::first_graph_channel(1) == 9);
+    CHECK(rally::platform::first_graph_channel(2) == 13);
     CHECK(rally::platform::default_graph_channels().size() <=
           static_cast<std::size_t>(rally::platform::kMaxGraphChannels));
-    // El orden de los canales es el de los paneles: el 3 es la velocidad en km/h.
+    // El orden de los canales es el de los paneles: el 5 es la velocidad en km/h.
     CarTelemetry t;
     t.speed = 10.0f;
-    CHECK(rally::platform::default_graph_channels()[2](t) == doctest::Approx(36.0f));
+    CHECK(rally::platform::default_graph_channels()[4](t) == doctest::Approx(36.0f));
+    // La deriva de cada eje lleva el signo de beta: ruedas yendo hacia su derecha (α < 0) dan
+    // un valor positivo, como beta con la velocidad a la derecha del morro.
+    t.wheels[0].alpha = -0.1f;
+    t.wheels[1].alpha = -0.3f;
+    CHECK(rally::platform::default_graph_channels()[1](t) == doctest::Approx(11.459156f));
+    t.wheels[3].kappa = 0.25f;
+    CHECK(rally::platform::default_graph_channels()[12](t) == doctest::Approx(25.0f));
 }
 
 TEST_CASE("telemetry_history: the graphs show beta as 0 below 3 m/s horizontal") {
@@ -441,15 +451,21 @@ TEST_CASE("telemetry_history: T pages through the pages with panels and then hid
         pager.press(false, full);
         CHECK(pager.visible(false) == expected);
     }
-    // Las páginas sin paneles se saltan: con las de la partida, T muestra la 1, la 3 y las
-    // oculta.
+    // Las páginas sin paneles se saltan.
+    const std::array<GraphPage, 3> gap = {GraphPage{"a", panel}, GraphPage{"b", {}},
+                                          GraphPage{"c", panel}};
+    rally::platform::GraphPager skipping;
+    for (const int expected : {0, 2, -1}) {
+        skipping.press(false, gap);
+        CHECK(skipping.visible(false) == expected);
+    }
+    // Con las de la partida (desde la 2.5 la 2 tiene paneles), T muestra la 1, la 2, la 3 y
+    // las oculta.
     rally::platform::GraphPager game;
-    game.press(false, rally::platform::default_graph_pages());
-    CHECK(game.visible(false) == 0);
-    game.press(false, rally::platform::default_graph_pages());
-    CHECK(game.visible(false) == 2);
-    game.press(false, rally::platform::default_graph_pages());
-    CHECK(game.visible(false) == -1);
+    for (const int expected : {0, 1, 2, -1}) {
+        game.press(false, rally::platform::default_graph_pages());
+        CHECK(game.visible(false) == expected);
+    }
 }
 
 TEST_CASE("telemetry_history: T does nothing in blind mode and blind mode hides the graphs") {
