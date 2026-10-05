@@ -1221,7 +1221,7 @@ ThresholdStop threshold_stop(Surface surface, double v0, double front_share) {
 
 } // namespace
 
-TEST_CASE("car: threshold braking from 100 km/h stops in v squared over 2 mu peak plus rolling") {
+TEST_CASE("car: threshold braking from 100 km/h stops in v squared over 2 mu peak g") {
     const rally::sim::JoltRuntime runtime;
     const double v0 = 100.0 / 3.6;
     std::string table;
@@ -1256,16 +1256,19 @@ TEST_CASE("car: threshold braking from 100 km/h stops in v squared over 2 mu pea
         const ThresholdStop& best = sa.distance < sb.distance ? sa : sb;
         const double share = sa.distance < sb.distance ? a : b;
         const double distance = best.distance;
-        const double expected = v0 * v0 / (2.0 * (t.mu_peak + t.rolling_resistance) * kGravity);
-        const double friction_only = v0 * v0 / (2.0 * t.mu_peak * kGravity);
+        // La rodadura es un par de Coulomb sobre la rueda (decisión del 2026-10-04): frenando al
+        // límite no se suma a la fricción, porque la fuerza en el suelo la limita μ·F_z. Lo que
+        // sí sumaría en arena es el empuje contra la arena acumulada al hundirse, fuera del
+        // alcance (2.5-respuesta-1 §1). Por eso el esperado es v²/(2·μ pico·g), no con μ + c_rr.
+        const double expected = v0 * v0 / (2.0 * t.mu_peak * kGravity);
+        const double with_rolling = v0 * v0 / (2.0 * (t.mu_peak + t.rolling_resistance) * kGravity);
         char row[240];
         std::snprintf(row, sizeof(row),
-                      "%s: %.1f m (esperado %.1f m, %+.1f %%; con μ pico solo %.1f m, %+.1f %%); "
+                      "%s: %.1f m (esperado %.1f m, %+.1f %%; con μ pico + c_rr serían %.1f m); "
                       "reparto delantero %.3f; κ_r/κ pico medio %.2f %.2f %.2f %.2f\n",
                       name(surface).c_str(), distance, expected,
-                      100.0 * (distance / expected - 1.0), friction_only,
-                      100.0 * (distance / friction_only - 1.0), share, best.kappa[0], best.kappa[1],
-                      best.kappa[2], best.kappa[3]);
+                      100.0 * (distance / expected - 1.0), with_rolling, share, best.kappa[0],
+                      best.kappa[1], best.kappa[2], best.kappa[3]);
         table += row;
         CHECK(std::abs(distance / expected - 1.0) <= 0.15);
     }
@@ -1487,14 +1490,16 @@ TEST_CASE("car: launching at full throttle from rest goes straight with no wheel
     MESSAGE("salida con el acelerador a fondo:\n", table);
 }
 
-// Régimen de baja velocidad: sin serpenteo.
+// Régimen de baja velocidad: sin serpenteo. El modo es la guiñada del coche sobre la rigidez
+// lateral de la huella (4,5 Hz en asfalto); ζ sale de la razón entre el segundo y el tercer
+// extremo de la guiñada tras soltar (medio ciclo libre). 30 km/h solo se mide.
 TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
     const rally::sim::JoltRuntime runtime;
     const CarData& car = reference_car();
     const double threshold = 0.2 * kPi / 180.0; // rad/s
     std::string table;
     for (const Surface surface : kAllSurfaces) {
-        for (const double kmh : {5.0, 10.0, 20.0}) {
+        for (const double kmh : {5.0, 10.0, 20.0, 30.0}) {
             SimWorld world;
             world.build(flat_world(surface, false, static_cast<float>(kmh / 3.6)));
             world.seal();
@@ -1513,6 +1518,8 @@ TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
             double last_above = 0.0; // s desde soltar hasta la última vez con |r| ≥ umbral
             double peak = 0.0;
             std::string extremes; // extremos de r entre cruces por 0 (°/s, en s)
+            std::array<double, 3> first_extremes{};
+            int extreme_count = 0;
             double extreme = 0.0;
             double extreme_t = 0.0;
             double previous_r = 0.0;
@@ -1524,6 +1531,10 @@ TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
                     char e[48];
                     std::snprintf(e, sizeof(e), " %.3f (%.2f s)", extreme * 180.0 / kPi, extreme_t);
                     extremes += e;
+                    if (extreme_count < 3) {
+                        first_extremes[static_cast<std::size_t>(extreme_count)] = extreme;
+                    }
+                    ++extreme_count;
                     extreme = 0.0;
                 }
                 if (std::abs(r) > std::abs(extreme)) {
@@ -1540,15 +1551,24 @@ TEST_CASE("car: at 5, 10 and 20 km/h a steer pulse dies out without weaving") {
                     last_above = static_cast<double>(s + 1) / kStepsPerSecond;
                 }
             }
-            char row[200];
+            // ζ del medio ciclo libre: |r3/r2| = exp(−ζπ/√(1 − ζ²)).
+            double zeta = 1.0;
+            if (extreme_count >= 3 && first_extremes[1] != 0.0 && first_extremes[2] != 0.0) {
+                const double decrement = std::log(std::abs(first_extremes[1] / first_extremes[2]));
+                zeta = decrement / std::sqrt(kPi * kPi + decrement * decrement);
+            }
+            char row[220];
             std::snprintf(row, sizeof(row),
                           "%s a %.0f km/h: guiñada máxima %.2f°/s, %d cambios de signo, "
-                          "|r| < 0,2°/s desde %.2f s; extremos:",
-                          name(surface).c_str(), kmh, peak * 180.0 / kPi, changes, last_above);
+                          "|r| < 0,2°/s desde %.2f s, ζ %.2f; extremos:",
+                          name(surface).c_str(), kmh, peak * 180.0 / kPi, changes, last_above,
+                          zeta);
             table += row;
-            table += extremes.substr(0, 160) + "\n";
-            CHECK(changes <= 1);
-            CHECK(last_above < 2.0);
+            table += extremes.substr(0, 120) + "\n";
+            if (kmh <= 20.0) {
+                CHECK(changes <= 1);
+                CHECK(last_above < 2.0);
+            }
         }
     }
     MESSAGE("pulso de dirección de 5° durante 0,25 s y suelta:\n", table);

@@ -52,6 +52,9 @@ public:
 
 float magnitude(float x, float y) { return rmath::sqrt(x * x + y * y); }
 
+// Giro mínimo de un cuerpo en un paso que Jolt 5.6.0 aplica (Body::AddRotationStep), rad.
+constexpr float kJoltMinRotationStep = 1.0e-6f;
+
 } // namespace
 
 double ReliefSource::height(MicroRelief relief, Surface surface, double x, double z) const {
@@ -176,6 +179,13 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         drive = 0.0f;
     }
 
+    // Jolt no gira un cuerpo cuyo giro en el paso es |ω|·dt ≤ 1e-6 rad
+    // (Body::AddRotationStep): por debajo de ~0,24 mrad/s a 240 Hz el giro no ocurre, pero su
+    // traslación sí. Con ese giro, v + ω×r en el contacto da cero mientras el cuerpo se
+    // traslada (el coche parado se deslizaba ~4 µm/s sobre la huella sin que el neumático lo
+    // viera). Entonces el neumático usa la velocidad que Jolt integra de verdad: la lineal.
+    const bool rotation_skipped = body->GetAngularVelocity().Length() * dt <= kJoltMinRotationStep;
+
     applied_force_ = JPH::Vec3::sZero();
     for (int i = 0; i < kWheelCount; ++i) {
         const auto index = static_cast<std::size_t>(i);
@@ -208,7 +218,9 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
             point = w->GetContactPosition();
             longitudinal = w->GetContactLongitudinal();
             lateral = w->GetContactLateral();
-            const JPH::Vec3 velocity = body->GetPointVelocity(point) - w->GetContactPointVelocity();
+            const JPH::Vec3 body_velocity =
+                rotation_skipped ? body->GetLinearVelocity() : body->GetPointVelocity(point);
+            const JPH::Vec3 velocity = body_velocity - w->GetContactPointVelocity();
             in.vx = velocity.Dot(longitudinal);
             in.vy = velocity.Dot(lateral);
             out.contact = true;

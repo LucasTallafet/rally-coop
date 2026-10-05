@@ -224,6 +224,13 @@ TireForce step_tire(const CarData& car, const TireInput& in, float h, bool impli
     const Relax ry = relax(rmath::abs(in.vx) / sigma_y, h);
     const float s_y = -in.vy;
 
+    // Amortiguamiento de la carcasa sobre la velocidad de deformación de la huella, c·du/dt y
+    // c·dw/dt en el subpaso (la histéresis de la carcasa). Parado, du/dt = s_x; en régimen
+    // estacionario, du/dt = 0: no cambia la curva ni la rigidez en curva.
+    const float u0 = state.u;
+    const float w0 = state.w;
+    const float inv_h = 1.0f / h;
+
     // Predicción con el giro sin cambiar, para el giro semi-implícito.
     const float s_x0 = state.omega * r - in.vx;
     float u_p = state.u * rx.e + s_x0 * rx.phi;
@@ -231,11 +238,11 @@ TireForce step_tire(const CarData& car, const TireInput& in, float h, bool impli
     const bool limited = limit_footprint(t, rho_max, u_p, w_p);
     const TireForce elastic0 =
         tire_force(t, u_p / sigma_x, w_p / sigma_y, in.load, car.nominal_load);
-    float fx0 = elastic0.fx + c_x * fade * s_x0;
-    const float fy0 = elastic0.fy + c_y * fade * s_y;
+    float fx0 = elastic0.fx + c_x * fade * (u_p - u0) * inv_h;
+    const float fy0 = elastic0.fy + c_y * fade * (w_p - w0) * inv_h;
     // ∂F_x/∂ω: la huella recortada no responde al giro.
     float slope =
-        (limited ? 0.0f : elastic_slope_x(t, u_p, w_p, limit)) * r * rx.phi + c_x * r * fade;
+        limited ? 0.0f : (elastic_slope_x(t, u_p, w_p, limit) + c_x * fade * inv_h) * r * rx.phi;
     const float predicted = magnitude(fx0, fy0);
     if (predicted > limit) {
         fx0 *= limit / predicted;
@@ -256,8 +263,8 @@ TireForce step_tire(const CarData& car, const TireInput& in, float h, bool impli
     const TireForce elastic =
         tire_force(t, state.u / sigma_x, state.w / sigma_y, in.load, car.nominal_load);
     force = elastic;
-    force.fx = elastic.fx + c_x * fade * s_x;
-    force.fy = elastic.fy + c_y * fade * s_y;
+    force.fx = elastic.fx + c_x * fade * (state.u - u0) * inv_h;
+    force.fy = elastic.fy + c_y * fade * (state.w - w0) * inv_h;
     const float total = magnitude(force.fx, force.fy);
     if (total > limit) {
         force.fx *= limit / total;
