@@ -14,7 +14,8 @@ namespace {
 // Peor caso de cada capa. Si cambia un texto en overlay.cpp, perf_counter.cpp o frame_graph.cpp,
 // su muestra cambia aquí.
 constexpr std::string_view kIndicatorSamples[] = {
-    "888 km/h   adelante   vuelta 888.88 s   mejor 888.88 s   A CIEGAS · Prueba 15/15",
+    "888 km/h   adelante   vuelta 888.88 s   mejor 888.88 s   A CIEGAS · Prueba 15/15   "
+    "volante [---------O---------]",
 };
 constexpr std::string_view kHelpHintSamples[] = {"H: ayuda"};
 // Panel de depuración: estas líneas y, entre la tercera y la cuarta, la fila de las barras de los
@@ -152,6 +153,13 @@ UiMetrics ui_metrics(int screen_height) {
     m.gap = m.px(16);
     m.padding = m.px(10);
     return m;
+}
+
+bool layers_exclusive(Layer a, Layer b) {
+    const auto top_panel = [](Layer l) {
+        return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs;
+    };
+    return (a == Layer::Help && top_panel(b)) || (b == Layer::Help && top_panel(a));
 }
 
 std::string_view layer_name(Layer layer) {
@@ -330,11 +338,11 @@ ScreenLayout layout_screen(int width, int height) {
     messages.h = kMessageLines * m.line;
     messages.y = indicator.y - m.gap / 2 - messages.h;
 
-    // En medio, la ayuda, en tantas columnas como pida su alto.
+    // La ayuda, en tantas columnas como pida su alto, desde arriba hasta los mensajes: mientras
+    // se ve, no se dibujan la depuración, el rendimiento ni las gráficas (layers_exclusive).
     UiRect& help = at(Layer::Help);
-    const int top_bottom = std::max({perf.bottom(), graphs.bottom(), debug.bottom()});
     help.x = m.margin;
-    help.y = top_bottom + m.gap;
+    help.y = m.margin;
     help.w = width - 2 * m.margin;
     help.h = messages.y - m.gap / 2 - help.y;
     layout.help = help_grid(key_table(), m, (help.h - 2 * m.padding) / m.line);

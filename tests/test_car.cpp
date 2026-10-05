@@ -1953,7 +1953,12 @@ TEST_CASE("car: full lock gives the maximum wheel angle with the assist off, and
 }
 
 // Criterio 1: activada, a 60 y 100 km/h en asfalto y en grava con la dirección a fondo, el ángulo
-// de deriva de la rueda delantera exterior queda en régimen en α_pico ± 10 %.
+// de deriva de la rueda delantera exterior queda en α_pico ± 10 %. Se mide en los pasos en que
+// la ayuda controla esa rueda: la trasera agarra (assist_rear_sliding = 0) y el tope de la derecha
+// es > 0. Solo en asfalto a 60 km/h hay régimen (velocidad ± 1 km/h y guiñada ± 2 %) y se exige.
+// En los otros tres casos el coche hace un ciclo límite (la trasera pasa de su pico, la ayuda
+// endereza las ruedas y vuelve a empezar; en grava a 100 km/h, de unos 2,8 s): es del equilibrio
+// del coche en el límite (2.6 y 2.10), no de la ayuda (mensajes/2.5b-respuesta-1.md).
 TEST_CASE("car: with the assist and full lock the outer front wheel settles at the peak slip "
           "angle") {
     const rally::sim::JoltRuntime runtime;
@@ -1963,14 +1968,16 @@ TEST_CASE("car: with the assist and full lock the outer front wheel settles at t
         const double peak = deg_of(car.tire(surface).slip_angle_peak);
         for (const double kmh : {60.0, 100.0}) {
             INFO(name(surface), " a ", kmh, " km/h");
+            const bool steady = surface == Surface::Asphalt && kmh == 60.0;
             SimWorld world;
             world.build(assist_world(surface, kmh, true));
             world.seal();
             world.set_telemetry(true);
             SpeedHold hold{kmh / 3.6};
-            // 6 s para asentarse y 2 s de medida.
+            // 6 s para asentarse y 4 s de medida (más de un ciclo límite).
             constexpr int kSettle = 6 * kStepsPerSecond;
-            constexpr int kMeasure = 2 * kStepsPerSecond;
+            constexpr int kMeasure = 4 * kStepsPerSecond;
+            int grip_steps = 0;
             double alpha_sum = 0.0;
             double speed_min = 1.0e9;
             double speed_max = 0.0;
@@ -1986,39 +1993,50 @@ TEST_CASE("car: with the assist and full lock the outer front wheel settles at t
                     spun = true;
                     break;
                 }
-                if (s >= kSettle) {
-                    // Giro a la derecha: la exterior es la izquierda.
-                    const double alpha = std::abs(
-                        deg_of(world.car_controller().wheel(rally::sim::kFrontLeft).alpha));
-                    alpha_sum += alpha;
-                    alpha_min = std::min(alpha_min, alpha);
-                    alpha_max = std::max(alpha_max, alpha);
-                    const double speed = horizontal_speed(world) * 3.6;
-                    speed_min = std::min(speed_min, speed);
-                    speed_max = std::max(speed_max, speed);
-                    yaw_min = std::min(yaw_min, static_cast<double>(t.yaw_rate));
-                    yaw_max = std::max(yaw_max, static_cast<double>(t.yaw_rate));
+                if (s < kSettle) {
+                    continue;
                 }
+                const double speed = horizontal_speed(world) * 3.6;
+                speed_min = std::min(speed_min, speed);
+                speed_max = std::max(speed_max, speed);
+                yaw_min = std::min(yaw_min, static_cast<double>(t.yaw_rate));
+                yaw_max = std::max(yaw_max, static_cast<double>(t.yaw_rate));
+                const rally::sim::SteerContext& context = world.steer_context();
+                if (context.rear_sliding || context.right_max <= 0) {
+                    continue;
+                }
+                // Giro a la derecha: la exterior es la izquierda.
+                const double alpha =
+                    std::abs(deg_of(world.car_controller().wheel(rally::sim::kFrontLeft).alpha));
+                ++grip_steps;
+                alpha_sum += alpha;
+                alpha_min = std::min(alpha_min, alpha);
+                alpha_max = std::max(alpha_max, alpha);
             }
             REQUIRE_FALSE(spun);
-            const double alpha_mean = alpha_sum / kMeasure;
-            char row[260];
+            REQUIRE(grip_steps >= kStepsPerSecond / 2);
+            const double alpha_mean = alpha_sum / grip_steps;
+            char row[300];
             std::snprintf(row, sizeof(row),
-                          "%s %.0f km/h: α exterior %.2f° (%.2f–%.2f; pico %.1f°), v %.1f–%.1f "
-                          "km/h, guiñada %.3f–%.3f rad/s, aplicado %.3f\n",
+                          "%s %.0f km/h: α exterior %.2f° (%.2f–%.2f; pico %.1f°) en %.2f s de "
+                          "%.0f con la trasera agarrando; v %.1f–%.1f km/h, guiñada %.3f–%.3f "
+                          "rad/s%s\n",
                           name(surface).c_str(), kmh, alpha_mean, alpha_min, alpha_max, peak,
-                          speed_min, speed_max, yaw_min, yaw_max,
-                          static_cast<double>(world.controls().steer.applied) / kAxisMax);
+                          grip_steps / static_cast<double>(kStepsPerSecond),
+                          kMeasure / static_cast<double>(kStepsPerSecond), speed_min, speed_max,
+                          yaw_min, yaw_max, steady ? " (régimen)" : " (ciclo límite)");
             table += row;
-            // Que haya régimen: velocidad dentro de ± 1 km/h y guiñada estable (± 2 %).
-            CHECK(speed_min >= kmh - 1.0);
-            CHECK(speed_max <= kmh + 1.0);
-            CHECK(yaw_max - yaw_min <= 0.04 * std::abs(yaw_max));
+            if (steady) {
+                CHECK(grip_steps == kMeasure);
+                CHECK(speed_min >= kmh - 1.0);
+                CHECK(speed_max <= kmh + 1.0);
+                CHECK(yaw_max - yaw_min <= 0.04 * std::abs(yaw_max));
+            }
             CHECK(alpha_mean >= 0.9 * peak);
             CHECK(alpha_mean <= 1.1 * peak);
         }
     }
-    MESSAGE("dirección a fondo con la ayuda (media de 2 s tras 6 s):\n", table);
+    MESSAGE("dirección a fondo con la ayuda (4 s tras 6 s):\n", table);
 }
 
 // Criterio 1: el contravolante a fondo da el ángulo máximo hacia fuera, con la trasera por
@@ -2059,7 +2077,12 @@ TEST_CASE("car: with the assist, full countersteer with the rear sliding reaches
 }
 
 // Chicane con teclado a 100 km/h en asfalto: la entrada hacia el otro lado es un giro nuevo y
-// recibe su ventana; la rueda exterior no pasa de 1,25·α_pico durante más de 0,1 s.
+// recibe su ventana. Criterio: mientras la ayuda controla la rueda exterior (la trasera agarra y
+// el tope de ese lado es > 0), esa rueda no pasa de 1,25·α_pico durante más de 0,1 s.
+// Referencia de trompo (mensajes/2.5b-respuesta-1.md): con la ayuda, el coche hace un trompo en
+// este test; sin ella, no, porque la delantera pasa de su pico y subvira. Es del equilibrio del
+// coche en el límite (tracción en la 2.6; chasis y neumático en la 2.10): β máximo, guiñada
+// máxima y si hay trompo salen en la salida, sin criterio.
 TEST_CASE("car: with the assist a keyboard chicane at 100 km/h keeps the outer wheel near its "
           "peak") {
     const rally::sim::JoltRuntime runtime;
@@ -2068,40 +2091,44 @@ TEST_CASE("car: with the assist a keyboard chicane at 100 km/h keeps the outer w
     SimWorld world;
     world.build(assist_world(Surface::Asphalt, 100.0, true));
     world.seal();
+    world.set_telemetry(true);
     SpeedHold hold{100.0 / 3.6};
     // Recta 0,5 s y después derecha, izquierda y derecha a fondo, 2 s cada una.
     constexpr int kStraight = kStepsPerSecond / 2;
     constexpr int kPhase = 2 * kStepsPerSecond;
+    int controlled = 0;
     int above_peak = 0;
     int above_limit = 0;
-    int longest_above_limit = 0;
-    int run = 0;
     double worst = 0.0;
+    double max_beta = 0.0;
+    double max_yaw = 0.0;
     for (int s = 0; s < kStraight + 3 * kPhase; ++s) {
         const int phase = s < kStraight ? 0 : 1 + (s - kStraight) / kPhase;
         const double steer = phase == 0 ? 0.0 : (phase % 2 == 1 ? 1.0 : -1.0);
         world.step(axes_input(steer, hold.throttle(world), 0.0, rally::sim::kButtonSteerDigital));
+        const rally::sim::CarTelemetry& t = world.telemetry();
+        max_beta = std::max(max_beta, std::abs(deg_of(t.beta)));
+        max_yaw = std::max(max_yaw, std::abs(static_cast<double>(t.yaw_rate)));
         const std::int32_t applied = world.controls().steer.applied;
-        if (applied == 0) {
-            run = 0;
+        const rally::sim::SteerContext& context = world.steer_context();
+        const std::int32_t limit = applied > 0 ? context.right_max : context.left_max;
+        if (applied == 0 || context.rear_sliding || limit <= 0) {
             continue;
         }
         const int outer = applied > 0 ? rally::sim::kFrontLeft : rally::sim::kFrontRight;
         const double alpha = std::abs(deg_of(world.car_controller().wheel(outer).alpha));
+        ++controlled;
         worst = std::max(worst, alpha);
         above_peak += alpha > peak ? 1 : 0;
-        if (alpha > 1.25 * peak) {
-            ++above_limit;
-            run += 1;
-            longest_above_limit = std::max(longest_above_limit, run);
-        } else {
-            run = 0;
-        }
+        above_limit += alpha > 1.25 * peak ? 1 : 0;
     }
-    MESSAGE("chicane con teclado a 100 km/h: pico de α exterior ", worst, "° (α_pico ", peak,
-            "°); por encima de α_pico ", above_peak / static_cast<double>(kStepsPerSecond),
-            " s; por encima de 1,25·α_pico ", above_limit / static_cast<double>(kStepsPerSecond),
-            " s (seguidos como mucho ", longest_above_limit / static_cast<double>(kStepsPerSecond),
-            " s)");
+    const double steps_per_second = kStepsPerSecond;
+    MESSAGE("chicane con teclado a 100 km/h, con la trasera agarrando (",
+            controlled / steps_per_second, " s): pico de α exterior ", worst, "° (α_pico ", peak,
+            "°); por encima de α_pico ", above_peak / steps_per_second,
+            " s; por encima de 1,25·α_pico ", above_limit / steps_per_second,
+            " s. Referencia de trompo: β máximo ", max_beta, "°, guiñada máxima ", max_yaw,
+            " rad/s, trompo (|β| > 90°): ", (max_beta > 90.0 ? "sí" : "no"));
+    CHECK(controlled > kStepsPerSecond);
     CHECK(above_limit <= kStepsPerSecond / 10);
 }

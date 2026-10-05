@@ -52,6 +52,11 @@ TEST_CASE("screen_layout: text sizes are multiples of 10") {
 }
 
 TEST_CASE("screen_layout: with every layer visible no two rectangles overlap") {
+    // Solo la ayuda comparte sitio, con los paneles de arriba, que no se dibujan con ella.
+    CHECK(rally::platform::layers_exclusive(Layer::Help, Layer::Debug));
+    CHECK(rally::platform::layers_exclusive(Layer::Perf, Layer::Help));
+    CHECK_FALSE(rally::platform::layers_exclusive(Layer::Help, Layer::Messages));
+    CHECK_FALSE(rally::platform::layers_exclusive(Layer::Debug, Layer::Graphs));
     for (const Resolution res : kResolutions) {
         const ScreenLayout layout = layout_screen(res.width, res.height);
         const UiRect screen{0, 0, res.width, res.height};
@@ -66,7 +71,9 @@ TEST_CASE("screen_layout: with every layer visible no two rectangles overlap") {
                 const UiRect& rb = layout.rects[static_cast<std::size_t>(b)];
                 INFO("frente a ", std::string(rally::platform::layer_name(Layer(b))), " ",
                      describe(rb));
-                CHECK_FALSE(rally::platform::overlaps(ra, rb));
+                if (!rally::platform::layers_exclusive(Layer(a), Layer(b))) {
+                    CHECK_FALSE(rally::platform::overlaps(ra, rb));
+                }
             }
         }
     }

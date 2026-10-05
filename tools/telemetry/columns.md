@@ -48,6 +48,13 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `brake_target` | — | [0, 1] | Freno objetivo (SimInput) |
 | `buttons` | — | máscara | Botones mantenidos (SimInput; bits abajo); el freno de mano objetivo es el bit 0 |
 | `steer` | — | [−1, 1]; + derecha | Dirección aplicada (ControlState) |
+| `steer_aided` | — | [−1, 1]; + derecha | Dirección objetivo tras el recorte de la ayuda: la que sigue el limitador de las manos |
+| `steer_digital` | — | 0 o 1 | Modo del eje de dirección: 1 digital (teclado), 0 analógico (stick o ratón); el dispositivo no es de la simulación |
+| `assist_active` | — | 0 o 1 | La ayuda de dirección calcula su ventana en el paso (activada, ≥ 15 km/h, hacia delante y con alguna delantera cargada) |
+| `assist_rear_sliding` | — | 0 o 1 | La trasera pasa de su pico: el lado hacia el que se va es contravolante y no recorta |
+| `assist_right_max` | — | [0, 1] | Tope de la dirección hacia la derecha que deja la ayuda (1: sin recorte) |
+| `assist_left_max` | — | [0, 1] | Tope de la dirección hacia la izquierda (magnitud; 1: sin recorte) |
+| `steer_speed` | m/s | ≥ 0 | Velocidad horizontal del centro del eje delantero: la de la ayuda y la de las velocidades de giro |
 | `throttle` | — | [0, 1] | Acelerador aplicado |
 | `brake` | — | [0, 1] | Freno aplicado |
 | `handbrake` | — | [0, 1] | Freno de mano aplicado |

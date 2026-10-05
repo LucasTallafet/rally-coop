@@ -57,6 +57,9 @@ enum class Layer : std::uint8_t {
 };
 inline constexpr int kLayerCount = static_cast<int>(Layer::Count);
 std::string_view layer_name(Layer layer);
+// Capas que nunca se dibujan a la vez (la ayuda tapa la depuración, el rendimiento y las gráficas
+// mientras está abierta, tarea 2.5b): pueden compartir sitio. Todas las demás, no.
+bool layers_exclusive(Layer a, Layer b);
 
 inline constexpr int kMessageLines = 2;
 

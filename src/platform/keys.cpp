@@ -79,6 +79,37 @@ constexpr KeyBinding kTable[] = {
      "Recolocar",
      "en la zona, al punto de recolocación más cercano, parado y con su orientación; en el "
      "recinto, a la salida mirando al frente"},
+    {Action::RecenterWheel,
+     {k(Key::X), {}},
+     Action::None,
+     {},
+     PadControl::None,
+     kAll,
+     KeyBlock::Drive,
+     "Recentrar volante (ratón)",
+     "también el botón central del ratón; solo con la dirección con ratón"},
+    {Action::SteerAssist,
+     {k(Key::F6), {}},
+     Action::None,
+     {},
+     PadControl::None,
+     kAll,
+     KeyBlock::Drive,
+     "Ayuda de dirección",
+     "la activa o la quita; limita las ruedas delanteras al ángulo de máximo agarre desde "
+     "30 km/h; reconstruye el "
+     "mundo y empieza otra grabación; se guarda en ajustes.txt"},
+    {Action::SteerDevice,
+     {k(Key::F7), {}},
+     Action::None,
+     {},
+     PadControl::None,
+     kAll,
+     KeyBlock::Drive,
+     "Dirección: teclado / ratón",
+     "con ratón, el desplazamiento horizontal es el volante (cursor capturado; se suelta en "
+     "pausa o al perder el foco y el volante vuelve al centro); A/D no giran; no reconstruye el "
+     "mundo; se guarda en ajustes.txt"},
     // Cámara y asiento
     {Action::Camera,
      {k(Key::Tab), {}},

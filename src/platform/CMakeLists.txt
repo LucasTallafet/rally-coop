@@ -14,6 +14,7 @@ add_library(rally_loop STATIC
     input_shaping.cpp
     interpolation.cpp
     keys.cpp
+    mouse_steer.cpp
     perf_stats.cpp
     player_settings.cpp
     screen_layout.cpp

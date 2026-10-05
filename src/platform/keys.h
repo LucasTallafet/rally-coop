@@ -14,50 +14,53 @@ namespace rally::platform {
 // Sin raylib: Key lleva los valores de KeyboardKey de raylib, y platform/keys_raylib.cpp
 // comprueba cada uno con un static_assert sobre la misma lista.
 
-// X(nombre, sufijo de KEY_ en raylib, valor, etiqueta, etiqueta corta de la ayuda). Etiquetas en
+// KEY(nombre, sufijo de KEY_ en raylib, valor, etiqueta, etiqueta corta de la ayuda). Etiquetas en
 // Latin-1: es lo que tiene la fuente por defecto de raylib.
-#define RALLY_KEYS(X)                                                                              \
-    X(Space, SPACE, 32, "Espacio", "Espacio")                                                      \
-    X(B, B, 66, "B", "B")                                                                          \
-    X(C, C, 67, "C", "C")                                                                          \
-    X(D, D, 68, "D", "D")                                                                          \
-    X(E, E, 69, "E", "E")                                                                          \
-    X(F, F, 70, "F", "F")                                                                          \
-    X(G, G, 71, "G", "G")                                                                          \
-    X(H, H, 72, "H", "H")                                                                          \
-    X(I, I, 73, "I", "I")                                                                          \
-    X(J, J, 74, "J", "J")                                                                          \
-    X(K, K, 75, "K", "K")                                                                          \
-    X(L, L, 76, "L", "L")                                                                          \
-    X(M, M, 77, "M", "M")                                                                          \
-    X(N, N, 78, "N", "N")                                                                          \
-    X(O, O, 79, "O", "O")                                                                          \
-    X(P, P, 80, "P", "P")                                                                          \
-    X(Q, Q, 81, "Q", "Q")                                                                          \
-    X(R, R, 82, "R", "R")                                                                          \
-    X(S, S, 83, "S", "S")                                                                          \
-    X(T, T, 84, "T", "T")                                                                          \
-    X(V, V, 86, "V", "V")                                                                          \
-    X(W, W, 87, "W", "W")                                                                          \
-    X(A, A, 65, "A", "A")                                                                          \
-    X(Escape, ESCAPE, 256, "Esc", "Esc")                                                           \
-    X(Enter, ENTER, 257, "Intro", "Intro")                                                         \
-    X(Tab, TAB, 258, "Tab", "Tab")                                                                 \
-    X(Backspace, BACKSPACE, 259, "Retroceso", "Retroceso")                                         \
-    X(Insert, INSERT, 260, "Insert", "Insert")                                                     \
-    X(Delete, DELETE, 261, "Supr", "Supr")                                                         \
-    X(Right, RIGHT, 262, "Derecha", "Der.")                                                        \
-    X(Left, LEFT, 263, "Izquierda", "Izq.")                                                        \
-    X(Down, DOWN, 264, "Abajo", "Abajo")                                                           \
-    X(Up, UP, 265, "Arriba", "Arriba")                                                             \
-    X(PageUp, PAGE_UP, 266, "Re Pág", "Re Pág")                                                    \
-    X(PageDown, PAGE_DOWN, 267, "Av Pág", "Av Pág")                                                \
-    X(Home, HOME, 268, "Inicio", "Inicio")                                                         \
-    X(End, END, 269, "Fin", "Fin")                                                                 \
-    X(F1, F1, 290, "F1", "F1")                                                                     \
-    X(F3, F3, 292, "F3", "F3")                                                                     \
-    X(F5, F5, 294, "F5", "F5")                                                                     \
-    X(F11, F11, 300, "F11", "F11")
+#define RALLY_KEYS(KEY)                                                                            \
+    KEY(Space, SPACE, 32, "Espacio", "Espacio")                                                    \
+    KEY(B, B, 66, "B", "B")                                                                        \
+    KEY(C, C, 67, "C", "C")                                                                        \
+    KEY(D, D, 68, "D", "D")                                                                        \
+    KEY(E, E, 69, "E", "E")                                                                        \
+    KEY(F, F, 70, "F", "F")                                                                        \
+    KEY(G, G, 71, "G", "G")                                                                        \
+    KEY(H, H, 72, "H", "H")                                                                        \
+    KEY(I, I, 73, "I", "I")                                                                        \
+    KEY(J, J, 74, "J", "J")                                                                        \
+    KEY(K, K, 75, "K", "K")                                                                        \
+    KEY(L, L, 76, "L", "L")                                                                        \
+    KEY(M, M, 77, "M", "M")                                                                        \
+    KEY(N, N, 78, "N", "N")                                                                        \
+    KEY(O, O, 79, "O", "O")                                                                        \
+    KEY(P, P, 80, "P", "P")                                                                        \
+    KEY(Q, Q, 81, "Q", "Q")                                                                        \
+    KEY(R, R, 82, "R", "R")                                                                        \
+    KEY(S, S, 83, "S", "S")                                                                        \
+    KEY(T, T, 84, "T", "T")                                                                        \
+    KEY(V, V, 86, "V", "V")                                                                        \
+    KEY(W, W, 87, "W", "W")                                                                        \
+    KEY(X, X, 88, "X", "X")                                                                        \
+    KEY(A, A, 65, "A", "A")                                                                        \
+    KEY(Escape, ESCAPE, 256, "Esc", "Esc")                                                         \
+    KEY(Enter, ENTER, 257, "Intro", "Intro")                                                       \
+    KEY(Tab, TAB, 258, "Tab", "Tab")                                                               \
+    KEY(Backspace, BACKSPACE, 259, "Retroceso", "Retroceso")                                       \
+    KEY(Insert, INSERT, 260, "Insert", "Insert")                                                   \
+    KEY(Delete, DELETE, 261, "Supr", "Supr")                                                       \
+    KEY(Right, RIGHT, 262, "Derecha", "Der.")                                                      \
+    KEY(Left, LEFT, 263, "Izquierda", "Izq.")                                                      \
+    KEY(Down, DOWN, 264, "Abajo", "Abajo")                                                         \
+    KEY(Up, UP, 265, "Arriba", "Arriba")                                                           \
+    KEY(PageUp, PAGE_UP, 266, "Re Pág", "Re Pág")                                                  \
+    KEY(PageDown, PAGE_DOWN, 267, "Av Pág", "Av Pág")                                              \
+    KEY(Home, HOME, 268, "Inicio", "Inicio")                                                       \
+    KEY(End, END, 269, "Fin", "Fin")                                                               \
+    KEY(F1, F1, 290, "F1", "F1")                                                                   \
+    KEY(F3, F3, 292, "F3", "F3")                                                                   \
+    KEY(F5, F5, 294, "F5", "F5")                                                                   \
+    KEY(F6, F6, 295, "F6", "F6")                                                                   \
+    KEY(F7, F7, 296, "F7", "F7")                                                                   \
+    KEY(F11, F11, 300, "F11", "F11")
 
 enum class Key : int {
     None = 0,
@@ -100,6 +103,9 @@ enum class Action : std::uint8_t {
     ShiftDown,
     ShiftUp,
     Reset,
+    RecenterWheel,
+    SteerAssist,
+    SteerDevice,
     // Cámara y asiento
     Camera,
     SeatUp,

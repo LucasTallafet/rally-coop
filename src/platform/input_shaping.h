@@ -103,12 +103,21 @@ struct KeyboardState {
     bool reset = false;
 };
 
-// Mezcla teclado y mando activo: en cada eje (dirección, acelerador y freno, por separado)
-// gana el de mayor magnitud (empate: el mando). Si gana el teclado, marca el bit digital
-// del eje; en el acelerador y el freno también si es el gatillo digital del mando activo.
-// Los botones son el OR de los dos. Los de pulsación salen sin retener: platform/input les
-// aplica ButtonLatch.
-sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad);
+// Dirección con ratón en un fotograma (platform/mouse_steer). `active`: el jugador ha elegido
+// el ratón (aunque el cursor esté suelto; entonces el volante está en el centro).
+struct MouseState {
+    bool active = false;
+    float steer = 0.0f; // [-1, 1]
+};
+
+// Mezcla teclado, ratón y mando activo: en cada eje (dirección, acelerador y freno, por
+// separado) gana el de mayor magnitud (empate: el mando). Si gana el teclado, marca el bit
+// digital del eje; en el acelerador y el freno también si es el gatillo digital del mando
+// activo. Con el ratón activo, A/D no giran: la dirección es la del ratón (analógica, como el
+// stick) frente a la del stick. Los botones son el OR de los dos. Los de pulsación salen sin
+// retener: platform/input les aplica ButtonLatch.
+sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad,
+                             const MouseState& mouse = {});
 
 // Vibración por impacto: por encima del umbral, fuerza proporcional desde kRumbleMinStrength
 // hasta 1 en kImpactFull, durante kRumbleMs.

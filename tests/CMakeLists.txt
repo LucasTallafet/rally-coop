@@ -14,6 +14,7 @@ add_executable(rally_tests
     test_interpolation.cpp
     test_jolt.cpp
     test_keys.cpp
+    test_mouse_steer.cpp
     test_pcg32.cpp
     test_player_settings.cpp
     test_perf_stats.cpp
@@ -161,7 +162,7 @@ foreach(_run first second)
                 ${CMAKE_CURRENT_BINARY_DIR}/telemetry_${_run}.csv)
     set_tests_properties(replay.telemetry_${_run} PROPERTIES
         FIXTURES_SETUP telemetry_csv
-        PASS_REGULAR_EXPRESSION "telemetría: .*98 columnas.*hash OK"
+        PASS_REGULAR_EXPRESSION "telemetría: .*105 columnas.*hash OK"
         FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 endforeach()
 # Curvas del neumático (tarea 2.5) del coche congelado, para tools/telemetry/tire_curves.py.

@@ -370,6 +370,8 @@ void DriveDemo::describe_world() {
     } else {
         desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0, car_);
     }
+    // La ayuda de dirección cambia la simulación: va en la descripción (y en la grabación).
+    desc_.aids.steer_assist = settings_.steer_assist;
 }
 
 void DriveDemo::reload_car() {
@@ -455,7 +457,7 @@ void DriveDemo::reset() {
     if (world_->zone() != nullptr) {
         zone_draw_.build(*world_->zone(), blind_mode_);
     }
-    recording_.start(desc_, *world_, car_text_);
+    recording_.start(desc_, *world_, car_text_, recording_settings_text(settings_));
     shift_up_presses_ = 0;
     shift_down_presses_ = 0;
     reset_presses_ = 0;
@@ -601,6 +603,29 @@ void DriveDemo::handle_keys(FramePacer& pacer) {
     if (action_pressed(Action::ResetWorld, context)) {
         reset();
     }
+    if (action_pressed(Action::SteerAssist, context)) {
+        // Cambia la simulación: mundo nuevo y otra grabación.
+        settings_.steer_assist = !settings_.steer_assist;
+        settings_saver_.changed(now_ns());
+        describe_world();
+        reset();
+        overlay_.set_message(Overlay::Message::Settings,
+                             settings_.steer_assist ? "F6: ayuda de dirección activada"
+                                                    : "F6: ayuda de dirección desactivada",
+                             kText, kShortMessageNs);
+    }
+    if (action_pressed(Action::SteerDevice, context)) {
+        // No es de la simulación: ni reconstruye el mundo ni cambia la grabación en curso.
+        settings_.steer_device = settings_.steer_device == SteerDevice::Mouse
+                                     ? SteerDevice::Keyboard
+                                     : SteerDevice::Mouse;
+        settings_saver_.changed(now_ns());
+        overlay_.set_message(Overlay::Message::Settings,
+                             settings_.steer_device == SteerDevice::Mouse
+                                 ? "F7: dirección con ratón (X o botón central: recentrar)"
+                                 : "F7: dirección con teclado",
+                             kText, kShortMessageNs);
+    }
     handle_seat_keys();
 }
 
@@ -743,19 +768,22 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
 
     // Texto en pantalla: cada capa en su sitio (platform/screen_layout).
     overlay_.begin(GetScreenWidth(), GetScreenHeight());
-    draw_indicator();
+    draw_indicator(driver);
     const UiRect& hint = overlay_.rect(Layer::HelpHint);
     overlay_.text(Layer::HelpHint, hint.x, hint.y, layer_samples(Layer::HelpHint)[0], kDim);
+    // La ayuda ocupa el sitio de los paneles de arriba: mientras se ve, no se dibujan
+    // (screen_layout, layers_exclusive). Siguen encendidos y vuelven al cerrarla.
     if (help_visible_) {
         draw_help();
+    } else {
+        if (debug_visible_) {
+            draw_debug(steps, pacer, driver, input, frame_impact, eye);
+        }
+        if (graphs_.visible(blind_mode_) >= 0) {
+            draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_), overlay_);
+        }
+        perf.draw(pacer, clock, snap_, render_width(), render_height(), overlay_);
     }
-    if (debug_visible_) {
-        draw_debug(steps, pacer, driver, input, frame_impact, eye);
-    }
-    if (graphs_.visible(blind_mode_) >= 0) {
-        draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_), overlay_);
-    }
-    perf.draw(pacer, clock, snap_, render_width(), render_height(), overlay_);
     if (!recording_.error().empty()) {
         overlay_.set_message(Overlay::Message::Recording, "grabación: ERROR: " + recording_.error(),
                              kError);
@@ -770,7 +798,7 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
     perf.end_present();
 }
 
-void DriveDemo::draw_indicator() {
+void DriveDemo::draw_indicator(const DriverInput& driver) {
     // Velocidad horizontal y selector tras el último paso; en la zona, la vuelta en curso y la
     // mejor (contadas en pasos por la simulación); a ciegas, la prueba.
     const sim::BodyVelocity v = world_->car_velocity();
@@ -779,7 +807,7 @@ void DriveDemo::draw_indicator() {
     const char* gear_name = gear == sim::Gear::Reverse   ? "R"
                             : gear == sim::Gear::Neutral ? "N"
                                                          : "adelante";
-    char text[160];
+    char text[200];
     int used = std::snprintf(text, sizeof(text), "%.0f km/h   %s", speed * 3.6, gear_name);
     if (zone_mode_) {
         const sim::LapState& lap = *world_->lap();
@@ -788,8 +816,15 @@ void DriveDemo::draw_indicator() {
                               lap_text(lap.best_lap).text);
     }
     if (blind_mode_) {
+        used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
+                              "   A CIEGAS · Prueba %d/%d", blind_trial_ + 1, sim::kBlindTrials);
+    }
+    if (driver.mouse_enabled()) {
+        // Volante del ratón: la O es su posición, de tope a tope; en el centro, +. Sin capturar
+        // (pausa o foco perdido), el volante está en el centro.
         std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
-                      "   A CIEGAS · Prueba %d/%d", blind_trial_ + 1, sim::kBlindTrials);
+                      "   volante [%s]%s", wheel_bar(driver.mouse().steer()).data(),
+                      driver.mouse_captured() ? "" : " suelto");
     }
     const UiRect& r = overlay_.rect(Layer::Indicator);
     overlay_.text(Layer::Indicator, r.x, r.y, text, kStrong, true);

@@ -180,3 +180,47 @@ TEST_CASE("atomic_file: the previous file stays whole if the temporary cannot be
     CHECK(read_all(path) == old_text);
     CHECK(std::filesystem::is_directory(dir / "ajustes.txt.tmp")); // no borra lo que no creó
 }
+
+TEST_CASE("player_settings: steering keys default to assist on, keyboard and 400 px") {
+    const PlayerSettings defaults;
+    CHECK(defaults.steer_assist);
+    CHECK(defaults.steer_device == rally::platform::SteerDevice::Keyboard);
+    CHECK(defaults.mouse_full_lock_px == 400);
+    // Un archivo de la 2.4b (solo el asiento) da los valores por defecto sin avisos.
+    std::vector<SettingsWarning> warnings;
+    const PlayerSettings old = parse_settings("asiento_alto_cm = 3\n", warnings);
+    CHECK(warnings.empty());
+    CHECK(old.seat.up == 3);
+    CHECK(old.steer_assist);
+    CHECK(old.steer_device == rally::platform::SteerDevice::Keyboard);
+}
+
+TEST_CASE("player_settings: steering keys round-trip and read their words") {
+    PlayerSettings settings;
+    settings.steer_assist = false;
+    settings.steer_device = rally::platform::SteerDevice::Mouse;
+    settings.mouse_full_lock_px = 650;
+    std::vector<SettingsWarning> warnings;
+    const std::string text = format_settings(settings);
+    CHECK(text.find("dispositivo_direccion = raton\n") != std::string::npos);
+    CHECK(text.find("ayuda_direccion = 0\n") != std::string::npos);
+    CHECK(parse_settings(text, warnings) == settings);
+    CHECK(warnings.empty());
+}
+
+TEST_CASE("player_settings: a bad steering value warns with its line and keeps the default") {
+    std::vector<SettingsWarning> warnings;
+    const PlayerSettings parsed = parse_settings("dispositivo_direccion = mando\n"
+                                                 "ayuda_direccion = 2\n"
+                                                 "raton_px_tope = 20\n"
+                                                 "raton_px_tope = 900\n",
+                                                 warnings);
+    CHECK(parsed == PlayerSettings{});
+    REQUIRE(warnings.size() == 4);
+    CHECK(warnings[0].line == 1);
+    CHECK(warnings[0].message.find("teclado") != std::string::npos);
+    CHECK(warnings[1].line == 2);
+    CHECK(warnings[2].line == 3);
+    CHECK(warnings[2].message.find("400 px") != std::string::npos);
+    CHECK(warnings[3].line == 4); // repetida: vale la primera (que era mala)
+}

@@ -35,7 +35,7 @@ using rally::sim::Surface;
 // (telemetry_csv_for_random_inputs). Tiene que ser el mismo en Debug y en Release. Cambia
 // cuando una tarea añade columnas o cambia la simulación: se copia aquí el valor nuevo y va en
 // el mensaje del commit («Telemetry hash: 0x... -> 0x...»).
-constexpr std::uint64_t kExpectedTelemetryHash = 0x82ad266eac451494ull;
+constexpr std::uint64_t kExpectedTelemetryHash = 0x5401b9a43dc87c32ull;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = 180.0 / kPi;
@@ -44,7 +44,10 @@ double horizontal_speed(const CarTelemetry& t) { return std::hypot(t.vx, t.vz); 
 
 // Zona de pruebas con el coche de referencia en la salida de la recta de asfalto, mirando a -z.
 void build_zone(SimWorld& world) {
-    world.build(rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car()));
+    rally::sim::WorldDesc desc =
+        rally::sim::zone_world(Surface::Gravel, rally::tests::reference_car());
+    desc.aids.steer_assist = true; // la de los jugadores por defecto: el hash la cubre
+    world.build(desc);
     world.seal();
     world.set_telemetry(true);
 }

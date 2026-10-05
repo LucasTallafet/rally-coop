@@ -185,7 +185,7 @@ Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cier
 
 ## 8. Referencia rápida de la demo actual
 
-Válido desde la tarea 2.4b de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración. En pantalla, siempre, el indicador mínimo (velocidad, selector y, en la zona, la vuelta en curso y la mejor; a ciegas, «Prueba k/15») y «H: ayuda»; H enseña la ayuda de teclas, F3 el panel de depuración, F1 el rendimiento y T las gráficas, cada uno en su sitio fijo. El asiento (Re Pág / Av Pág, Inicio / Fin, Insert / Supr) se guarda en `ajustes.txt` junto al exe; si ese archivo tiene una línea mal escrita, se avisa en pantalla con su número y se usa el valor por defecto.
+Válido desde la tarea 2.4b de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración. En pantalla, siempre, el indicador mínimo (velocidad, selector y, en la zona, la vuelta en curso y la mejor; a ciegas, «Prueba k/15») y «H: ayuda»; H enseña la ayuda de teclas, F3 el panel de depuración, F1 el rendimiento y T las gráficas, cada uno en su sitio fijo; mientras la ayuda está abierta, F3, F1 y T no se dibujan (desde la 2.5b la ayuda ocupa su sitio). La ayuda de dirección (F6, activada por defecto) y la dirección con teclado o ratón (F7; con ratón, X o el botón central recentran y el indicador mínimo enseña el volante) se guardan en `ajustes.txt`, igual que el asiento (Re Pág / Av Pág, Inicio / Fin, Insert / Supr), que se guarda junto al exe; si ese archivo tiene una línea mal escrita, se avisa en pantalla con su número y se usa el valor por defecto.
 
 Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el juego y la ayuda en pantalla); el test `keys: docs/07 section 8 matches the generated table` comprueba que coinciden. Para cambiarlas, se cambia `keys.cpp` y se copia aquí lo que imprime ese test al fallar.
 
@@ -202,6 +202,9 @@ Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el
 | Q · hombro izquierdo (LB, L1, L) | Selector hacia R: provisional hasta la 2.6; parado, de adelante a N y de N a R |
 | E · hombro derecho (RB, R1, R) | Selector hacia adelante: provisional; de R a N y de N a adelante |
 | R · botón de arriba de la cara derecha (Y Xbox, Triángulo PlayStation, X Nintendo) | Recolocar: en la zona, al punto de recolocación más cercano, parado y con su orientación; en el recinto, a la salida mirando al frente |
+| X | Recentrar volante (ratón): también el botón central del ratón; solo con la dirección con ratón |
+| F6 | Ayuda de dirección: la activa o la quita; limita las ruedas delanteras al ángulo de máximo agarre desde 30 km/h; reconstruye el mundo y empieza otra grabación; se guarda en ajustes.txt |
+| F7 | Dirección: teclado / ratón: con ratón, el desplazamiento horizontal es el volante (cursor capturado; se suelta en pausa o al perder el foco y el volante vuelve al centro); A/D no giran; no reconstruye el mundo; se guarda en ajustes.txt |
 
 **Cámara y asiento**
 

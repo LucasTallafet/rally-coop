@@ -130,16 +130,18 @@ float keyboard_axis(bool negative, bool positive) {
 
 } // namespace
 
-sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad) {
-    const float key_steer = keyboard_axis(keys.left, keys.right);
+sim::SimInput combine_inputs(const KeyboardState& keys, const PadState& pad,
+                             const MouseState& mouse) {
+    const float key_steer = mouse.active ? 0.0f : keyboard_axis(keys.left, keys.right);
     const float key_throttle = keys.throttle ? 1.0f : 0.0f;
     const float key_brake = keys.brake ? 1.0f : 0.0f;
     const bool keyboard_steers = std::abs(key_steer) > std::abs(pad.steer);
+    const bool mouse_steers = mouse.active && std::abs(mouse.steer) > std::abs(pad.steer);
     const bool keyboard_throttles = key_throttle > pad.throttle;
     const bool keyboard_brakes = key_brake > pad.brake;
 
     sim::SimInput input;
-    input.steer = to_axis(keyboard_steers ? key_steer : pad.steer);
+    input.steer = to_axis(keyboard_steers ? key_steer : mouse_steers ? mouse.steer : pad.steer);
     input.throttle = to_axis(keyboard_throttles ? key_throttle : pad.throttle);
     input.brake = to_axis(keyboard_brakes ? key_brake : pad.brake);
     std::uint16_t buttons = 0;

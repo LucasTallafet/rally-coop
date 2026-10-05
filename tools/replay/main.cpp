@@ -439,7 +439,9 @@ int synth(const char* out_path, const char* car_path) {
         std::fprintf(stderr, "error: %s: %s\n", car_path, car.error.c_str());
         return 2;
     }
-    const rally::sim::WorldDesc desc = rally::sim::zone_world(rally::sim::Surface::Gravel, car.car);
+    // Con la ayuda de dirección, la de los jugadores por defecto: la medida incluye su coste.
+    rally::sim::WorldDesc desc = rally::sim::zone_world(rally::sim::Surface::Gravel, car.car);
+    desc.aids.steer_assist = true;
     rally::sim::SimWorld world;
     world.build(desc);
     world.seal();

@@ -64,6 +64,11 @@ public:
 
     // N: ajuste del dt al periodo del monitor en FixedStepClock (activo por defecto).
     bool snap_enabled() const { return snap_; }
+    // Dirección con ratón (ajustes del jugador, F7) para DriverInput::set_mouse: si está elegida,
+    // su sensibilidad y si se puede capturar el cursor ahora (no en pausa).
+    bool mouse_steering() const { return settings_.steer_device == SteerDevice::Mouse; }
+    int mouse_full_lock_px() const { return settings_.mouse_full_lock_px; }
+    bool mouse_capture_allowed() const { return !paused_; }
 
     // Empieza el registro de fotogramas (también con L; --frame-log al arrancar).
     void start_frame_log() { frame_log_.start(); }
@@ -122,7 +127,7 @@ private:
     void load_settings();
     void save_settings();
     // Capas del texto en pantalla.
-    void draw_indicator();
+    void draw_indicator(const DriverInput& driver);
     void draw_help();
     void draw_debug(const FrameSteps& steps, const FramePacer& pacer, const DriverInput& driver,
                     const sim::SimInput& input, float frame_impact, const Vec3d& eye);
