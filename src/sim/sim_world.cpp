@@ -69,6 +69,10 @@ struct SimWorld::Impl {
     // Mandos aplicados y botones del paso anterior. Es estado de la simulación que no está
     // en el SaveState de Jolt: en el cambio de host (fase 5) viaja con el estado del juego.
     ControlState controls;
+    DriverAids aids;
+    // Dirección del último paso: salidas de diagnóstico, no estado (se recalculan en cada paso).
+    SteerContext steer_context;
+    std::int32_t steer_aided = 0;
     float last_impact = 0.0f; // salida de diagnóstico; no es estado de la simulación
     // Telemetría (solo lectura; no es estado de la simulación).
     bool telemetry_enabled = false;
@@ -187,6 +191,7 @@ void SimWorld::build(const WorldDesc& desc) {
         w.car = car_body->GetID();
         w.car_mass = desc.car_data.mass;
         w.car_spawn = spawn;
+        w.aids = desc.aids;
         batch.push_back(w.car);
     }
     if (!batch.empty()) {
@@ -223,7 +228,13 @@ void SimWorld::step(const SimInput& input) {
     RALLY_CHECK(w.state == State::Sealed,
                 "SimWorld::step: el mundo no está sellado (falta seal())");
 
-    w.controls.step(input);
+    // La ventana de la ayuda y la velocidad de las manos, con el estado al principio del paso.
+    w.steer_context = SteerContext{};
+    if (w.car_controller != nullptr) {
+        w.steer_context = sim::steer_context(w.car_controller->steer_assist_input(),
+                                             w.car_controller->car(), w.aids.steer_assist);
+    }
+    w.steer_aided = w.controls.step(input, w.steer_context);
     const bool reset_pressed = (w.controls.pressed & kButtonReset) != 0;
     if (reset_pressed) {
         w.controls.zero_axes();
@@ -351,6 +362,13 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
     t.brake = static_cast<float>(c.brake.applied) * kAxisScale;
     t.handbrake = static_cast<float>(c.handbrake) * kAxisScale;
     t.pressed = c.pressed;
+    t.steer_aided = static_cast<float>(w.steer_aided) * kAxisScale;
+    t.steer_digital = c.steer.digital;
+    t.assist_active = w.steer_context.active;
+    t.assist_rear_sliding = w.steer_context.rear_sliding;
+    t.assist_right_max = static_cast<float>(w.steer_context.right_max) * kAxisScale;
+    t.assist_left_max = static_cast<float>(w.steer_context.left_max) * kAxisScale;
+    t.steer_speed = w.steer_context.speed;
     if (w.zone) {
         t.surface = static_cast<std::int8_t>(w.zone->surface_at(t.x, t.z));
     }
@@ -391,6 +409,10 @@ bool SimWorld::telemetry_enabled() const { return impl_->telemetry_enabled; }
 const CarTelemetry& SimWorld::telemetry() const { return impl_->telemetry; }
 
 const ControlState& SimWorld::controls() const { return impl_->controls; }
+
+const SteerContext& SimWorld::steer_context() const { return impl_->steer_context; }
+
+std::int32_t SimWorld::steer_aided() const { return impl_->steer_aided; }
 
 float SimWorld::last_impact() const { return impl_->last_impact; }
 

@@ -51,8 +51,9 @@ protected:
 ReplayResult replay(const Recording& recording, StepObserver* observer = nullptr);
 
 // Repite la grabación y le pone la versión actual de la simulación y el pie que da (pasos,
-// hash y completa). Solo para grabaciones sintéticas de tests: una grabación real de otra
-// versión no tiene por qué dar el mismo recorrido.
+// hash y completa); desde el formato 3, también el formato actual de la descripción del mundo,
+// con su contenido (sin ayudas si no las llevaba). Solo para grabaciones sintéticas de tests: una
+// grabación real de otra versión no tiene por qué dar el mismo recorrido.
 ReplayResult rewrite_footer(Recording& recording);
 
 } // namespace rally::io

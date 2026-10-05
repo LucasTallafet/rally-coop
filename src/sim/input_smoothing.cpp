@@ -18,7 +18,31 @@ std::int32_t follow_target(std::int32_t applied, std::int32_t target, AxisRates 
     return up ? rmath::min(applied + rates.rise, target) : rmath::max(applied - rates.rise, target);
 }
 
-void SmoothedAxis::step(std::int16_t target, bool target_digital, AxisRates digital_rates,
+AxisRates steer_rates(float speed, bool digital) {
+    const float t = rmath::clamp(speed, 0.0f, kSteerRateFullSpeed) / kSteerRateFullSpeed;
+    const auto steps = [t](int still, int fast) {
+        return static_cast<int>(
+            rmath::floor(static_cast<float>(still) + t * static_cast<float>(fast - still) + 0.5f));
+    };
+    if (digital) {
+        return {rate_for_steps(steps(kSteerDigitalRiseSteps, kSteerDigitalRiseStepsFast)),
+                rate_for_steps(steps(kSteerDigitalFallSteps, kSteerDigitalFallStepsFast))};
+    }
+    const std::int32_t rate = rate_for_steps(steps(kSteerAnalogSteps, kSteerAnalogStepsFast));
+    return {rate, rate};
+}
+
+std::int32_t clip_steer(std::int32_t target, const SteerContext& ctx) {
+    if (target > 0) {
+        return rmath::min(target, ctx.right_max);
+    }
+    if (target < 0) {
+        return rmath::max(target, -ctx.left_max);
+    }
+    return 0;
+}
+
+void SmoothedAxis::step(std::int32_t target, bool target_digital, AxisRates digital_rates,
                         AxisRates analog_rates) {
     if (target != 0) {
         digital = target_digital;
@@ -26,9 +50,15 @@ void SmoothedAxis::step(std::int16_t target, bool target_digital, AxisRates digi
     applied = follow_target(applied, target, digital ? digital_rates : analog_rates);
 }
 
-void ControlState::step(const SimInput& input) {
-    steer.step(input.steer, (input.buttons & kButtonSteerDigital) != 0, kSteerDigitalRates,
-               kSteerAnalogRates);
+std::int32_t ControlState::step(const SimInput& input, const SteerContext& steer_context) {
+    // El modo sale del objetivo del jugador, no del recortado: un recorte a 0 no cambia de
+    // teclado a stick.
+    if (input.steer != 0) {
+        steer.digital = (input.buttons & kButtonSteerDigital) != 0;
+    }
+    const std::int32_t aided = clip_steer(input.steer, steer_context);
+    steer.applied =
+        follow_target(steer.applied, aided, steer_rates(steer_context.speed, steer.digital));
     throttle.step(input.throttle, (input.buttons & kButtonThrottleDigital) != 0,
                   kThrottleDigitalRates, kThrottleAnalogRates);
     brake.step(input.brake, (input.buttons & kButtonBrakeDigital) != 0, kBrakeDigitalRates,
@@ -37,6 +67,7 @@ void ControlState::step(const SimInput& input) {
                               kHandbrakeRates);
     pressed = static_cast<std::uint16_t>(input.buttons & ~previous_buttons);
     previous_buttons = input.buttons;
+    return aided;
 }
 
 void ControlState::zero_axes() {

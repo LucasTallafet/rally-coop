@@ -80,6 +80,17 @@ struct CarTelemetry {
     float handbrake = 0.0f;
     std::uint16_t pressed = 0; // botones que pasan de 0 a 1 en el paso (kButton*)
 
+    // Dirección (tarea 2.5b): objetivo tras el recorte de la ayuda ([-1, 1]), modo del eje
+    // (digital: teclado; analógico: stick o ratón), ventana de la ayuda (topes del objetivo hacia
+    // cada lado, en [0, 1]; 1 sin recorte) y velocidad de referencia de las manos.
+    float steer_aided = 0.0f;
+    bool steer_digital = false;
+    bool assist_active = false;
+    bool assist_rear_sliding = false;
+    float assist_right_max = 1.0f;
+    float assist_left_max = 1.0f;
+    float steer_speed = 0.0f; // m/s: |v| horizontal del centro del eje delantero
+
     // Superficie bajo el centro de masas (índice de Surface), o -1 sin zona de pruebas.
     std::int8_t surface = -1;
 

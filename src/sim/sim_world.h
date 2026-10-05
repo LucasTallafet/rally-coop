@@ -5,6 +5,7 @@
 #include "sim/input_smoothing.h"
 #include "sim/lap_timer.h"
 #include "sim/sim_input.h"
+#include "sim/steer_assist.h"
 #include "sim/surface.h"
 #include "sim/telemetry.h"
 #include "sim/test_zone.h"
@@ -60,6 +61,9 @@ struct WorldDesc {
     bool car = false;
     CarSpawn car_spawn;
     CarData car_data;
+    // Ayudas del jugador que cambian la simulación (sim/steer_assist.h). Van en la descripción
+    // serializada desde el formato 4 de la grabación.
+    DriverAids aids;
     // Diagnóstico de los tests: ruedas con integración explícita. No se graba.
     bool explicit_wheels = false;
     // Zona de pruebas de la fase 2 (sim/test_zone.h): suelo de Jolt con una superficie por
@@ -131,6 +135,10 @@ public:
 
     // Mandos aplicados y pulsaciones del último paso.
     const ControlState& controls() const;
+    // Contexto de la dirección del último paso (velocidad de referencia y ventana de la ayuda) y
+    // objetivo de la dirección ya recortado. Salidas de diagnóstico: no son estado.
+    const SteerContext& steer_context() const;
+    std::int32_t steer_aided() const;
 
     // Captura de la telemetría del coche (sim/telemetry.h), apagada al construir. Encendida,
     // step() la rellena al final del paso; solo lee y no reserva memoria: no cambia la

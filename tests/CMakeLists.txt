@@ -22,6 +22,7 @@ add_executable(rally_tests
     test_screen_layout.cpp
     test_seat.cpp
     test_sim_world.cpp
+    test_steer_assist.cpp
     test_telemetry.cpp
     test_test_zone.cpp
     test_tire.cpp

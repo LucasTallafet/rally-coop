@@ -27,6 +27,7 @@ using rally::sim::kButtonSteerDigital;
 using rally::sim::kButtonThrottleDigital;
 using rally::sim::SimInput;
 using rally::sim::SmoothedAxis;
+using rally::sim::SteerContext;
 
 namespace {
 
@@ -45,9 +46,10 @@ SimInput throttle_input(std::int16_t throttle, bool digital) {
 }
 
 // Pasos hasta que la dirección aplicada llega a `target` con la misma entrada en cada paso.
-int steps_until_steer(ControlState& controls, const SimInput& input, std::int32_t target) {
+int steps_until_steer(ControlState& controls, const SimInput& input, std::int32_t target,
+                      const SteerContext& context = {}) {
     for (int steps = 1; steps <= 1000; ++steps) {
-        controls.step(input);
+        controls.step(input, context);
         if (controls.steer.applied == target) {
             return steps;
         }
@@ -108,14 +110,76 @@ TEST_CASE("input smoothing: a held key reaches full steer in 0.25 s and returns 
     CHECK(steps_until_steer(controls, SimInput{}, 0) == 29);
 }
 
-TEST_CASE("input smoothing: the stick reaches full steer almost at once") {
+TEST_CASE("input smoothing: the stick reaches full steer in 0.10 s at rest, the same back") {
     ControlState controls;
     CHECK(steps_until_steer(controls, steer_input(kAxisMax, false), kAxisMax) ==
           rally::sim::kSteerAnalogSteps);
-    CHECK(rally::sim::kSteerAnalogSteps <= 8); // 1/30 s
+    CHECK(rally::sim::kSteerAnalogSteps == 24); // 0,10 s a 240 Hz
     CHECK(steps_until_steer(controls, SimInput{}, 0) == rally::sim::kSteerAnalogSteps);
     // Un objetivo intermedio se alcanza exacto, sin pasarse.
     CHECK(steps_until_steer(controls, steer_input(1000, false), 1000) == 1);
+}
+
+// Pasos exactos (240 × tiempo) hasta el tope y de vuelta, con la velocidad del coche inyectada.
+TEST_CASE("input smoothing: steer steps to full and back grow with the car speed") {
+    struct Row {
+        float kmh;
+        bool digital;
+        int rise;
+        int fall;
+    };
+    // Teclado: 0,25 s y 0,12 s parado; 0,6 s y 0,3 s a 100 km/h o más; a 50 km/h, 102 y 50,5
+    // (redondeado hacia arriba: 51). Stick: 0,10 s parado y 0,35 s a 100 km/h, igual al volver.
+    const std::array<Row, 7> rows = {Row{0.0f, true, 60, 29},    Row{50.0f, true, 102, 51},
+                                     Row{100.0f, true, 144, 72}, Row{150.0f, true, 144, 72},
+                                     Row{0.0f, false, 24, 24},   Row{100.0f, false, 84, 84},
+                                     Row{150.0f, false, 84, 84}};
+    for (const Row& row : rows) {
+        INFO(row.kmh, " km/h, ", row.digital ? "teclado" : "stick");
+        SteerContext context;
+        context.speed = row.kmh / 3.6f;
+        ControlState controls;
+        CHECK(steps_until_steer(controls, steer_input(kAxisMax, row.digital), kAxisMax, context) ==
+              row.rise);
+        CHECK(steps_until_steer(controls, SimInput{}, 0, context) == row.fall);
+        CHECK(steps_until_steer(controls, steer_input(-kAxisMax, row.digital), -kAxisMax,
+                                context) == row.rise);
+        CHECK(steps_until_steer(controls, SimInput{}, 0, context) == row.fall);
+    }
+}
+
+TEST_CASE("input smoothing: the assist clips the target before the hand rate limiter") {
+    ControlState controls;
+    SteerContext open; // sin recorte, a 100 km/h
+    open.speed = 100.0f / 3.6f;
+    steps_until_steer(controls, steer_input(kAxisMax, false), kAxisMax, open);
+
+    // La ventana aparece de golpe (aterrizaje, cruce de los 30 km/h): el aplicado baja hacia
+    // ella a la velocidad de las manos, nunca de un salto.
+    SteerContext window = open;
+    window.right_max = 6000;
+    const rally::sim::AxisRates rates = rally::sim::steer_rates(window.speed, false);
+    std::int32_t previous = controls.steer.applied;
+    int steps = 0;
+    while (controls.steer.applied != 6000 && steps < 1000) {
+        const std::int32_t aided = controls.step(steer_input(kAxisMax, false), window);
+        CHECK(aided == 6000);
+        CHECK(previous - controls.steer.applied <= rates.fall);
+        CHECK(controls.steer.applied >= 6000);
+        previous = controls.steer.applied;
+        ++steps;
+    }
+    CHECK(steps == (kAxisMax - 6000 + rates.fall - 1) / rates.fall);
+
+    // Hacia el otro lado (contravolante sin ventana a la izquierda) no recorta.
+    CHECK(controls.step(steer_input(-kAxisMax, false), window) == -kAxisMax);
+    // Con el volante centrado, el objetivo es 0: la ayuda nunca gira las ruedas por su cuenta.
+    window.right_max = 0;
+    window.left_max = 0;
+    CHECK(controls.step(SimInput{}, window) == 0);
+    // Un recorte a 0 no cambia el modo del eje (sigue el del objetivo del jugador).
+    controls.step(steer_input(kAxisMax, true), window);
+    CHECK(controls.steer.digital);
 }
 
 TEST_CASE("input smoothing: reversing the key returns to center first, then rises") {
@@ -225,7 +289,9 @@ KeyboardState scripted_keys(int frame) {
     KeyboardState keys;
     keys.right =
         (frame >= 6 && frame < 54) || (frame >= 80 && frame < 86) || (frame >= 100 && frame < 104);
-    keys.left = (frame >= 54 && frame < 62) || (frame >= 100 && frame < 104);
+    // Desde la 2.5b la vuelta al centro es más lenta con velocidad: la izquierda dura lo
+    // bastante para cruzar el 0.
+    keys.left = (frame >= 54 && frame < 78) || (frame >= 100 && frame < 104);
     keys.throttle = (frame >= 10 && frame < 70) || (frame >= 90 && frame < 92);
     keys.brake = (frame >= 60 && frame < 76) || (frame >= 120 && frame < 122);
     keys.handbrake = (frame >= 30 && frame < 34) || (frame >= 110 && frame < 112);
@@ -264,8 +330,10 @@ Trajectory run_script(const std::array<std::int64_t, 3>& frame_cycle, int steps_
         const int frame60 = frame * steps_per_frame / 4;
         const SimInput input = rally::platform::combine_inputs(scripted_keys(frame60), PadState{});
         for (int i = 0; i < count; ++i) {
-            controls.step(input);
+            // La dirección depende de la velocidad del coche: el ControlState suelto usa el
+            // mismo contexto que el mundo (calculado al principio de su paso).
             world.step(input);
+            controls.step(input, world.steer_context());
             trajectory.steer.push_back(controls.steer.applied);
             trajectory.throttle.push_back(controls.throttle.applied);
             trajectory.brake.push_back(controls.brake.applied);

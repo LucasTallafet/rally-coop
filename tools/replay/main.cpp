@@ -1,11 +1,12 @@
 // rally_replay: repite una grabación (.rrec) sin ventana, comprueba el hash final y mide.
-//   rally_replay info <archivo>              cabecera y pie
+//   rally_replay info <archivo>              cabecera y pie; las ayudas de la simulación y los
+//                                            ajustes de la plataforma al empezar la grabación
 //   rally_replay run <archivo> [--telemetry <salida.csv>] [--bench N]
 //                                            repite y dice "hash OK" o el primer problema;
 //                                            con --telemetry, CSV por paso; con --bench, N
 //                                            repeticiones y ms por paso, sin y con la captura
 //                                            de la telemetría
-//   rally_replay rewrite <archivo>           pie con la versión actual (solo tests)
+//   rally_replay rewrite <archivo>           pie y formato actuales (solo tests)
 //   rally_replay synth <salida.rrec> --car <archivo.car>
 //                                            120 s de entradas sintéticas deterministas en la
 //                                            zona (tests/data/recordings/bench_lap.rrec)
@@ -53,7 +54,7 @@ using rally::io::Recording;
 
 int usage() {
     std::fputs("uso:\n"
-               "  rally_replay info <archivo.rrec>\n"
+               "  rally_replay info <archivo.rrec>       (ajustes de la plataforma: al empezar)\n"
                "  rally_replay run <archivo.rrec> [--telemetry <salida.csv>] [--bench N]\n"
                "  rally_replay rewrite <archivo.rrec>\n"
                "  rally_replay synth <salida.rrec> --car <archivo.car>\n"
@@ -109,6 +110,8 @@ int info(const char* path) {
     if (world_ok) {
         std::printf("mundo:               %zu cuerpos, %s\n", desc.bodies.size(),
                     desc.car ? "con coche" : "sin coche");
+        std::printf("ayuda de dirección:  %s%s\n", desc.aids.steer_assist ? "sí" : "no",
+                    h.format_version < 4 ? " (formato anterior a la 4: no existía)" : "");
         if (desc.test_zone) {
             // La superficie real: en las pruebas a ciegas solo se ve aquí.
             std::printf("zona de pruebas:     sí, pista ciega de %s\n",
@@ -124,7 +127,14 @@ int info(const char* path) {
                     h.zone_hash == 0 ? " (sin zona)" : "");
     }
     std::printf("coche:               %zu bytes\n", h.car_text.size());
-    std::printf("ajustes:             %zu bytes\n", h.settings.size());
+    // Ajustes de la plataforma al empezar la grabación (no son de la simulación: F7 a mitad de
+    // pasada no los cambia).
+    if (h.settings.empty()) {
+        std::printf("ajustes al empezar:  (ninguno)\n");
+    } else {
+        std::printf("ajustes al empezar:\n%s%s", h.settings.c_str(),
+                    h.settings.back() == '\n' ? "" : "\n");
+    }
     std::printf("tramos:              %zu\n", recording.runs.size());
     std::printf("pasos:               %" PRIu64 " (%.2f s)\n", f.total_steps,
                 static_cast<double>(f.total_steps) / rally::sim::kStepsPerSecond);

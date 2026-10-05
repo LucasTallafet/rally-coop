@@ -2,6 +2,7 @@
 
 #include "sim/car_data.h"
 #include "sim/jolt_config.h"
+#include "sim/steer_assist.h"
 #include "sim/surface.h"
 #include "sim/surface_material.h"
 #include "sim/tire.h"
@@ -89,8 +90,9 @@ public:
 // fuerzas del neumático y la resistencia del aire son fuerzas explícitas sobre el cuerpo,
 // aplicadas en PostCollide (Jolt las integra en el mismo paso). Su estado, todo en SaveState
 // (el giro y el ángulo de las ruedas los guarda la restricción), tiene dos partes:
-//   dinámico: giro, deformación de la huella, ángulo de giro, dirección y selector; recolocar
-//   lo pone a cero;
+//   dinámico: giro, deformación de la huella, ángulo de giro, dirección, selector y superficie
+//   del último contacto de cada rueda; recolocar lo pone a cero (salvo la superficie, que es la
+//   del suelo que pisa);
 //   condición, por rueda: el radio efectivo (después, daños, presión, pinchazos); persiste al
 //   recolocar y viaja en el cambio de host.
 class CarController final : public JPH::VehicleController {
@@ -112,6 +114,11 @@ public:
     void set_wheel_radius(int index, float radius) {
         radius_[static_cast<std::size_t>(index)] = radius;
     }
+
+    // Estado que usa la ayuda de dirección, leído al principio del paso (antes de Update): solo
+    // lee el cuerpo, el contacto y la carga de las ruedas (estado de Jolt) y la superficie del
+    // último contacto (SaveState).
+    SteerAssistInput steer_assist_input() const;
 
     Gear gear() const { return gear_; }
     const WheelOutput& wheel(int index) const { return outputs_[static_cast<std::size_t>(index)]; }

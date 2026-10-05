@@ -3,6 +3,7 @@
 #include "sim/check.h"
 #include "sim/layers.h"
 #include "sim/rmath.h"
+#include "sim/steer_assist.h"
 #include "sim/test_zone.h"
 
 #include <Jolt/Physics/Body/Body.h>
@@ -123,6 +124,62 @@ void CarController::set_contact_relief(int index, float h, Surface surface) {
     contact_surface_[static_cast<std::size_t>(index)] = surface;
 }
 
+SteerAssistInput CarController::steer_assist_input() const {
+    const JPH::Body* body = mConstraint.GetVehicleBody();
+    const JPH::RMat44 transform = body->GetWorldTransform();
+    const JPH::Vec3 right_axis = transform.GetAxisX();
+    const JPH::Vec3 forward_axis = transform.Multiply3x3(kCarForward);
+    const auto attachment = [&](int i) {
+        return transform *
+               mConstraint.GetWheel(static_cast<JPH::uint>(i))->GetSettings()->mPosition;
+    };
+    // Ángulo de la velocidad del cuerpo en un punto, en ejes del coche (+ derecha).
+    const auto vel_angle = [&](JPH::RVec3Arg point) {
+        const JPH::Vec3 v = body->GetPointVelocity(point);
+        return rmath::atan2(v.Dot(right_axis), v.Dot(forward_axis));
+    };
+    // Con carga: contacto y empuje de la suspensión en el paso anterior (los dos en el estado de
+    // Jolt, como la superficie en el nuestro).
+    const auto loaded = [&](int i) {
+        const JPH::Wheel* w = mConstraint.GetWheel(static_cast<JPH::uint>(i));
+        return w->HasContact() && w->GetSuspensionLambda() > 0.0f;
+    };
+    const auto wheel_angle = [&](int i) {
+        const JPH::Wheel* w = mConstraint.GetWheel(static_cast<JPH::uint>(i));
+        return vel_angle(w->GetContactPosition());
+    };
+    const auto tan_peak = [&](int i) {
+        return car_.tire(contact_surface_[static_cast<std::size_t>(i)]).tan_alpha_peak;
+    };
+
+    SteerAssistInput in;
+    const JPH::RVec3 front_axle = 0.5 * (attachment(kFrontLeft) + attachment(kFrontRight));
+    const JPH::Vec3 front_velocity = body->GetPointVelocity(front_axle);
+    in.speed = magnitude(front_velocity.GetX(), front_velocity.GetZ());
+    in.forward_speed = front_velocity.Dot(forward_axis);
+    in.reverse = gear_ == Gear::Reverse;
+    // Giro a la derecha: decide la exterior (FL); sin carga, la interior (FR). Y al revés.
+    const std::array<std::array<int, 2>, 2> wheels = {
+        {{kFrontLeft, kFrontRight}, {kFrontRight, kFrontLeft}}};
+    for (std::size_t side = 0; side < 2; ++side) {
+        for (std::size_t k = 0; k < 2; ++k) {
+            const int i = wheels[side][k];
+            if (loaded(i)) {
+                in.side[side] = SteerSide{true, k == 0, wheel_angle(i), tan_peak(i)};
+                break;
+            }
+        }
+    }
+    for (int i : {kRearLeft, kRearRight}) {
+        if (loaded(i)) {
+            in.rear_loaded = true;
+            in.rear_tan_alpha_peak = rmath::max(in.rear_tan_alpha_peak, tan_peak(i));
+        }
+    }
+    in.rear_vel_angle = vel_angle(0.5 * (attachment(kRearLeft) + attachment(kRearRight)));
+    return in;
+}
+
 void CarController::PreCollide(float, JPH::PhysicsSystem&) {
     // Selector (D4): bajar parado pasa de adelante a N y de N a R; subir, al revés.
     const JPH::Body* body = mConstraint.GetVehicleBody();
@@ -135,15 +192,10 @@ void CarController::PreCollide(float, JPH::PhysicsSystem&) {
     }
 
     // Dirección: la rueda interior gira max_steer con la dirección a fondo; la exterior, la
-    // mezcla de ese ángulo con el de Ackermann puro. En Jolt el ángulo es positivo a la
-    // izquierda; steer > 0 es a la derecha.
-    const float inner = rmath::abs(controls_.steer) * car_.max_steer;
-    float outer = inner;
-    if (inner > 0.0f) {
-        const float ackermann =
-            rmath::atan(car_.wheelbase / (car_.wheelbase / rmath::tan(inner) + car_.track));
-        outer = (1.0f - car_.ackermann) * inner + car_.ackermann * ackermann;
-    }
+    // mezcla de ese ángulo con el de Ackermann puro (sim/steer_assist.h). En Jolt el ángulo es
+    // positivo a la izquierda; steer > 0 es a la derecha.
+    const float inner = wheel_angle_for_axis(car_, rmath::abs(controls_.steer), false);
+    const float outer = wheel_angle_for_axis(car_, rmath::abs(controls_.steer), true);
     const bool right = controls_.steer > 0.0f;
     const float left_angle = right ? outer : inner;
     const float right_angle = right ? inner : outer;
@@ -304,6 +356,11 @@ void CarController::SaveState(JPH::StateRecorder& stream) const {
         stream.Write(w_[i]);
         stream.Write(steer_[i]);
     }
+    // Superficie del último contacto: la lee la ayuda de dirección al principio del paso
+    // siguiente.
+    for (std::size_t i = 0; i < kWheelCount; ++i) {
+        stream.Write(static_cast<std::uint8_t>(contact_surface_[i]));
+    }
     // Condición.
     for (std::size_t i = 0; i < kWheelCount; ++i) {
         stream.Write(radius_[i]);
@@ -319,6 +376,11 @@ void CarController::RestoreState(JPH::StateRecorder& stream) {
         stream.Read(w_[i]);
         stream.Read(steer_[i]);
         mConstraint.GetWheel(static_cast<JPH::uint>(i))->SetSteerAngle(steer_[i]);
+    }
+    for (std::size_t i = 0; i < kWheelCount; ++i) {
+        std::uint8_t surface = 0;
+        stream.Read(surface);
+        contact_surface_[i] = static_cast<Surface>(surface);
     }
     for (std::size_t i = 0; i < kWheelCount; ++i) {
         stream.Read(radius_[i]);

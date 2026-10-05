@@ -1905,3 +1905,203 @@ TEST_CASE("car: landing at 5 m/s stays within mu Fz on every wheel and step") {
     }
     MESSAGE("aterrizaje desde 0,6 m rodando a 5 m/s:\n", table);
 }
+
+// Tarea 2.5b: ayuda de dirección en el coche entero.
+namespace {
+
+// Mundo llano y grande (cabe un círculo de más de 100 m de radio) con la ayuda elegida.
+WorldDesc assist_world(Surface surface, double kmh, bool assist) {
+    WorldDesc desc = flat_world(surface, false, static_cast<float>(kmh / 3.6));
+    desc.bodies[0].half_x = 400.0f;
+    desc.bodies[0].half_z = 400.0f;
+    desc.aids.steer_assist = assist;
+    return desc;
+}
+
+double deg_of(double rad) { return rad * 180.0 / kPi; }
+
+// Ángulo de Jolt de la rueda `index` (positivo a la izquierda), en grados y en valor absoluto.
+double wheel_steer_deg(const SimWorld& world, int index) {
+    return std::abs(deg_of(world.car_wheel(index).steer));
+}
+
+} // namespace
+
+// Criterio 1: desactivada, la dirección a fondo da el ángulo máximo; activada, a 10 km/h también.
+TEST_CASE("car: full lock gives the maximum wheel angle with the assist off, and at 10 km/h on") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    struct Case {
+        double kmh;
+        bool assist;
+    };
+    for (const Case c :
+         {Case{10.0, false}, Case{60.0, false}, Case{100.0, false}, Case{10.0, true}}) {
+        INFO(c.kmh, " km/h, ayuda ", c.assist ? "sí" : "no");
+        SimWorld world;
+        world.build(assist_world(Surface::Asphalt, c.kmh, c.assist));
+        world.seal();
+        // Hasta el tope a la velocidad de las manos (84 pasos como mucho) y unos pasos más.
+        for (int s = 0; s < 100; ++s) {
+            world.step(axes_input(1.0, 0.0, 0.0));
+        }
+        CHECK(world.controls().steer.applied == kAxisMax);
+        // Giro a la derecha: la interior es la derecha.
+        CHECK(wheel_steer_deg(world, rally::sim::kFrontRight) ==
+              doctest::Approx(deg_of(car.max_steer)).epsilon(1.0e-5));
+    }
+}
+
+// Criterio 1: activada, a 60 y 100 km/h en asfalto y en grava con la dirección a fondo, el ángulo
+// de deriva de la rueda delantera exterior queda en régimen en α_pico ± 10 %.
+TEST_CASE("car: with the assist and full lock the outer front wheel settles at the peak slip "
+          "angle") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    std::string table;
+    for (const Surface surface : {Surface::Asphalt, Surface::Gravel}) {
+        const double peak = deg_of(car.tire(surface).slip_angle_peak);
+        for (const double kmh : {60.0, 100.0}) {
+            INFO(name(surface), " a ", kmh, " km/h");
+            SimWorld world;
+            world.build(assist_world(surface, kmh, true));
+            world.seal();
+            world.set_telemetry(true);
+            SpeedHold hold{kmh / 3.6};
+            // 6 s para asentarse y 2 s de medida.
+            constexpr int kSettle = 6 * kStepsPerSecond;
+            constexpr int kMeasure = 2 * kStepsPerSecond;
+            double alpha_sum = 0.0;
+            double speed_min = 1.0e9;
+            double speed_max = 0.0;
+            double yaw_min = 1.0e9;
+            double yaw_max = -1.0e9;
+            double alpha_min = 1.0e9;
+            double alpha_max = 0.0;
+            bool spun = false;
+            for (int s = 0; s < kSettle + kMeasure; ++s) {
+                world.step(axes_input(1.0, hold.throttle(world), 0.0));
+                const rally::sim::CarTelemetry& t = world.telemetry();
+                if (std::abs(t.beta) > 45.0 * kPi / 180.0) {
+                    spun = true;
+                    break;
+                }
+                if (s >= kSettle) {
+                    // Giro a la derecha: la exterior es la izquierda.
+                    const double alpha = std::abs(
+                        deg_of(world.car_controller().wheel(rally::sim::kFrontLeft).alpha));
+                    alpha_sum += alpha;
+                    alpha_min = std::min(alpha_min, alpha);
+                    alpha_max = std::max(alpha_max, alpha);
+                    const double speed = horizontal_speed(world) * 3.6;
+                    speed_min = std::min(speed_min, speed);
+                    speed_max = std::max(speed_max, speed);
+                    yaw_min = std::min(yaw_min, static_cast<double>(t.yaw_rate));
+                    yaw_max = std::max(yaw_max, static_cast<double>(t.yaw_rate));
+                }
+            }
+            REQUIRE_FALSE(spun);
+            const double alpha_mean = alpha_sum / kMeasure;
+            char row[260];
+            std::snprintf(row, sizeof(row),
+                          "%s %.0f km/h: α exterior %.2f° (%.2f–%.2f; pico %.1f°), v %.1f–%.1f "
+                          "km/h, guiñada %.3f–%.3f rad/s, aplicado %.3f\n",
+                          name(surface).c_str(), kmh, alpha_mean, alpha_min, alpha_max, peak,
+                          speed_min, speed_max, yaw_min, yaw_max,
+                          static_cast<double>(world.controls().steer.applied) / kAxisMax);
+            table += row;
+            // Que haya régimen: velocidad dentro de ± 1 km/h y guiñada estable (± 2 %).
+            CHECK(speed_min >= kmh - 1.0);
+            CHECK(speed_max <= kmh + 1.0);
+            CHECK(yaw_max - yaw_min <= 0.04 * std::abs(yaw_max));
+            CHECK(alpha_mean >= 0.9 * peak);
+            CHECK(alpha_mean <= 1.1 * peak);
+        }
+    }
+    MESSAGE("dirección a fondo con la ayuda (media de 2 s tras 6 s):\n", table);
+}
+
+// Criterio 1: el contravolante a fondo da el ángulo máximo hacia fuera, con la trasera por
+// encima de su pico.
+TEST_CASE("car: with the assist, full countersteer with the rear sliding reaches full lock") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    for (const Surface surface : {Surface::Asphalt, Surface::Gravel}) {
+        INFO(name(surface));
+        SimWorld world;
+        world.build(assist_world(surface, 0.0, true));
+        world.seal();
+        // Derrape girando a la derecha a 60 km/h: velocidad 35° a la izquierda del morro (el
+        // morro mira a -z, la derecha es +x) y guiñada a la derecha de 1 rad/s.
+        const double v = 60.0 / 3.6;
+        const double beta = -35.0 * kPi / 180.0;
+        rally::sim::BodyVelocity velocity;
+        velocity.vx = static_cast<float>(v * std::sin(beta));
+        velocity.vz = static_cast<float>(-v * std::cos(beta));
+        velocity.wy = -1.0f;
+        world.set_car_velocity(velocity);
+        world.step(axes_input(0.0, 0.0, 0.0));
+        int steps = 0;
+        bool sliding_throughout = true;
+        while (world.controls().steer.applied != -kAxisMax && steps < 200) {
+            world.step(axes_input(-1.0, 0.0, 0.0));
+            sliding_throughout = sliding_throughout && world.steer_context().rear_sliding &&
+                                 world.steer_context().active;
+            ++steps;
+        }
+        CHECK(sliding_throughout);
+        CHECK(world.controls().steer.applied == -kAxisMax);
+        // Giro a la izquierda: la interior es la izquierda.
+        CHECK(wheel_steer_deg(world, rally::sim::kFrontLeft) ==
+              doctest::Approx(deg_of(car.max_steer)).epsilon(1.0e-5));
+        MESSAGE(name(surface), ": contravolante a fondo en ", steps, " pasos");
+    }
+}
+
+// Chicane con teclado a 100 km/h en asfalto: la entrada hacia el otro lado es un giro nuevo y
+// recibe su ventana; la rueda exterior no pasa de 1,25·α_pico durante más de 0,1 s.
+TEST_CASE("car: with the assist a keyboard chicane at 100 km/h keeps the outer wheel near its "
+          "peak") {
+    const rally::sim::JoltRuntime runtime;
+    const CarData& car = reference_car();
+    const double peak = deg_of(car.tire(Surface::Asphalt).slip_angle_peak);
+    SimWorld world;
+    world.build(assist_world(Surface::Asphalt, 100.0, true));
+    world.seal();
+    SpeedHold hold{100.0 / 3.6};
+    // Recta 0,5 s y después derecha, izquierda y derecha a fondo, 2 s cada una.
+    constexpr int kStraight = kStepsPerSecond / 2;
+    constexpr int kPhase = 2 * kStepsPerSecond;
+    int above_peak = 0;
+    int above_limit = 0;
+    int longest_above_limit = 0;
+    int run = 0;
+    double worst = 0.0;
+    for (int s = 0; s < kStraight + 3 * kPhase; ++s) {
+        const int phase = s < kStraight ? 0 : 1 + (s - kStraight) / kPhase;
+        const double steer = phase == 0 ? 0.0 : (phase % 2 == 1 ? 1.0 : -1.0);
+        world.step(axes_input(steer, hold.throttle(world), 0.0, rally::sim::kButtonSteerDigital));
+        const std::int32_t applied = world.controls().steer.applied;
+        if (applied == 0) {
+            run = 0;
+            continue;
+        }
+        const int outer = applied > 0 ? rally::sim::kFrontLeft : rally::sim::kFrontRight;
+        const double alpha = std::abs(deg_of(world.car_controller().wheel(outer).alpha));
+        worst = std::max(worst, alpha);
+        above_peak += alpha > peak ? 1 : 0;
+        if (alpha > 1.25 * peak) {
+            ++above_limit;
+            run += 1;
+            longest_above_limit = std::max(longest_above_limit, run);
+        } else {
+            run = 0;
+        }
+    }
+    MESSAGE("chicane con teclado a 100 km/h: pico de α exterior ", worst, "° (α_pico ", peak,
+            "°); por encima de α_pico ", above_peak / static_cast<double>(kStepsPerSecond),
+            " s; por encima de 1,25·α_pico ", above_limit / static_cast<double>(kStepsPerSecond),
+            " s (seguidos como mucho ", longest_above_limit / static_cast<double>(kStepsPerSecond),
+            " s)");
+    CHECK(above_limit <= kStepsPerSecond / 10);
+}

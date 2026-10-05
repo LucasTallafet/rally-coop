@@ -35,9 +35,11 @@ namespace rally::io {
 // su giro, su superficie y su h, y la descripción lleva la salida del coche (sus datos van en
 // el texto del coche de la cabecera). Se siguen leyendo las de las versiones 1 y 2 (de la
 // versión 1 de la simulación, con la caja): se repiten avisando, sin coche y sin comparar el
-// hash.
+// hash. 4 (tarea 2.5b): la descripción del mundo lleva al final las ayudas del jugador (u8
+// ayuda de dirección) y los ajustes, texto de la plataforma; las de la versión 3 se leen con la
+// ayuda desactivada (no existía).
 
-inline constexpr std::uint32_t kRecordingFormatVersion = 3;
+inline constexpr std::uint32_t kRecordingFormatVersion = 4;
 inline constexpr std::uint32_t kOldestRecordingFormatVersion = 1;
 inline constexpr std::size_t kRunBytes = 12;
 inline constexpr std::size_t kFooterBytes = 32;
@@ -53,7 +55,11 @@ struct RecordingHeader {
     std::string commit;   // del build que grabó; "-dirty" si tenía cambios sin commit
     std::string world;    // descripción del mundo (serialize_world)
     std::string car_text; // archivo del coche entero (desde la 2.4; vacío sin coche)
-    std::string settings; // ajustes del jugador (vacíos hasta la 2.8)
+    // Ajustes de la plataforma al empezar la grabación, en texto `clave = valor` (desde la
+    // 2.5b: dispositivo de dirección y sensibilidad del ratón). No son de la simulación ni entran
+    // en el hash: cambiarlos a mitad de pasada no cambia la cabecera. Las ayudas que cambian la
+    // simulación van en la descripción del mundo.
+    std::string settings;
     // Hash de la zona de pruebas con la que se grabó (SimWorld::zone_hash; 0 sin zona). Si la
     // zona cambia (suelo, h u ondulaciones), la repetición avisa y no compara el hash final.
     std::uint64_t zone_hash = 0;
@@ -90,7 +96,8 @@ ParseResult parse(std::string_view bytes);
 // Descripción del mundo en bytes (u32 cuerpos; por cuerpo u8 movimiento, f64 x, y, z y f32
 // medias medidas, como sus bits, y desde la versión 3 f32 giro, u8 superficie y u8 h; hasta
 // la versión 2, i32 cuerpo controlado; desde la 3, u8 coche, f64 x, y, z y f32 rumbo y
-// velocidad de su salida; desde la 2, u8 zona de pruebas y u8 superficie de la pista ciega).
+// velocidad de su salida; desde la 2, u8 zona de pruebas y u8 superficie de la pista ciega;
+// desde la 4, u8 ayuda de dirección).
 // Se lee con la versión del formato de la grabación de la que sale. Los datos del coche no
 // van aquí (RecordingHeader::car_text).
 std::string serialize_world(const sim::WorldDesc& desc);

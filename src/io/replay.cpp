@@ -102,6 +102,17 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
 }
 
 ReplayResult rewrite_footer(Recording& recording) {
+    // Desde la versión 3 del formato (el coche), la descripción del mundo pasa al formato actual
+    // con lo que dice la grabación (una de la versión 3 queda sin ayudas, como se grabó).
+    if (recording.header.format_version >= 3 &&
+        recording.header.format_version < kRecordingFormatVersion) {
+        sim::WorldDesc desc;
+        std::string error;
+        if (parse_world(recording.header.world, desc, error, recording.header.format_version)) {
+            recording.header.world = serialize_world(desc);
+            recording.header.format_version = kRecordingFormatVersion;
+        }
+    }
     const ReplayResult result = replay(recording);
     if (!result.ran) {
         return result;

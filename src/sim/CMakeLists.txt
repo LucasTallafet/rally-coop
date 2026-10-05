@@ -11,6 +11,7 @@ add_library(rally_sim STATIC
     lap_timer.cpp
     pcg32.cpp
     sim_world.cpp
+    steer_assist.cpp
     test_zone.cpp
     tire.cpp
 )

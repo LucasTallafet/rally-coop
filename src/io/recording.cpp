@@ -276,6 +276,7 @@ std::string serialize_world(const sim::WorldDesc& desc) {
     w.f32(desc.car_spawn.speed);
     w.u8(desc.test_zone ? 1 : 0);
     w.u8(static_cast<std::uint8_t>(desc.blind_surface));
+    w.u8(desc.aids.steer_assist ? 1 : 0);
     return out;
 }
 
@@ -284,11 +285,13 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
     // Hasta la versión 2, cada cuerpo son 37 bytes y detrás va el índice del cuerpo
     // controlado (la caja de las tareas 2.1–2.3), que se comprueba y se ignora: esas
     // grabaciones no tienen coche. Desde la 3, cada cuerpo lleva además su giro, su superficie
-    // y su h, y detrás va el coche.
+    // y su h, y detrás va el coche. Desde la 4, al final, las ayudas del jugador (u8 ayuda de
+    // dirección); hasta la 3, sin ayudas (no existían).
     const bool v3 = format_version >= 3;
     const std::size_t body_bytes = 1 + 3 * 8 + 3 * 4 + (v3 ? 4 + 1 + 1 : 0);
     const std::size_t car_bytes = 1 + 3 * 8 + 2 * 4;
-    const std::size_t tail_bytes = (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0);
+    const std::size_t tail_bytes =
+        (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0) + (format_version >= 4 ? 1 : 0);
     Reader r(bytes);
     const std::uint32_t count = r.u32();
     if (!r.ok() || static_cast<std::uint64_t>(count) * body_bytes + tail_bytes != r.remaining()) {
@@ -352,6 +355,14 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
         }
         desc.test_zone = zone == 1;
         desc.blind_surface = static_cast<sim::Surface>(surface);
+    }
+    if (format_version >= 4) {
+        const std::uint8_t steer_assist = r.u8();
+        if (steer_assist > 1) {
+            error = "descripción del mundo: ayuda de dirección no válida";
+            return false;
+        }
+        desc.aids.steer_assist = steer_assist == 1;
     }
     return true;
 }
