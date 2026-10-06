@@ -154,7 +154,7 @@ Se usa `VehicleConstraint` de Jolt (suspensión, contacto por cylinder cast) con
   - **Relieve:**
     - eje a +5,55 m en la salida, para centrar el trazado en el 0 de la zona: +7,05 m en la cresta y −7,05 m en la horquilla;
     - curvas verticales de 20 m dentro de cada tramo con pendiente;
-    - cresta de 1,5 m en 40 m, con tres parábolas (vaguadas de 6 m y R 40 m; cumbre de R 93 m, que despega a 109 km/h);
+    - cresta de 1,5 m en 40 m, con tres parábolas (vaguadas de 6 m y R 40 m; cumbre de R 93 m). La vaguada comprime la suspensión hasta el tope desde 70 km/h y el rebote hace saltar el coche desde 80 km/h (0,14 s; a 100 km/h, 0,35 s), no a los 109 km/h de √(g·R); a Lucas le gusta el salto y se queda (hallazgos de la 2.6b);
     - peralte del 4 % en las curvas 4 y 6 y del −3 % en la 2, con transiciones de 20 m centradas en los extremos del arco;
     - junto a la horquilla, la bajada y la subida se juntan: en trinchera las dos, gana la más baja (continua, sin más pendiente que cada una).
   - **Árboles:** 226 cilindros estáticos de Jolt (r 0,25 m), creados en `build()` detrás de los muros. Van a 8,6–13,6 m del eje, separados 6–15 m en la fila (4–8 m en el exterior de la horquilla y de la curva 4), con PCG32 de semilla fija; ninguno dentro del círculo de la horquilla. Entran en el hash de la zona.
