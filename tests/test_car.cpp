@@ -1524,19 +1524,25 @@ TEST_CASE(
     for (const Surface surface : kAllSurfaces) {
         for (const double kmh : {5.0, 10.0, 20.0, 30.0, 50.0}) {
             SimWorld world;
-            // 2.6: con el tren motriz abierto (el acelerador sujeta la velocidad).
+            // 2.6: en N, sin el acelerador que sujetaba la velocidad. Sale más rápido lo que la
+            // rodadura le quita en el segundo de asentamiento, para llegar al pulso a `kmh` (en
+            // arena a 5 km/h, saliendo a 5 km/h el coche se paraba antes del pulso).
+            const double c_rr = car.tire(surface).rolling_resistance;
             world.build(rally::tests::in_neutral(
-                flat_world(surface, false, static_cast<float>(kmh / 3.6))));
+                flat_world(surface, false, static_cast<float>(kmh / 3.6 + c_rr * kGravity * 1.0))));
             world.seal();
             world.set_telemetry(true);
-            SpeedHold hold{kmh / 3.6};
             for (int s = 0; s < kStepsPerSecond; ++s) {
-                world.step(axes_input(0.0, hold.throttle(world), 0.0));
+                world.step(axes_input(0.0, 0.0, 0.0));
             }
+            const double pulse_speed = world.telemetry().speed;
+            // El pulso empieza a la velocidad de la fila (± 15 %): si no, la fila no mide nada.
+            CHECK(pulse_speed >= 0.85 * kmh / 3.6);
+            CHECK(pulse_speed <= 1.15 * kmh / 3.6);
             // Pulso de 5° en las ruedas durante 0,25 s.
             const double pulse = 5.0 * kPi / 180.0 / car.max_steer;
             for (int s = 0; s < kStepsPerSecond / 4; ++s) {
-                world.step(axes_input(pulse, hold.throttle(world), 0.0));
+                world.step(axes_input(pulse, 0.0, 0.0));
             }
             int changes = 0;
             int last_sign = 0;
@@ -1549,7 +1555,7 @@ TEST_CASE(
             double extreme_t = 0.0;
             double previous_r = 0.0;
             for (int s = 0; s < 3 * kStepsPerSecond; ++s) {
-                world.step(axes_input(0.0, hold.throttle(world), 0.0));
+                world.step(axes_input(0.0, 0.0, 0.0));
                 const double r = world.telemetry().yaw_rate;
                 peak = std::max(peak, std::abs(r));
                 if ((r > 0.0) != (previous_r > 0.0) && s > 0) {
@@ -1583,10 +1589,10 @@ TEST_CASE(
             }
             char row[220];
             std::snprintf(row, sizeof(row),
-                          "%s a %.0f km/h: guiñada máxima %.2f°/s, %d cambios de signo, "
-                          "|r| < 0,2°/s desde %.2f s, ζ %.2f; extremos:",
-                          name(surface).c_str(), kmh, peak * 180.0 / kPi, changes, last_above,
-                          zeta);
+                          "%s a %.0f km/h (%.1f al pulso): guiñada máxima %.2f°/s, %d cambios "
+                          "de signo, |r| < 0,2°/s desde %.2f s, ζ %.2f; extremos:",
+                          name(surface).c_str(), kmh, pulse_speed * 3.6, peak * 180.0 / kPi,
+                          changes, last_above, zeta);
             table += row;
             table += extremes.substr(0, 120) + "\n";
             CHECK(zeta >= (kmh <= 20.0 ? 0.5 : 0.4));

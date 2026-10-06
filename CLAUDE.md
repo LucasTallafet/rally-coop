@@ -28,7 +28,7 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 
 ## Idioma y estilo
 
-- Documentos, comentarios y mensajes para mí: español.
+- Todo lo que escribas para mí, en el chat (también entre pasos y en el resumen final) y en los archivos de `mensajes/`: español. Documentos y comentarios del código: español.
 - Identificadores, nombres de archivo de código y mensajes de commit: inglés.
 - C++20. Sin excepciones ni reservas de memoria dentro del paso de simulación.
 - Formato con `.clang-format` del repositorio, con clang-format 23.1.2 fijado (`python -m pip install --user clang-format==23.1.2`). Comprobar: `clang-format --dry-run --Werror` sobre `src/` y `tests/`.
