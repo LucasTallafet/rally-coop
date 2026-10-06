@@ -294,6 +294,11 @@ void draw_car(const Pose& car_pose, const sim::CarData& car,
 
 } // namespace
 
+// Configuraciones de prueba de la fase 2 (tarea 2.6), en el orden de F8.
+constexpr std::array<std::string_view, 4> kCarConfigs = {
+    "mid_awd_turbo.car", "front_awd_turbo_5cyl.car", "front_rwd_na.car",
+    "front_awd_turbo_groupa.car"};
+
 std::string default_car_path() {
     std::error_code error;
     std::filesystem::path folder = std::filesystem::path(GetApplicationDirectory());
@@ -370,29 +375,64 @@ void DriveDemo::describe_world() {
     } else {
         desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0, car_);
     }
-    // La ayuda de dirección cambia la simulación: va en la descripción (y en la grabación).
+    // La ayuda de dirección y el modo de la caja cambian la simulación: van en la descripción
+    // (y en la grabación).
     desc_.aids.steer_assist = settings_.steer_assist;
+    desc_.aids.gearbox =
+        settings_.sequential ? sim::GearboxMode::Sequential : sim::GearboxMode::Automatic;
 }
 
 void DriveDemo::reload_car() {
+    if (load_car(car_path_, "F5")) {
+        overlay_.set_message(Overlay::Message::Car,
+                             config_hidden()
+                                 ? std::string("F5: coche recargado")
+                                 : "F5: coche recargado de " + file_name(car_path_) + " (" +
+                                       std::to_string(static_cast<int>(car_.mass)) + " kg)",
+                             kText, kShortMessageNs);
+    }
+}
+
+void DriveDemo::next_car() {
+    const std::filesystem::path current = utf8_path(car_path_);
+    const std::u8string current_name = current.filename().u8string();
+    std::size_t next = 0;
+    for (std::size_t i = 0; i < kCarConfigs.size(); ++i) {
+        if (std::string(current_name.begin(), current_name.end()) == kCarConfigs[i]) {
+            next = (i + 1) % kCarConfigs.size();
+        }
+    }
+    const std::u8string path =
+        (current.parent_path() / std::filesystem::path(kCarConfigs[next])).u8string();
+    if (load_car(std::string(path.begin(), path.end()), "F8")) {
+        overlay_.set_message(Overlay::Message::Car,
+                             config_hidden() ? std::string("F8: configuración siguiente")
+                                             : "F8: configuración " + file_name(car_path_),
+                             kText, kShortMessageNs);
+    }
+}
+
+bool DriveDemo::load_car(const std::string& path, const char* key) {
     std::string text;
     std::string error;
-    if (!io::read_file(car_path_, text, error)) {
+    if (!io::read_file(path, text, error)) {
         overlay_.set_message(Overlay::Message::Car,
-                             "F5: no se puede leer " + car_path_ + ": " + error, kError);
-        return;
+                             std::string(key) + ": no se puede leer " + path + ": " + error,
+                             kError);
+        return false;
     }
     const sim::CarParseResult parsed = sim::parse_car(text);
     if (!parsed.ok) {
         overlay_.set_message(Overlay::Message::Car,
-                             "F5: " + file_name(car_path_) + ", " + parsed.error +
+                             std::string(key) + ": " + file_name(path) + ", " + parsed.error +
                                  " (sigue el coche anterior)",
                              kError);
-        return;
+        return false;
     }
     // El coche nuevo sale parado en el punto de recolocación más cercano (en el recinto, en
     // su salida).
     const Vec3d at = current_car_.position;
+    car_path_ = path;
     car_text_ = std::move(text);
     car_ = parsed.car;
     describe_world();
@@ -405,10 +445,7 @@ void DriveDemo::reload_car() {
         desc_.car_spawn.yaw = static_cast<float>(r.yaw);
     }
     reset();
-    overlay_.set_message(Overlay::Message::Car,
-                         "F5: coche recargado de " + file_name(car_path_) + " (" +
-                             std::to_string(static_cast<int>(car_.mass)) + " kg)",
-                         kText, kShortMessageNs);
+    return true;
 }
 
 void DriveDemo::use_arena() {
@@ -614,6 +651,20 @@ void DriveDemo::handle_keys(FramePacer& pacer) {
                                                     : "F6: ayuda de dirección desactivada",
                              kText, kShortMessageNs);
     }
+    if (action_pressed(Action::Gearbox, context)) {
+        // Cambia la simulación: mundo nuevo y otra grabación.
+        settings_.sequential = !settings_.sequential;
+        settings_saver_.changed(now_ns());
+        describe_world();
+        reset();
+        overlay_.set_message(Overlay::Message::Settings,
+                             settings_.sequential ? "F2: caja secuencial (Q/E: bajar y subir)"
+                                                  : "F2: caja automática",
+                             kText, kShortMessageNs);
+    }
+    if (action_pressed(Action::NextCar, context)) {
+        next_car();
+    }
     if (action_pressed(Action::SteerDevice, context)) {
         // No es de la simulación: ni reconstruye el mundo ni cambia la grabación en curso.
         settings_.steer_device = settings_.steer_device == SteerDevice::Mouse
@@ -799,16 +850,33 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
 }
 
 void DriveDemo::draw_indicator(const DriverInput& driver) {
-    // Velocidad horizontal y selector tras el último paso; en la zona, la vuelta en curso y la
+    // Velocidad horizontal, marcha (con la del cambio en curso), rpm, presión del turbo y modo
+    // de la caja tras el último paso (indicadores provisionales: el salpicadero llega en la 2.7);
+    // la configuración, salvo a ciegas o con --hide-config; en la zona, la vuelta en curso y la
     // mejor (contadas en pasos por la simulación); a ciegas, la prueba.
     const sim::BodyVelocity v = world_->car_velocity();
     const double speed = std::sqrt(static_cast<double>(v.vx * v.vx + v.vz * v.vz));
-    const sim::Gear gear = world_->car_controller().gear();
-    const char* gear_name = gear == sim::Gear::Reverse   ? "R"
-                            : gear == sim::Gear::Neutral ? "N"
-                                                         : "adelante";
-    char text[200];
-    int used = std::snprintf(text, sizeof(text), "%.0f km/h   %s", speed * 3.6, gear_name);
+    const sim::DrivetrainOutput& drive = world_->car_controller().drivetrain();
+    const char* gear_names[] = {"R", "N", "1", "2", "3", "4", "5"};
+    char gear_text[16];
+    if (drive.shifting) {
+        std::snprintf(gear_text, sizeof(gear_text), "%s>%s", gear_names[drive.gear + 1],
+                      gear_names[drive.target_gear + 1]);
+    } else {
+        std::snprintf(gear_text, sizeof(gear_text), "%s", gear_names[drive.gear + 1]);
+    }
+    char text[240];
+    int used =
+        std::snprintf(text, sizeof(text), "%.0f km/h   %s %s   %4.0f rpm   %.2f bar", speed * 3.6,
+                      gear_text, settings_.sequential ? "sec." : "auto.",
+                      static_cast<double>(drive.engine_omega) * 30.0 / 3.14159265358979323846,
+                      static_cast<double>(drive.boost) * 1.0e-5);
+    if (!config_hidden()) {
+        const std::filesystem::path stem = utf8_path(car_path_).stem();
+        const std::u8string name = stem.u8string();
+        used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used), "   %s",
+                              std::string(name.begin(), name.end()).c_str());
+    }
     if (zone_mode_) {
         const sim::LapState& lap = *world_->lap();
         used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
@@ -907,8 +975,31 @@ void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
                     last_rumble_impact_, kImpactThreshold));
     line_fit(TextFormat("grabación: %s   pasos: %llu", recording_.name().c_str(),
                         static_cast<unsigned long long>(recording_.steps())));
-    line_fit(
-        TextFormat("coche: %s (%d kg)", file_name(car_path_).c_str(), static_cast<int>(car_.mass)));
+    if (config_hidden()) {
+        line("coche: (oculto)");
+    } else {
+        line_fit(TextFormat("coche: %s (%d kg)", file_name(car_path_).c_str(),
+                            static_cast<int>(car_.mass)));
+    }
+    {
+        const sim::DrivetrainOutput& d = world_->car_controller().drivetrain();
+        line_fit(TextFormat(
+            "motor: %.0f rpm, %.2f bar, %.0f N·m (acel. %.2f); embrague %s%s, desliz. %.1f rad/s, "
+            "%.0f N·m",
+            static_cast<double>(d.engine_omega) * 30.0 / 3.14159265358979323846,
+            static_cast<double>(d.boost) * 1.0e-5, static_cast<double>(d.engine_torque),
+            static_cast<double>(d.throttle),
+            d.clutch == sim::ClutchMode::Closed ? "cerrado" : "arranque",
+            d.clutch_open ? " (abierto)" : "", static_cast<double>(d.clutch_slip),
+            static_cast<double>(d.clutch_torque)));
+        line_fit(TextFormat(
+            "ejes: %.0f / %.0f N·m; central Δω %.2f rad/s, visco %.0f N·m; autobl. %.0f / %.0f "
+            "N·m; LCP %d%s",
+            static_cast<double>(d.axle_torque[0]), static_cast<double>(d.axle_torque[1]),
+            static_cast<double>(d.center_slip), static_cast<double>(d.viscous_torque),
+            static_cast<double>(d.lsd_torque[0]), static_cast<double>(d.lsd_torque[1]),
+            d.lcp_iterations, d.lcp_failures > 0 ? " SIN CONVERGER" : ""));
+    }
 
     // Zona: a ciegas no se dice la superficie ni la configuración.
     if (!zone_mode_) {

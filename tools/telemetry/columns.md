@@ -63,7 +63,27 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `laps` | — | ≥ 0 | Vueltas completas a la pista ciega |
 | `lap_time` | s | −1 sin vuelta | Tiempo de la vuelta en curso |
 | `impact` | m/s | ≥ 0 | Cambio de velocidad del paso que no explican la gravedad ni las fuerzas propias: suspensión y contactos de la carrocería (SimWorld::last_impact) |
-| `gear` | — | −1 R, 0 N, 1 adelante | Selector provisional (tarea 2.6 lo sustituye) |
+| `gear` | — | −1 R, 0 N, 1..5 | Marcha engranada |
+| `target_gear` | — | −1 R, 0 N, 1..5 | Marcha del cambio en curso (la engranada si no hay cambio) |
+| `gearbox` | — | 0 automático, 1 secuencial | Modo de la caja |
+| `shifting` | — | 0/1 | Cambio en curso: corte de par y embrague abierto |
+| `clutch_mode` | — | 0 arranque, 1 cerrado | Modo del embrague automático |
+| `clutch_open` | — | 0/1 | Embrague abierto por el cambio, el freno de mano (D3) o sin marcha |
+| `rpm` | rpm | ≥ 0 | Giro del motor |
+| `boost` | bar | [0, máx.] | Presión del turbo sobre la atmosférica |
+| `engine_throttle` | — | [0, 1] | Acelerador efectivo del motor: el del piloto, el del regulador de ralentí o el del cambio |
+| `engine_torque` | N·m | — | Par neto del motor (combustión menos rozamiento), media de los subpasos |
+| `clutch_slip` | rad/s | — | Deslizamiento del embrague ω_motor − ω_caja (0 sin marcha) |
+| `clutch_torque` | N·m | — | Par que pasa el embrague al tren (> 0 empujando el coche) |
+| `axle_torque_front` | N·m | — | Par de entrada al eje delantero (caja y viscoacoplador) |
+| `axle_torque_rear` | N·m | — | Par de entrada al eje trasero (caja y viscoacoplador) |
+| `center_slip` | rad/s | — | Δω del central: giro medio delantero − trasero |
+| `viscous_torque` | N·m | — | Par del viscoacoplador, del eje delantero al trasero (+) |
+| `lsd_torque_front` | N·m | ≥ 0 | Par de bloqueo del autoblocante delantero |
+| `lsd_torque_rear` | N·m | ≥ 0 | Par de bloqueo del autoblocante trasero |
+| `drift_hold` | — | 0/1 | El automático está retrasando la subida en derrape |
+| `lcp_iterations` | — | 1..8 | Iteraciones del LCP del tren motriz: máximo de los subpasos del paso |
+| `lcp_failures` | — | 0..4 | Subpasos del paso en que el LCP no convergió (impulsos recortados a su caja) |
 | `contact_fl` | — | 0 o 1 | Rueda en el suelo |
 | `surface_fl` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_fl` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |

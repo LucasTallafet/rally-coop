@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sim/car_data.h"
+#include "sim/drivetrain.h"
 #include "sim/jolt_config.h"
 #include "sim/steer_assist.h"
 #include "sim/surface.h"
@@ -30,11 +31,9 @@ inline constexpr float kMinSuspensionLength = 0.05f;
 // Densidad del aire para la resistencia aerodinámica (ISA, nivel del mar).
 inline constexpr float kAirDensity = 1.225f;
 
-// Selector provisional de la tracción (D4): R – N – adelante. Lo sustituye la caja de la 2.6.
-enum class Gear : std::int8_t { Reverse = -1, Neutral = 0, Forward = 1 };
-
-// Por debajo de esta velocidad (2 km/h) el coche está parado para el selector.
-inline constexpr float kGearStopSpeed = 2.0f / 3.6f;
+// Freno de mano aplicado por encima de esta fracción: desacopla el embrague y, en 4×4, el
+// central (D3).
+inline constexpr float kHandbrakeDecouple = 0.1f;
 
 // Mandos aplicados de un paso, normalizados (dirección en [-1, 1], positivo a la derecha; el
 // resto en [0, 1]) y las pulsaciones de marcha.
@@ -72,10 +71,35 @@ struct WheelOutput {
     float h = 0.0f;                  // m: media de h sobre la huella
 };
 
+// Lo que hizo el tren motriz en el último paso (telemetría y dibujo; no es estado). Pares en
+// N·m, medias de los subpasos salvo que se diga otra cosa.
+struct DrivetrainOutput {
+    float engine_omega = 0.0f; // rad/s al final del paso
+    float boost = 0.0f;        // Pa
+    int gear = 1;              // −1 R, 0 N, 1..5
+    int target_gear = 1;       // la del cambio en curso
+    bool shifting = false;     // cambio en curso (corte y embrague abierto)
+    ClutchMode clutch = ClutchMode::Launch;
+    bool clutch_open = false;           // abierto por el cambio o el freno de mano
+    float clutch_slip = 0.0f;           // rad/s: ω_e − ω_g al final del paso (0 sin marcha)
+    float clutch_torque = 0.0f;         // par que pasa al tren (> 0 empujando el coche)
+    float engine_torque = 0.0f;         // par neto del motor (combustión menos rozamiento)
+    float throttle = 0.0f;              // acelerador efectivo del motor (con ralentí y cambio)
+    std::array<float, 2> axle_torque{}; // de entrada a cada eje (delantero, trasero)
+    float center_slip = 0.0f;           // rad/s: ω̄ delantero − ω̄ trasero al final del paso
+    float viscous_torque = 0.0f;        // del viscoacoplador, del delantero al trasero (+)
+    std::array<float, 2> lsd_torque{};  // |par| de bloqueo de cada autoblocante
+    bool drift_hold = false;            // el automático está retrasando la subida en derrape
+    int lcp_iterations = 0;             // máximo de los subpasos del paso
+    int lcp_failures = 0;               // subpasos del paso sin converger
+};
+
 // Ajustes del controlador (los construye make_car).
 class CarControllerSettings final : public JPH::VehicleControllerSettings {
 public:
     CarData car;
+    // Modo de la caja (DriverAids): cambiarlo reconstruye el mundo.
+    GearboxMode gearbox = GearboxMode::Automatic;
     // Diagnóstico de los tests: integración explícita del giro de las ruedas (sin el término
     // implícito de dFx/dω). No se graba: el juego y las grabaciones siempre usan la
     // semi-implícita.
@@ -90,9 +114,10 @@ public:
 // fuerzas del neumático y la resistencia del aire son fuerzas explícitas sobre el cuerpo,
 // aplicadas en PostCollide (Jolt las integra en el mismo paso). Su estado, todo en SaveState
 // (el giro y el ángulo de las ruedas los guarda la restricción), tiene dos partes:
-//   dinámico: giro, deformación de la huella, ángulo de giro, dirección, selector y superficie
-//   del último contacto de cada rueda; recolocar lo pone a cero (salvo la superficie, que es la
-//   del suelo que pisa);
+//   dinámico: giro, deformación de la huella, ángulo de giro, dirección y superficie del último
+//   contacto de cada rueda, y el tren motriz (DrivetrainState: motor, turbo, marcha, cambio,
+//   embrague, par de entrada de los ejes y conjunto activo del LCP); recolocar lo pone en su
+//   estado inicial (salvo la superficie, que es la del suelo que pisa);
 //   condición, por rueda: el radio efectivo (después, daños, presión, pinchazos); persiste al
 //   recolocar y viaja en el cambio de host.
 class CarController final : public JPH::VehicleController {
@@ -102,11 +127,18 @@ public:
     // Mandos del paso: SimWorld los pone antes de Update.
     void set_controls(const CarControls& controls) { controls_ = controls; }
 
-    // Recolocar: el estado dinámico a cero (selector adelante); la condición no cambia.
+    // Recolocar: el estado dinámico a su valor inicial (1ª, motor al ralentí, sin presión); la
+    // condición no cambia.
     void reset();
 
-    // Arranque de los tests con velocidad: giro de las ruedas a juego con `speed` (m/s).
+    // Arranque de los tests con velocidad: giro de las ruedas a juego con `speed` (m/s) y, con
+    // speed > 0, la marcha más baja cuyas rpm no pasen de las de subir a fondo, con el embrague
+    // cerrado y el motor a las rpm de la caja. La partida siempre sale parada en 1ª (D4).
     void set_rolling(float speed);
+    // Solo tests (CarSpawn::gear), tras set_rolling: sale en la marcha `gear` (−1..5), con el
+    // motor a las rpm de la caja (al menos el ralentí; en N, al ralentí) y el embrague cerrado
+    // si el motor pasa de open_rpm.
+    void set_gear(int gear);
 
     // Condición: radio efectivo de la rueda (al construir, el del archivo). Lo leen el
     // neumático y el tester. Hoy solo lo cambian los tests (los daños llegan en la fase 4).
@@ -120,7 +152,11 @@ public:
     // último contacto (SaveState).
     SteerAssistInput steer_assist_input() const;
 
-    Gear gear() const { return gear_; }
+    int gear() const { return drive_.gear; }
+    GearboxMode gearbox() const { return gearbox_; }
+    const DrivetrainOutput& drivetrain() const { return drive_out_; }
+    // Subpasos sin converger del LCP desde que se construyó el coche (diagnóstico de los tests).
+    std::int64_t lcp_failures_total() const { return lcp_failures_total_; }
     const WheelOutput& wheel(int index) const { return outputs_[static_cast<std::size_t>(index)]; }
     // Suma de las fuerzas propias del último paso (neumático y aire), en el mundo.
     JPH::Vec3 applied_force() const { return applied_force_; }
@@ -148,11 +184,12 @@ protected:
 
 private:
     CarData car_;
+    GearboxMode gearbox_ = GearboxMode::Automatic;
     bool explicit_wheels_ = false;
     CarControls controls_;
 
-    // Estado dinámico (SaveState; recolocar lo pone a cero). El giro está en las ruedas de Jolt.
-    Gear gear_ = Gear::Forward;
+    // Estado dinámico (SaveState; recolocar lo reinicia). El giro está en las ruedas de Jolt.
+    DrivetrainState drive_;
     std::array<float, kWheelCount> u_{};     // m: deformación longitudinal de la huella
     std::array<float, kWheelCount> w_{};     // m: deformación lateral de la huella
     std::array<float, kWheelCount> steer_{}; // ángulo de Jolt (positivo a la izquierda)
@@ -165,6 +202,8 @@ private:
     std::array<Surface, kWheelCount> contact_surface_{};
     JPH::Vec3 applied_force_ = JPH::Vec3::sZero();
     bool rotation_skipped_ = false;
+    DrivetrainOutput drive_out_;
+    std::int64_t lcp_failures_total_ = 0;
 };
 
 // Tester de las ruedas: un cilindro como el de VehicleCollisionTesterCastCylinder de Jolt, pero
@@ -205,6 +244,7 @@ JPH::BodyCreationSettings car_body_settings(const CarData& car, JPH::RVec3Arg po
 // Coloca los anclajes de la suspensión para que, en equilibrio en llano con el reparto del
 // archivo, el centro de las ruedas quede a su radio del suelo y la caja horizontal.
 JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarData& car,
-                                                     float gravity, bool explicit_wheels);
+                                                     float gravity, GearboxMode gearbox,
+                                                     bool explicit_wheels);
 
 } // namespace rally::sim

@@ -1,6 +1,7 @@
 #include "sim/car_data.h"
 
 #include "sim/check.h"
+#include "sim/rmath.h"
 #include "sim/tire.h"
 
 #include <array>
@@ -25,6 +26,8 @@ struct KeySpec {
 };
 
 constexpr float kDeg = kPi / 180.0f;
+constexpr float kRpm = kPi / 30.0f; // rad/s por rpm
+constexpr float kBar = 1.0e5f;      // Pa por bar
 constexpr float kBig = 1.0e9f;
 constexpr int kWheelsPerCar = 4;
 
@@ -61,9 +64,53 @@ constexpr std::array kKeys = {
     KeySpec{"tire", "carcass_damping_long", &CarData::carcass_damping_long, 1.0f, 0.0f, 5.0f},
     KeySpec{"tire", "carcass_damping_lat", &CarData::carcass_damping_lat, 1.0f, 0.0f, 5.0f},
     KeySpec{"tire", "carcass_damping_fade", &CarData::carcass_damping_fade, 1.0f, 0.1f, 50.0f},
-    KeySpec{"drive", "max_torque", &CarData::drive_torque, 1.0f, 0.0f, kBig},
-    KeySpec{"drive", "max_power_kw", &CarData::drive_power, 1000.0f, 0.0f, kBig},
-    KeySpec{"drive", "front_share", &CarData::drive_front_share, 1.0f, 0.0f, 1.0f},
+    KeySpec{"engine", "idle_rpm", &CarData::idle_speed, kRpm, 300.0f * kRpm, 3000.0f * kRpm},
+    KeySpec{"engine", "limiter_rpm", &CarData::limiter_speed, kRpm, 1000.0f * kRpm,
+            20000.0f * kRpm},
+    KeySpec{"engine", "limiter_ramp_rpm", &CarData::limiter_ramp, kRpm, 10.0f * kRpm,
+            2000.0f * kRpm},
+    KeySpec{"engine", "inertia", &CarData::engine_inertia, 1.0f, 0.01f, 10.0f},
+    KeySpec{"engine", "friction", &CarData::engine_friction, 1.0f, 0.0f, 10.0f},
+    KeySpec{"engine", "torque_scale", &CarData::torque_scale, 1.0f, 0.1f, 3.0f},
+    KeySpec{"turbo", "max_boost_bar", &CarData::boost_max, kBar, 0.0f, 5.0f * kBar},
+    KeySpec{"turbo", "boost_gain_per_bar", &CarData::boost_gain, 1.0f / kBar, 0.0f, 5.0f / kBar},
+    KeySpec{"turbo", "threshold_rpm", &CarData::boost_threshold_speed, kRpm, 0.0f, 20000.0f * kRpm},
+    KeySpec{"turbo", "full_rpm", &CarData::boost_full_speed, kRpm, 0.0f, 20000.0f * kRpm},
+    KeySpec{"turbo", "rise_time", &CarData::boost_rise_time, 1.0f, 0.01f, 10.0f},
+    KeySpec{"turbo", "rise_reference_rpm", &CarData::boost_rise_speed, kRpm, 100.0f * kRpm,
+            20000.0f * kRpm},
+    KeySpec{"turbo", "fall_time", &CarData::boost_fall_time, 1.0f, 0.01f, 10.0f},
+    KeySpec{"clutch", "capacity_factor", &CarData::clutch_capacity_factor, 1.0f, 1.0f, 5.0f},
+    KeySpec{"clutch", "bite_fraction", &CarData::bite_fraction, 1.0f, 0.0f, 1.0f},
+    KeySpec{"clutch", "engage_rpm", &CarData::engage_speed, kRpm, 300.0f * kRpm, 10000.0f * kRpm},
+    KeySpec{"clutch", "launch_rpm", &CarData::launch_speed, kRpm, 300.0f * kRpm, 20000.0f * kRpm},
+    KeySpec{"clutch", "launch_ramp_rpm", &CarData::launch_ramp, kRpm, 10.0f * kRpm, 5000.0f * kRpm},
+    KeySpec{"clutch", "open_rpm", &CarData::open_speed, kRpm, 300.0f * kRpm, 10000.0f * kRpm},
+    KeySpec{"gearbox", "reverse", &CarData::reverse_ratio, 1.0f, 0.5f, 100.0f},
+    KeySpec{"gearbox", "gear_1", &CarData::gear_ratio_1, 1.0f, 0.5f, 100.0f},
+    KeySpec{"gearbox", "gear_2", &CarData::gear_ratio_2, 1.0f, 0.5f, 100.0f},
+    KeySpec{"gearbox", "gear_3", &CarData::gear_ratio_3, 1.0f, 0.5f, 100.0f},
+    KeySpec{"gearbox", "gear_4", &CarData::gear_ratio_4, 1.0f, 0.5f, 100.0f},
+    KeySpec{"gearbox", "gear_5", &CarData::gear_ratio_5, 1.0f, 0.5f, 100.0f},
+    KeySpec{"gearbox", "shift_time", &CarData::shift_time, 1.0f, 0.0f, 2.0f},
+    KeySpec{"gearbox", "upshift_rpm_full", &CarData::upshift_full, kRpm, 300.0f * kRpm,
+            20000.0f * kRpm},
+    KeySpec{"gearbox", "upshift_rpm_closed", &CarData::upshift_closed, kRpm, 300.0f * kRpm,
+            20000.0f * kRpm},
+    KeySpec{"gearbox", "downshift_rpm_full", &CarData::downshift_full, kRpm, 300.0f * kRpm,
+            20000.0f * kRpm},
+    KeySpec{"gearbox", "downshift_rpm_closed", &CarData::downshift_closed, kRpm, 300.0f * kRpm,
+            20000.0f * kRpm},
+    KeySpec{"gearbox", "drift_hold_time", &CarData::drift_hold_time, 1.0f, 0.0f, 1.0f},
+    KeySpec{"gearbox", "drift_angle_deg", &CarData::drift_angle, kDeg, 1.0f * kDeg, 90.0f * kDeg},
+    KeySpec{"driveline", "front_share", &CarData::drive_front_share, 1.0f, 0.0f, 1.0f},
+    KeySpec{"driveline", "viscous", &CarData::viscous, 1.0f, 0.0f, 100000.0f},
+    KeySpec{"driveline", "lsd_front_preload", &CarData::lsd_front_preload, 1.0f, 0.0f, 10000.0f},
+    KeySpec{"driveline", "lsd_front_drive", &CarData::lsd_front_drive, 1.0f, 0.0f, 1.0f},
+    KeySpec{"driveline", "lsd_front_coast", &CarData::lsd_front_coast, 1.0f, 0.0f, 1.0f},
+    KeySpec{"driveline", "lsd_rear_preload", &CarData::lsd_rear_preload, 1.0f, 0.0f, 10000.0f},
+    KeySpec{"driveline", "lsd_rear_drive", &CarData::lsd_rear_drive, 1.0f, 0.0f, 1.0f},
+    KeySpec{"driveline", "lsd_rear_coast", &CarData::lsd_rear_coast, 1.0f, 0.0f, 1.0f},
     KeySpec{"driver", "eye_left", &CarData::eye_left, 1.0f, -5.0f, 5.0f},
     KeySpec{"driver", "eye_height", &CarData::eye_height, 1.0f, 0.1f, 5.0f},
     KeySpec{"driver", "eye_behind_front_axle", &CarData::eye_behind_front_axle, 1.0f, -5.0f, 10.0f},
@@ -93,11 +140,24 @@ constexpr std::array kTireKeys = {
 };
 
 // Secciones del archivo. Las de los neumáticos van en el orden de Surface.
-constexpr std::size_t kFirstTireSection = 8;
+constexpr std::size_t kFirstTireSection = 13;
 constexpr std::array<std::string_view, kFirstTireSection + static_cast<std::size_t>(kSurfaceCount)>
-    kSections = {"chassis",   "wheels",    "suspension", "brakes",       "steering",
-                 "tire",      "drive",     "driver",     "tire.asphalt", "tire.gravel",
-                 "tire.dirt", "tire.snow", "tire.sand"};
+    kSections = {"chassis", "wheels",        "suspension",  "brakes",    "steering",  "tire",
+                 "engine",  "engine.torque", "turbo",       "clutch",    "gearbox",   "driveline",
+                 "driver",  "tire.asphalt",  "tire.gravel", "tire.dirt", "tire.snow", "tire.sand"};
+// [engine.torque]: sus líneas son "rpm = N·m", no claves fijas.
+constexpr std::size_t kTorqueSection = 7;
+constexpr std::size_t kTurboSection = 8;
+constexpr std::size_t kClutchSection = 9;
+constexpr std::size_t kGearboxSection = 10;
+constexpr std::size_t kDrivelineSection = 11;
+
+// Paso de la simulación para pasar tiempos a pasos (240 Hz, sim/sim_world.h).
+constexpr float kStepRate = 240.0f;
+// El automático no puede bajar a menos de este margen por debajo de subir (histéresis).
+constexpr float kShiftHysteresis = 500.0f * kRpm;
+
+float lerp(float a, float b, float t) { return a + (b - a) * t; }
 
 // Gravedad para F_z0 (la de Jolt por defecto).
 constexpr float kGravity = 9.81f;
@@ -181,6 +241,36 @@ CarParseResult parse_car(std::string_view text) {
         const std::string_view value = trim(line.substr(equals + 1));
         if (section.empty()) {
             return fail(line_number, "clave '" + std::string(key) + "' fuera de una sección");
+        }
+        if (section_index == kTorqueSection) {
+            // Punto de la curva: "rpm = N·m", con las rpm crecientes.
+            float rpm = 0.0f;
+            float torque = 0.0f;
+            const std::from_chars_result kr =
+                std::from_chars(key.data(), key.data() + key.size(), rpm);
+            const std::from_chars_result vr =
+                std::from_chars(value.data(), value.data() + value.size(), torque);
+            if (key.empty() || kr.ec != std::errc{} || kr.ptr != key.data() + key.size() ||
+                value.empty() || vr.ec != std::errc{} || vr.ptr != value.data() + value.size()) {
+                return fail(line_number, "punto de la curva mal escrito: se esperaba 'rpm = N·m'");
+            }
+            if (car.torque_points == kMaxTorquePoints) {
+                return fail(line_number, "la curva de par tiene más de " +
+                                             std::to_string(kMaxTorquePoints) + " puntos");
+            }
+            if (!(rpm >= 0.0f && rpm <= 20000.0f) || !(torque >= 0.0f && torque <= 10000.0f)) {
+                return fail(line_number, "punto de la curva fuera de rango");
+            }
+            const float speed = rpm * kRpm;
+            const auto n = static_cast<std::size_t>(car.torque_points);
+            if (n > 0 && !(speed > car.torque_speed[n - 1])) {
+                return fail(line_number, "las rpm de la curva de par tienen que ser crecientes");
+            }
+            car.torque_speed[n] = speed;
+            car.torque_atm[n] = torque;
+            ++car.torque_points;
+            section_end[section_index] = line_number;
+            continue;
         }
         // Hueco de la clave en seen_line y su especificación.
         std::size_t index = kSlots;
@@ -267,6 +357,82 @@ CarParseResult parse_car(std::string_view text) {
         }
     }
     car.nominal_load = car.mass * kGravity / static_cast<float>(kWheelsPerCar);
+
+    // Tren motriz: comprobaciones entre claves y derivados.
+    const auto line_of = [&](std::size_t s) {
+        return section_start[s] != 0 ? section_start[s] : line_number;
+    };
+    if (car.torque_points < 2) {
+        return fail(line_of(kTorqueSection), "[engine.torque] necesita al menos 2 puntos");
+    }
+    if (!(car.idle_speed < car.engage_speed && car.engage_speed < car.open_speed &&
+          car.engage_speed < car.launch_speed &&
+          car.launch_speed < car.limiter_speed - car.limiter_ramp)) {
+        return fail(line_of(kClutchSection),
+                    "[clutch]: hace falta idle_rpm < engage_rpm < open_rpm y engage_rpm < "
+                    "launch_rpm < limiter_rpm − limiter_ramp_rpm");
+    }
+    if (car.boost_max > 0.0f && !(car.boost_threshold_speed < car.boost_full_speed)) {
+        return fail(line_of(kTurboSection),
+                    "[turbo]: threshold_rpm tiene que ser menor que full_rpm");
+    }
+    const std::array<float, kGearCount> ratios = {
+        car.gear_ratio_1, car.gear_ratio_2, car.gear_ratio_3, car.gear_ratio_4, car.gear_ratio_5};
+    float step_ratio = 0.0f; // la mayor relación entre marchas seguidas
+    for (std::size_t g = 1; g < ratios.size(); ++g) {
+        if (!(ratios[g] < ratios[g - 1])) {
+            return fail(line_of(kGearboxSection),
+                        "[gearbox]: las relaciones tienen que bajar de gear_1 a gear_5");
+        }
+        step_ratio = rmath::max(step_ratio, ratios[g - 1] / ratios[g]);
+    }
+    // Histéresis del automático: tras bajar, las rpm quedan al menos kShiftHysteresis por debajo
+    // de las de subir (lineal en el acelerador: basta con los extremos).
+    for (const float t : {0.0f, 1.0f}) {
+        const float up = lerp(car.upshift_closed, car.upshift_full, t);
+        const float down = lerp(car.downshift_closed, car.downshift_full, t);
+        if (!(down * step_ratio <= up - kShiftHysteresis)) {
+            return fail(line_of(kGearboxSection),
+                        "[gearbox]: tras bajar, las rpm tienen que quedar 500 rpm por debajo de "
+                        "las de subir (downshift × la mayor relación entre marchas)");
+        }
+    }
+    if (!(car.upshift_full < car.limiter_speed - car.limiter_ramp)) {
+        return fail(
+            line_of(kGearboxSection),
+            "[gearbox]: upshift_rpm_full tiene que quedar por debajo del corte del limitador");
+    }
+    if (car.drive_front_share == 0.0f &&
+        (car.viscous != 0.0f || car.lsd_front_preload != 0.0f || car.lsd_front_drive != 0.0f ||
+         car.lsd_front_coast != 0.0f)) {
+        return fail(line_of(kDrivelineSection),
+                    "[driveline]: con front_share = 0 (propulsión), viscous y el autoblocante "
+                    "delantero tienen que ser 0");
+    }
+    float peak = 0.0f;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(car.torque_points); ++i) {
+        peak = rmath::max(peak, car.torque_atm[i]);
+    }
+    car.clutch_capacity = car.clutch_capacity_factor * peak *
+                          (1.0f + car.boost_gain * car.boost_max) * car.torque_scale;
+    // Ralentí sin carga: el acelerador que iguala el rozamiento con el par sin presión.
+    float idle_torque = car.torque_atm[0];
+    for (std::size_t i = 1; i < static_cast<std::size_t>(car.torque_points); ++i) {
+        if (car.idle_speed <= car.torque_speed[i]) {
+            const float t = rmath::clamp((car.idle_speed - car.torque_speed[i - 1]) /
+                                             (car.torque_speed[i] - car.torque_speed[i - 1]),
+                                         0.0f, 1.0f);
+            idle_torque = lerp(car.torque_atm[i - 1], car.torque_atm[i], t);
+            break;
+        }
+    }
+    // θ·T = (1 − θ)·b·ω al ralentí: θ = b·ω/(T + b·ω).
+    const float idle_friction = car.engine_friction * car.idle_speed;
+    car.idle_throttle =
+        rmath::clamp(idle_friction / (car.torque_scale * idle_torque + idle_friction), 0.0f, 1.0f);
+    car.shift_steps = static_cast<int>(car.shift_time * kStepRate + 0.5f);
+    car.drift_hold_steps = static_cast<int>(car.drift_hold_time * kStepRate + 0.5f);
+
     CarParseResult result;
     result.ok = true;
     result.car = car;

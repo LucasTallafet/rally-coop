@@ -31,6 +31,11 @@ template <int A, int B>
 float axle_slip_deg(const sim::CarTelemetry& t) {
     return -0.5f * (t.wheels[A].alpha + t.wheels[B].alpha) * kRadToDeg;
 }
+float rpm_thousands(const sim::CarTelemetry& t) {
+    return t.engine_omega * (30.0f / 3.14159265f) * 0.001f;
+}
+float gear(const sim::CarTelemetry& t) { return static_cast<float>(t.gear); }
+float boost_bar(const sim::CarTelemetry& t) { return t.boost * 1.0e-5f; }
 template <int W>
 float kappa_percent(const sim::CarTelemetry& t) {
     return t.wheels[W].kappa * 100.0f;
@@ -83,8 +88,13 @@ constexpr std::array kSuspensionPanels = {
     GraphPanel{"compresión", "cm", 0.0f, 20.0f, kCompressionChannels},
 };
 
-// Página 2 · Tren motriz: deslizamiento longitudinal relajado κ_r por rueda (tarea 2.5); la
-// 2.6 añade las RPM, la marcha y la presión del turbo.
+// Página 2 · Tren motriz: RPM (en miles) y marcha (−1 R, 0 N, 1–5), presión del turbo (tarea
+// 2.6) y deslizamiento longitudinal relajado κ_r por rueda (tarea 2.5).
+constexpr std::array kEngineChannels = {
+    GraphChannel{"rpm (miles)", rpm_thousands, 0xf0f0f0ffu},
+    GraphChannel{"marcha", gear, 0xffd040ffu},
+};
+constexpr std::array kBoostChannels = {GraphChannel{"presión", boost_bar, 0x60c0ffffu}};
 constexpr std::array kKappaChannels = {
     GraphChannel{"DI", kappa_percent<0>, kFrontLeftColor},
     GraphChannel{"DD", kappa_percent<1>, kFrontRightColor},
@@ -92,6 +102,8 @@ constexpr std::array kKappaChannels = {
     GraphChannel{"TD", kappa_percent<3>, kRearRightColor},
 };
 constexpr std::array kDrivetrainPanels = {
+    GraphPanel{"motor", "", -1.0f, 9.0f, kEngineChannels},
+    GraphPanel{"turbo", "bar", 0.0f, 2.0f, kBoostChannels},
     GraphPanel{"deslizamiento", "%", -50.0f, 50.0f, kKappaChannels},
 };
 

@@ -55,6 +55,31 @@ inline sim::WorldDesc flat_world(sim::Surface surface, bool micro = false, float
     return desc;
 }
 
+// Tren motriz abierto (tarea 2.6), solo en la copia del coche del test: sin viscoacoplador ni
+// autoblocantes (diferenciales abiertos, como la tracción provisional de la 2.4 y la 2.5) y caja
+// secuencial, que sin botones no cambia. Para los tests que miden el neumático o el chasis con
+// el acelerador (el que sujeta la velocidad).
+inline sim::WorldDesc open_driveline(sim::WorldDesc desc) {
+    desc.car_data.viscous = 0.0f;
+    desc.car_data.lsd_front_preload = 0.0f;
+    desc.car_data.lsd_front_drive = 0.0f;
+    desc.car_data.lsd_front_coast = 0.0f;
+    desc.car_data.lsd_rear_preload = 0.0f;
+    desc.car_data.lsd_rear_drive = 0.0f;
+    desc.car_data.lsd_rear_coast = 0.0f;
+    desc.aids.gearbox = sim::GearboxMode::Sequential;
+    return desc;
+}
+
+// Además, el coche sale en punto muerto (CarSpawn::gear): los tests que miden el neumático,
+// el freno o el chasis sin el motor. Con los diferenciales abiertos: en N, la precarga de los
+// autoblocantes y el viscoacoplador siguen uniendo las ruedas.
+inline sim::WorldDesc in_neutral(sim::WorldDesc desc) {
+    desc = open_driveline(desc);
+    desc.car_spawn.gear = sim::kNeutralGear;
+    return desc;
+}
+
 // Pendiente de la rampa de los tests (15 %).
 inline constexpr double kRampGrade = 0.15;
 

@@ -40,6 +40,9 @@ struct BoxDesc {
     bool micro = false;
 };
 
+// CarSpawn::gear por defecto: la marcha la da la velocidad de salida.
+inline constexpr std::int8_t kSpawnGearBySpeed = 127;
+
 // Salida del coche: su origen (en el suelo, entre los ejes), rumbo (giro alrededor de +y; 0
 // mira a -z) y velocidad hacia delante al construir (los tests la usan; el juego sale parado).
 // Recolocar fuera de la zona lo devuelve aquí, parado.
@@ -49,6 +52,10 @@ struct CarSpawn {
     double z = 0.0;
     float yaw = 0.0f;
     float speed = 0.0f;
+    // Solo tests: marcha de salida (−1 R, 0 N, 1..5). Por defecto, kSpawnGearBySpeed: 1ª parado
+    // y, con speed > 0, la que da la velocidad (CarController::set_rolling). La partida siempre
+    // sale parada en 1ª (D4).
+    std::int8_t gear = kSpawnGearBySpeed;
 };
 
 // Descripción del mundo. Primero el suelo y los muros de la zona de pruebas (si la hay),

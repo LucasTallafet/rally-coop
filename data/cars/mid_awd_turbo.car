@@ -1,6 +1,6 @@
 # Coche de la 1.0: 4x4 con motor central y turbo, inspirado en el Peugeot 205 T16 Evo 1.
 # Formato: secciones [nombre], "clave = valor", comentarios con #. Unidades SI salvo que la
-# clave diga otra (_deg, _kw). Ejes del coche: adelante -z, derecha +x, arriba +y; el origen
+# clave diga otra (_deg, _rpm, _bar). Ejes del coche: adelante -z, derecha +x, arriba +y; el origen
 # está en el suelo, bajo el punto medio entre los ejes, con el coche en equilibrio.
 # Origen de cada valor: "fuente" (datos publicados), "estimado" o "valor de partida". Los
 # estimados y los de partida se ajustan en la tarea 2.10.
@@ -124,11 +124,79 @@ relaxation_lat = 0.70
 relaxation_long = 0.2625
 rolling_resistance = 0.15
 
-# Tracción provisional (la sustituyen el motor y la transmisión de la tarea 2.6).
-[drive]
-max_torque = 3000         # N·m total a las ruedas. Valor de partida (provisional)
-max_power_kw = 250        # kW. Valor de partida (provisional)
-front_share = 0.33        # reparto del par 33/67. Fuente (Evo 1)
+# Motor y transmisión (tarea 2.6; sim/drivetrain.h). Motor central transversal, 4 cilindros
+# turbo (205 T16 Evo 1): 350 CV (257 kW) a 8000 rpm y ~450 N·m a 5000 rpm con presión.
+[engine]
+idle_rpm = 1000           # Estimado
+limiter_rpm = 8200        # el corte llega a 0 aquí. Estimado
+limiter_ramp_rpm = 100    # corte en rampa de 8100 a 8200 rpm (2.6: rampa en vez de rebote; el rebote, en el sonido de la 2.7)
+inertia = 0.15            # kg·m² con volante y embrague. Estimado
+friction = 0.072          # N·m·s/rad: freno motor ~60 N·m a 8000 rpm. Estimado
+torque_scale = 1.0        # 1,0 = Evo 1; hasta ~1,3 ≈ Evo 2 (D2)
+
+# Par sin presión (N·m) por rpm: el 45 % del de plena presión (estimado). A plena presión
+# (× 2,222): 240 a 1000, 450 a 5000 (fuente: 332 lb-ft) y 307 a 8000 rpm (257 kW, fuente).
+# Entre 7500 y 8000 rpm la potencia queda plana en 257 kW.
+[engine.torque]
+1000 = 108
+2000 = 148.5
+3000 = 175.5
+4000 = 193.5
+5000 = 202.5
+6000 = 171
+7000 = 155.25
+7500 = 147.15
+8000 = 138.15
+8200 = 130.5
+
+# Turbo KKK K26: presión de primer orden hacia un objetivo que depende de las rpm y del
+# acelerador, sin antirretardo.
+[turbo]
+max_boost_bar = 1.45      # válvula de descarga. Fuente (1,4-1,5)
+boost_gain_per_bar = 0.8429 # g en T = T_atm·(1 + g·p): (1/0,45 - 1)/1,45, el par sin presión es el 45 %
+threshold_rpm = 3500      # por debajo, sin presión. Estimado
+full_rpm = 5000           # desde aquí, objetivo pleno. Estimado
+rise_time = 0.39          # s: constante de subida a rise_reference_rpm (90 % en 0,9 s). Estimado
+rise_reference_rpm = 4500 # la constante de subida crece a bajas rpm (× 4500/rpm)
+fall_time = 0.11          # s: constante de bajada (< 10 % en 0,25 s). Estimado
+
+# Embrague automático interno: patina al arrancar, nunca cala.
+[clutch]
+capacity_factor = 1.6     # × par máximo a plena presión × torque_scale (720 N·m). Estimado
+bite_fraction = 0.15      # en arranque, la capacidad muerde hasta el 15 % antes de la rampa (por debajo del par del motor): arranca sin esperar a que suban las vueltas. Valor de partida
+engage_rpm = 1200         # en arranque, capacidad 0 por debajo: sin avance lento al ralentí. Estimado
+launch_rpm = 4500         # rpm del arranque a fondo, por encima del umbral del turbo. Estimado
+launch_ramp_rpm = 500     # rampa de la capacidad en arranque. Estimado
+open_rpm = 1250           # cerrado vuelve a arranque por debajo (nunca cala). Estimado
+
+# Caja de 5 marchas (fuente: 5 marchas, desarrollos cortos). Relaciones totales, con el grupo,
+# estimadas para 1ª a ~65 km/h y 5ª a ~210 km/h a 8200 rpm (rueda de 0,31 m), en progresión
+# geométrica: 65, 87, 117, 157 y 210 km/h.
+[gearbox]
+reverse = 13.5            # Estimado
+gear_1 = 14.75
+gear_2 = 11.0
+gear_3 = 8.2
+gear_4 = 6.12
+gear_5 = 4.56
+shift_time = 0.08         # s de corte en el cambio. Estimado
+upshift_rpm_full = 7800   # automático: sube a fondo... Valor de partida, se ajusta en 2.10
+upshift_rpm_closed = 6500 # ... y con el acelerador a 0 (lineal entre medias): al levantar el pie no sube (en la entrada de una curva conserva la marcha). Valor de partida
+downshift_rpm_full = 4200 # baja a fondo. Valor de partida
+downshift_rpm_closed = 2000 # baja con el acelerador a 0. Valor de partida
+drift_hold_time = 0.75    # s: espera de la subida en derrape (rango cerrado 0,5-1 s)
+drift_angle_deg = 10      # |β| desde el que el automático ve derrape. Estimado
+
+# Diferencial central de reparto fijo con viscoacoplador y autoblocantes de rampa.
+[driveline]
+front_share = 0.33        # reparto 33/67. Fuente (Evo 1)
+viscous = 20              # N·m·s/rad entre ejes. Valor de partida: el criterio 8 de la 2.6 (≥ 20 % más al eje que agarra) da 48,6 % delante con |Δω| ≤ 29 rad/s; de 10 a 60 el reparto apenas cambia (45-49 %)
+lsd_front_preload = 50    # N·m. Estimado
+lsd_front_drive = 0.30    # par de bloqueo / par de entrada al eje, acelerando. Estimado
+lsd_front_coast = 0.20    # ... reteniendo. Estimado
+lsd_rear_preload = 80     # N·m. Estimado
+lsd_rear_drive = 0.50     # Estimado
+lsd_rear_coast = 0.30     # Estimado
 
 [driver]
 eye_left = 0.37           # m a la izquierda del eje del coche. Estimado

@@ -58,8 +58,9 @@ constexpr KeyBinding kTable[] = {
      PadControl::LeftShoulder,
      kAll,
      KeyBlock::Drive,
-     "Selector hacia R",
-     "provisional hasta la 2.6; parado, de adelante a N y de N a R"},
+     "Bajar marcha",
+     "caja R, N, 1 a 5: de 1 a N (en automático, solo parado) y de N a R parado (menos de "
+     "2 km/h); en secuencial, una marcha (no si pasaría del limitador)"},
     {Action::ShiftUp,
      {k(Key::E), {}},
      Action::None,
@@ -67,8 +68,9 @@ constexpr KeyBinding kTable[] = {
      PadControl::RightShoulder,
      kAll,
      KeyBlock::Drive,
-     "Selector hacia adelante",
-     "provisional; de R a N y de N a adelante"},
+     "Subir marcha",
+     "de R a N y de N a 1 (no si pasaría del limitador); en secuencial, una marcha; en "
+     "automático, desde 1 cambia solo"},
     {Action::Reset,
      {k(Key::R), {}},
      Action::None,
@@ -99,6 +101,15 @@ constexpr KeyBinding kTable[] = {
      "la activa o la quita; limita las ruedas delanteras al ángulo de máximo agarre desde "
      "30 km/h; reconstruye el "
      "mundo y empieza otra grabación; se guarda en ajustes.txt"},
+    {Action::Gearbox,
+     {k(Key::F2), {}},
+     Action::None,
+     {},
+     PadControl::None,
+     kAll,
+     KeyBlock::Drive,
+     "Caja: automática / secuencial",
+     "reconstruye el mundo y empieza otra grabación; se guarda en ajustes.txt"},
     {Action::SteerDevice,
      {k(Key::F7), {}},
      Action::None,
@@ -322,6 +333,17 @@ constexpr KeyBinding kTable[] = {
      "reconstruye el mundo con el coche en el punto de recolocación más cercano (en el recinto, "
      "en su salida); si el archivo tiene un error, lo muestra con su línea y sigue el coche "
      "anterior"},
+    {Action::NextCar,
+     {k(Key::F8), {}},
+     Action::None,
+     {},
+     PadControl::None,
+     kAll,
+     KeyBlock::General,
+     "Configuración siguiente",
+     "mid_awd_turbo, front_awd_turbo_5cyl, front_rwd_na y front_awd_turbo_groupa, por turnos, "
+     "de la carpeta del coche; reconstruye el mundo; a ciegas o con --hide-config, la pantalla "
+     "no dice cuál"},
     {Action::ResetWorld,
      {k(Key::Backspace), {}},
      Action::None,

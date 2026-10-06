@@ -101,9 +101,30 @@ struct CarTelemetry {
 
     float impact = 0.0f; // m/s (SimWorld::last_impact)
 
-    // Coche (tarea 2.4): selector provisional (-1 R, 0 N, 1 adelante) y ruedas en el orden
-    // FL, FR, RL, RR.
-    std::int8_t gear = 0;
+    // Tren motriz (tarea 2.6; sim/car_controller.h, DrivetrainOutput). Pares en N·m, medias de
+    // los subpasos.
+    std::int8_t gear = 0;        // −1 R, 0 N, 1..5
+    std::int8_t target_gear = 0; // la del cambio en curso
+    std::uint8_t gearbox = 0;    // 0 automático, 1 secuencial
+    bool shifting = false;
+    std::uint8_t clutch_mode = 0; // 0 arranque, 1 cerrado
+    bool clutch_open = false;     // abierto por el cambio, el freno de mano o sin marcha
+    float engine_omega = 0.0f;    // rad/s
+    float boost = 0.0f;           // Pa sobre la atmosférica
+    float engine_throttle = 0.0f; // acelerador efectivo del motor (ralentí y cambio incluidos)
+    float engine_torque = 0.0f;   // par neto del motor
+    float clutch_slip = 0.0f;     // rad/s: ω_e − ω_caja
+    float clutch_torque = 0.0f;   // par que pasa al tren (> 0 empujando)
+    float axle_torque_front = 0.0f;
+    float axle_torque_rear = 0.0f;
+    float center_slip = 0.0f;    // rad/s: ω̄ delantero − ω̄ trasero
+    float viscous_torque = 0.0f; // del delantero al trasero (+)
+    float lsd_torque_front = 0.0f;
+    float lsd_torque_rear = 0.0f;
+    bool drift_hold = false;
+    std::uint8_t lcp_iterations = 0;
+    std::uint8_t lcp_failures = 0;
+    // Ruedas en el orden FL, FR, RL, RR.
     std::array<WheelTelemetry, 4> wheels{};
 };
 

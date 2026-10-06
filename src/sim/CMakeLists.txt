@@ -13,6 +13,7 @@ add_library(rally_sim STATIC
     sim_world.cpp
     steer_assist.cpp
     test_zone.cpp
+    drivetrain.cpp
     tire.cpp
 )
 target_include_directories(rally_sim PUBLIC ${PROJECT_SOURCE_DIR}/src)

@@ -277,6 +277,8 @@ std::string serialize_world(const sim::WorldDesc& desc) {
     w.u8(desc.test_zone ? 1 : 0);
     w.u8(static_cast<std::uint8_t>(desc.blind_surface));
     w.u8(desc.aids.steer_assist ? 1 : 0);
+    w.u8(static_cast<std::uint8_t>(desc.aids.gearbox));
+    w.u8(static_cast<std::uint8_t>(desc.car_spawn.gear));
     return out;
 }
 
@@ -286,12 +288,14 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
     // controlado (la caja de las tareas 2.1–2.3), que se comprueba y se ignora: esas
     // grabaciones no tienen coche. Desde la 3, cada cuerpo lleva además su giro, su superficie
     // y su h, y detrás va el coche. Desde la 4, al final, las ayudas del jugador (u8 ayuda de
-    // dirección); hasta la 3, sin ayudas (no existían).
+    // dirección); hasta la 3, sin ayudas (no existían). Desde la 5, detrás, el modo de la caja
+    // (u8) y la marcha de salida de los tests (i8; 127: la que da la velocidad); hasta la 4,
+    // automático y la marcha que da la velocidad.
     const bool v3 = format_version >= 3;
     const std::size_t body_bytes = 1 + 3 * 8 + 3 * 4 + (v3 ? 4 + 1 + 1 : 0);
     const std::size_t car_bytes = 1 + 3 * 8 + 2 * 4;
-    const std::size_t tail_bytes =
-        (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0) + (format_version >= 4 ? 1 : 0);
+    const std::size_t tail_bytes = (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0) +
+                                   (format_version >= 4 ? 1 : 0) + (format_version >= 5 ? 2 : 0);
     Reader r(bytes);
     const std::uint32_t count = r.u32();
     if (!r.ok() || static_cast<std::uint64_t>(count) * body_bytes + tail_bytes != r.remaining()) {
@@ -363,6 +367,17 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
             return false;
         }
         desc.aids.steer_assist = steer_assist == 1;
+    }
+    if (format_version >= 5) {
+        const std::uint8_t gearbox = r.u8();
+        const auto gear = static_cast<std::int8_t>(r.u8());
+        if (gearbox > 1 ||
+            (gear != sim::kSpawnGearBySpeed && (gear < -1 || gear > sim::kGearCount))) {
+            error = "descripción del mundo: modo de la caja o marcha de salida no válidos";
+            return false;
+        }
+        desc.aids.gearbox = static_cast<sim::GearboxMode>(gearbox);
+        desc.car_spawn.gear = gear;
     }
     return true;
 }

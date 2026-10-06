@@ -201,13 +201,17 @@ void SimWorld::build(const WorldDesc& desc) {
         bodies.AddBodiesFinalize(batch.data(), batch_count, add_state, JPH::EActivation::Activate);
     }
     if (car_body != nullptr) {
-        w.car_constraint = make_car_constraint(*car_body, desc.car_data,
-                                               -w.system.GetGravity().GetY(), desc.explicit_wheels);
+        w.car_constraint =
+            make_car_constraint(*car_body, desc.car_data, -w.system.GetGravity().GetY(),
+                                desc.aids.gearbox, desc.explicit_wheels);
         w.car_controller = static_cast<CarController*>(w.car_constraint->GetController());
         w.car_tester = new CarWheelTester(
             layers::kMoving, ReliefSource{w.zone.get(), w.noise.get()}, *w.car_controller);
         w.car_constraint->SetVehicleCollisionTester(w.car_tester);
         w.car_controller->set_rolling(desc.car_spawn.speed);
+        if (desc.car_spawn.gear != kSpawnGearBySpeed) {
+            w.car_controller->set_gear(desc.car_spawn.gear);
+        }
         w.system.AddConstraint(w.car_constraint);
         w.system.AddStepListener(w.car_constraint);
     }
@@ -379,7 +383,28 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
     }
     t.impact = w.last_impact;
     const CarController& controller = *w.car_controller;
-    t.gear = static_cast<std::int8_t>(controller.gear());
+    const DrivetrainOutput& drive = controller.drivetrain();
+    t.gear = static_cast<std::int8_t>(drive.gear);
+    t.target_gear = static_cast<std::int8_t>(drive.target_gear);
+    t.gearbox = static_cast<std::uint8_t>(controller.gearbox());
+    t.shifting = drive.shifting;
+    t.clutch_mode = static_cast<std::uint8_t>(drive.clutch);
+    t.clutch_open = drive.clutch_open;
+    t.engine_omega = drive.engine_omega;
+    t.boost = drive.boost;
+    t.engine_throttle = drive.throttle;
+    t.engine_torque = drive.engine_torque;
+    t.clutch_slip = drive.clutch_slip;
+    t.clutch_torque = drive.clutch_torque;
+    t.axle_torque_front = drive.axle_torque[0];
+    t.axle_torque_rear = drive.axle_torque[1];
+    t.center_slip = drive.center_slip;
+    t.viscous_torque = drive.viscous_torque;
+    t.lsd_torque_front = drive.lsd_torque[0];
+    t.lsd_torque_rear = drive.lsd_torque[1];
+    t.drift_hold = drive.drift_hold;
+    t.lcp_iterations = static_cast<std::uint8_t>(drive.lcp_iterations);
+    t.lcp_failures = static_cast<std::uint8_t>(drive.lcp_failures);
     for (int i = 0; i < kWheelCount; ++i) {
         const WheelOutput& out = controller.wheel(i);
         WheelTelemetry& wt = t.wheels[static_cast<std::size_t>(i)];

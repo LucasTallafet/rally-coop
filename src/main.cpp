@@ -84,6 +84,9 @@ int main(int argc, char** argv) {
             demo.start_zone_bench();
         } else if (std::strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
             ++i; // ya leído
+        } else if (std::strcmp(argv[i], "--hide-config") == 0) {
+            // La configuración del coche no se dice en pantalla (bloque C de la 2.10).
+            demo.set_hide_config(true);
         } else if (std::strcmp(argv[i], "--blind-seed") == 0 && i + 1 < argc) {
             // Semilla de la serie de pruebas a ciegas (M en la zona).
             const char* text = argv[++i];

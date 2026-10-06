@@ -37,9 +37,11 @@ namespace rally::io {
 // versión 1 de la simulación, con la caja): se repiten avisando, sin coche y sin comparar el
 // hash. 4 (tarea 2.5b): la descripción del mundo lleva al final las ayudas del jugador (u8
 // ayuda de dirección) y los ajustes, texto de la plataforma; las de la versión 3 se leen con la
-// ayuda desactivada (no existía).
+// ayuda desactivada (no existía). 5 (tarea 2.6): detrás de las ayudas, el modo de la caja (u8)
+// y la marcha de salida de los tests (i8); las de la versión 4 se leen con el cambio automático
+// y la marcha que da la velocidad.
 
-inline constexpr std::uint32_t kRecordingFormatVersion = 4;
+inline constexpr std::uint32_t kRecordingFormatVersion = 5;
 inline constexpr std::uint32_t kOldestRecordingFormatVersion = 1;
 inline constexpr std::size_t kRunBytes = 12;
 inline constexpr std::size_t kFooterBytes = 32;

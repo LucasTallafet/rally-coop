@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sim/car_data.h"
+#include "sim/drivetrain.h"
 #include "sim/input_smoothing.h"
 
 #include <array>
@@ -36,6 +37,7 @@ inline constexpr float kAssistFullSpeed = 30.0f / 3.6f;  // m/s: desde aquí, la
 // grabación; cambiar una reconstruye el mundo. La 2.8 añade ABS y control de tracción.
 struct DriverAids {
     bool steer_assist = false;
+    GearboxMode gearbox = GearboxMode::Automatic; // tarea 2.6
 
     friend bool operator==(const DriverAids&, const DriverAids&) = default;
 };

@@ -97,4 +97,36 @@ struct TireInput {
 TireForce step_tire(const CarData& car, const TireInput& in, float h, bool implicit,
                     WheelDynamics& state);
 
+// step_tire partido en dos para el tren motriz (tarea 2.6), que resuelve el giro de las cuatro
+// ruedas y del motor a la vez (sim/drivetrain.h). step_tire es exactamente
+//   p = predict_tire(...); ω = coulomb(ω + k·(drive − r·F_x0), k·stop) con
+//   k = h/(I_w + h·r·slope); finish_tire(..., p, ω, state).
+// Predicción con el giro sin cambiar: la fuerza longitudinal F_x0 que frena la rueda y su
+// derivada respecto a ω (slope ≥ 0, 0 con la huella o la fuerza en su límite, o sin
+// `implicit`). El resto son los términos que finish_tire reutiliza.
+struct TirePrediction {
+    bool loaded = false;
+    float fx0 = 0.0f;   // N
+    float slope = 0.0f; // N·s/rad: ∂F_x/∂ω, sin el radio
+    // Para finish_tire.
+    float limit = 0.0f;
+    float c_x = 0.0f;
+    float c_y = 0.0f;
+    float fade = 0.0f;
+    float rho_max = 0.0f;
+    float rx_e = 1.0f;
+    float rx_phi = 0.0f;
+    float ry_e = 1.0f;
+    float ry_phi = 0.0f;
+};
+TirePrediction predict_tire(const CarData& car, const TireInput& in, float h, bool implicit,
+                            const WheelDynamics& state);
+// Con el giro nuevo `omega`: deformación de la huella, su recorte y la fuerza del subpaso.
+// Escribe omega, u y w en `state`.
+TireForce finish_tire(const CarData& car, const TireInput& in, float h,
+                      const TirePrediction& prediction, float omega, WheelDynamics& state);
+// Inercia efectiva de la rueda en el subpaso: I_w + h·r·slope (el término semi-implícito).
+float wheel_effective_inertia(const CarData& car, const TireInput& in, float h,
+                              const TirePrediction& prediction);
+
 } // namespace rally::sim

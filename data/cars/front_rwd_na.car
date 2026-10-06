@@ -1,0 +1,203 @@
+# Configuración de prueba (tarea 2.6): propulsión con motor delantero atmosférico de 2 litros,
+# tipo Ford Escort Mk2 RS (BDA, ~1979). Diseño propio, sin marcas. Carácter buscado: ligero,
+# sin retardo, se lleva con el acelerador.
+# Mismo modelo y mismo neumático que mid_awd_turbo.car; todo lo que no se dice es igual.
+# Formato: secciones [nombre], "clave = valor", comentarios con #. Unidades SI salvo que la
+# clave diga otra (_deg, _rpm, _bar). Ejes del coche: adelante -z, derecha +x, arriba +y; el origen
+# está en el suelo, bajo el punto medio entre los ejes, con el coche en equilibrio.
+# Origen de cada valor: "fuente" (datos publicados, aproximados: verificar), "estimado" o
+# "valor de partida". Las inercias se escalan desde las del 205 con m·(a² + b²)/12 de la caja.
+
+[chassis]
+mass = 1050               # kg con dos ocupantes y combustible. Aproximado (prompt de la 2.6)
+front_weight = 0.52       # 52/48. Aproximado (prompt)
+wheelbase = 2.40          # m. Fuente (2405 mm)
+track = 1.40              # m. Aproximado, verificar
+cg_height = 0.45          # m sobre el suelo. Estimado
+inertia_yaw = 1350        # kg·m². Estimado (escalado)
+inertia_pitch = 1290      # kg·m². Estimado (escalado)
+inertia_roll = 350        # kg·m². Estimado (escalado)
+box_length = 3.98         # m. Aproximado
+box_width = 1.60          # m: con los pasos de rueda. Aproximado
+box_height = 1.22         # m: 1,40 m de alto total menos la altura libre. Aproximado
+ground_clearance = 0.18   # m. Estimado (grava)
+cda = 0.70                # m². Estimado
+
+[wheels]
+radius = 0.31             # m. Estimado
+width = 0.20              # m. Estimado
+inertia = 1.2             # kg·m²: rueda, freno y palier. Estimado
+footprint_length = 0.18   # m: largo de la huella. Estimado
+
+[suspension]
+travel = 0.20             # m de recorrido total. Estimado (grava)
+frequency_front = 1.6     # Hz. Estimado (grava)
+frequency_rear = 1.8      # Hz. Estimado (grava)
+damping_ratio = 0.35      # fracción del crítico. Estimado
+antiroll_front = 15000    # N/m. Estimado
+antiroll_rear = 10000     # N/m. Estimado
+
+[brakes]
+max_torque = 4000         # N·m total. Estimado
+front_share = 0.60        # Estimado
+handbrake_torque = 1400   # N·m por rueda trasera. Estimado
+
+[steering]
+max_steer_deg = 30        # ángulo de la rueda interior. Estimado
+ackermann = 0.5           # fracción de Ackermann. Estimado
+
+# Neumático (tarea 2.5): Pacejka simplificada con una curva normalizada por superficie,
+# fricción combinada por deslizamiento normalizado, sensibilidad a la carga, deformación de la
+# huella como estado (relajación) y rodadura como par de Coulomb. Neumático de grava de rally,
+# el mismo en todas las superficies. El lector calcula B y C de la curva al cargar.
+# Lo común a todas las superficies:
+[tire]
+carcass_damping_long = 0.6 # ζ del modo carrocería-huella, longitudinal. Valor de partida, se ajusta en 2.10
+carcass_damping_lat = 0.6 # ζ del modo carrocería-huella, lateral. Valor de partida, se ajusta en 2.10
+carcass_damping_fade = 10 # m/s de v_ref = max(|v|, |ω|·r): el amortiguamiento de la carcasa baja a 0 aquí y el recorte de la huella llega a la rueda bloqueada a 75°. 2.5: quita el serpenteo de baja velocidad; ver 05. Se ajusta en 2.10
+
+# Un juego por superficie. Claves:
+#   mu_peak: μ pico a la carga estática media por rueda (F_z0 = m·g/4).
+#   slip_angle_peak_deg y slip_ratio_peak: ángulo de deriva y deslizamiento longitudinal del
+#   pico.
+#   slide_ratio: μ deslizando / μ pico, la asíntota de la curva (entre 0,5 y 0,99).
+#   curvature_e: E de la curva (< 1); mueve poco la caída tras el pico.
+#   load_sensitivity: k en μ(F_z) = μ pico·(1 − k·(F_z/F_z0 − 1)), con F_z/F_z0 en [0, 3].
+#   relaxation_lat y relaxation_long: σ_y y σ_x (m); σ_x = 0,375·σ_y, la proporción de la 2.4.
+#   rolling_resistance: coeficiente × carga.
+# Todos son valores de partida (tabla del prompt de la 2.5) y se ajustan en la 2.10.
+
+# Mucho agarre, pico temprano, se va de golpe.
+[tire.asphalt]
+mu_peak = 1.10
+slip_angle_peak_deg = 7
+slip_ratio_peak = 0.10
+slide_ratio = 0.80
+curvature_e = 0
+load_sensitivity = 0.10
+relaxation_lat = 0.40
+relaxation_long = 0.15
+rolling_resistance = 0.015
+
+# Agarra bastante y suelta con una caída marcada.
+[tire.dirt]
+mu_peak = 0.80
+slip_angle_peak_deg = 10
+slip_ratio_peak = 0.14
+slide_ratio = 0.75
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.50
+relaxation_long = 0.1875
+rolling_resistance = 0.030
+
+# Flotante y progresiva: se desliza mucho sin perderse.
+[tire.gravel]
+mu_peak = 0.72
+slip_angle_peak_deg = 14
+slip_ratio_peak = 0.18
+slide_ratio = 0.90
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.60
+relaxation_long = 0.225
+rolling_resistance = 0.045
+
+# Nieve con clavos: poco agarre, muy progresiva, frena poco.
+[tire.snow]
+mu_peak = 0.45
+slip_angle_peak_deg = 12
+slip_ratio_peak = 0.15
+slide_ratio = 0.90
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.60
+relaxation_long = 0.225
+rolling_resistance = 0.035
+
+# Frena el coche; castiga perder las vueltas.
+[tire.sand]
+mu_peak = 0.50
+slip_angle_peak_deg = 16
+slip_ratio_peak = 0.22
+slide_ratio = 0.95
+curvature_e = 0
+load_sensitivity = 0.08
+relaxation_lat = 0.70
+relaxation_long = 0.2625
+rolling_resistance = 0.15
+
+# Motor y transmisión (tarea 2.6; sim/drivetrain.h). Motor delantero atmosférico de 2 litros
+# y 16 válvulas: ~250 CV (184 kW) a 8500 rpm, ~235 N·m a 6500 rpm (aproximado, verificar).
+[engine]
+idle_rpm = 1000           # Estimado
+limiter_rpm = 9000        # Estimado
+limiter_ramp_rpm = 100    # corte en rampa de 8900 a 9000 rpm
+inertia = 0.10            # kg·m²: motor ligero y de altas vueltas. Estimado
+friction = 0.060          # N·m·s/rad. Estimado
+torque_scale = 1.0
+
+# Par (N·m) por rpm: atmosférico, sin presión. 184 kW a 8500 rpm.
+[engine.torque]
+1000 = 110
+2000 = 150
+3000 = 180
+4000 = 200
+5000 = 220
+6000 = 232
+6500 = 235
+7000 = 232
+8000 = 215
+8500 = 207
+9000 = 190
+
+# Sin turbo: presión máxima 0 (el resto de claves no se usa).
+[turbo]
+max_boost_bar = 0
+boost_gain_per_bar = 0
+threshold_rpm = 3500
+full_rpm = 5000
+rise_time = 0.39
+rise_reference_rpm = 4500
+fall_time = 0.11
+
+[clutch]
+capacity_factor = 1.6     # × par máximo (376 N·m). Estimado
+bite_fraction = 0.15      # Valor de partida
+engage_rpm = 1200         # Estimado
+launch_rpm = 5500         # donde el motor ya tiene par. Estimado
+launch_ramp_rpm = 500     # Estimado
+open_rpm = 1250           # Estimado
+
+# Caja de 5 marchas: 1ª a ~70 km/h y 5ª a ~190 km/h a 9000 rpm, en progresión geométrica:
+# 70, 90, 115, 148 y 190 km/h. Estimado.
+[gearbox]
+reverse = 14.0
+gear_1 = 15.0
+gear_2 = 11.7
+gear_3 = 9.11
+gear_4 = 7.10
+gear_5 = 5.54
+shift_time = 0.08
+upshift_rpm_full = 8600   # Valor de partida
+upshift_rpm_closed = 7000 # Valor de partida
+downshift_rpm_full = 5000 # Valor de partida
+downshift_rpm_closed = 2500 # Valor de partida
+drift_hold_time = 0.75
+drift_angle_deg = 10
+
+# Propulsión trasera (front_share = 0): sin central ni autoblocante delantero.
+[driveline]
+front_share = 0           # propulsión. Aproximado (prompt)
+viscous = 0
+lsd_front_preload = 0
+lsd_front_drive = 0
+lsd_front_coast = 0
+lsd_rear_preload = 80     # autoblocante trasero. Estimado
+lsd_rear_drive = 0.50
+lsd_rear_coast = 0.30
+
+[driver]
+eye_left = 0.37           # m. Estimado
+eye_height = 1.10         # m. Estimado
+eye_behind_front_axle = 1.15 # m. Estimado

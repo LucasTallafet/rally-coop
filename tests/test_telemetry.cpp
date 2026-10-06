@@ -35,7 +35,7 @@ using rally::sim::Surface;
 // (telemetry_csv_for_random_inputs). Tiene que ser el mismo en Debug y en Release. Cambia
 // cuando una tarea añade columnas o cambia la simulación: se copia aquí el valor nuevo y va en
 // el mensaje del commit («Telemetry hash: 0x... -> 0x...»).
-constexpr std::uint64_t kExpectedTelemetryHash = 0x5401b9a43dc87c32ull;
+constexpr std::uint64_t kExpectedTelemetryHash = 0x8b1f5fc39ba3e302ull;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = 180.0 / kPi;
@@ -114,7 +114,9 @@ TEST_CASE("telemetry: the car driving straight on asphalt has beta below 0.5 deg
         CHECK(w.load > 1000.0f);
         CHECK(w.omega > 30.0f);
     }
-    CHECK(world.telemetry().gear == 1);
+    // La marcha del controlador (2.6: el automático ya ha subido).
+    CHECK(world.telemetry().gear == world.car_controller().gear());
+    CHECK(world.telemetry().gear >= 1);
 }
 
 TEST_CASE("telemetry: the car spun right with the handbrake slides with beta near -90 degrees") {
@@ -398,23 +400,26 @@ TEST_CASE("telemetry_history: the game history holds 10 s and every page channel
     CHECK(history.channel_count() ==
           static_cast<int>(rally::platform::default_graph_channels().size()));
     // Páginas: 1 · manejo (beta con la deriva media de cada eje, guiñada, velocidad, entradas
-    // aplicadas), 2 · tren motriz (κ_r por rueda; la 2.6 añade el motor) y 3 · suspensión
-    // (carga y compresión por rueda).
+    // aplicadas), 2 · tren motriz (rpm y marcha, presión del turbo y κ_r por rueda) y
+    // 3 · suspensión (carga y compresión por rueda).
     const auto pages = rally::platform::default_graph_pages();
     REQUIRE(pages.size() == 3);
     CHECK(std::string(pages[0].title) == "manejo");
     CHECK(pages[0].panels.size() == 4);
     CHECK(pages[0].panels[0].channels.size() == 3);
     CHECK(pages[0].panels[3].channels.size() == 4);
-    REQUIRE(pages[1].panels.size() == 1);
-    CHECK(pages[1].panels[0].channels.size() == 4);
+    CHECK(std::string(pages[1].title) == "tren motriz");
+    REQUIRE(pages[1].panels.size() == 3);
+    CHECK(pages[1].panels[0].channels.size() == 2);
+    CHECK(pages[1].panels[1].channels.size() == 1);
+    CHECK(pages[1].panels[2].channels.size() == 4);
     CHECK(std::string(pages[2].title) == "suspensión");
     REQUIRE(pages[2].panels.size() == 2);
     CHECK(pages[2].panels[0].channels.size() == 4);
     CHECK(pages[2].panels[1].channels.size() == 4);
     CHECK(rally::platform::first_graph_channel(0) == 0);
     CHECK(rally::platform::first_graph_channel(1) == 9);
-    CHECK(rally::platform::first_graph_channel(2) == 13);
+    CHECK(rally::platform::first_graph_channel(2) == 16);
     CHECK(rally::platform::default_graph_channels().size() <=
           static_cast<std::size_t>(rally::platform::kMaxGraphChannels));
     // El orden de los canales es el de los paneles: el 5 es la velocidad en km/h.
@@ -427,7 +432,14 @@ TEST_CASE("telemetry_history: the game history holds 10 s and every page channel
     t.wheels[1].alpha = -0.3f;
     CHECK(rally::platform::default_graph_channels()[1](t) == doctest::Approx(11.459156f));
     t.wheels[3].kappa = 0.25f;
-    CHECK(rally::platform::default_graph_channels()[12](t) == doctest::Approx(25.0f));
+    CHECK(rally::platform::default_graph_channels()[15](t) == doctest::Approx(25.0f));
+    // Página 2: rpm en miles, marcha y presión en bar.
+    t.engine_omega = 3.14159265f * 100.0f; // 3000 rpm
+    t.gear = 3;
+    t.boost = 1.2e5f;
+    CHECK(rally::platform::default_graph_channels()[9](t) == doctest::Approx(3.0f));
+    CHECK(rally::platform::default_graph_channels()[10](t) == doctest::Approx(3.0f));
+    CHECK(rally::platform::default_graph_channels()[11](t) == doctest::Approx(1.2f));
 }
 
 TEST_CASE("telemetry_history: the graphs show beta as 0 below 3 m/s horizontal") {

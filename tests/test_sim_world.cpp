@@ -36,7 +36,7 @@ using rally::sim::WorldDesc;
 // pseudoaleatorias (run_random_inputs).
 // Si el test de huella falla por un cambio intencionado, se copia aquí el valor nuevo y se
 // dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedFingerprint = 0xd1f593582b722c42ull;
+constexpr std::uint64_t kExpectedFingerprint = 0x66c9e3a86632750eull;
 
 constexpr int kSecondsOfInput = 60;
 constexpr int kStepsPerFrame = 4; // la entrada cambia cada fotograma de 60 fps
@@ -51,12 +51,13 @@ constexpr int kCountedSteps = 1000;
 // intencionado lo altera, se actualiza como la huella.
 constexpr int kJoltAllocationsPerStep = 2;
 // Total de reservas de Jolt en los kCountedSteps pasos medidos con las entradas del test
-// (990 pasos con reservas y 10 sin ellas con la ayuda de dirección de la 2.5b; 988 y 12 con el
+// (995 pasos con reservas y 5 sin ellas con el tren motriz de la 2.6; 990 y 10 con la ayuda
+// de dirección de la 2.5b; 988 y 12 con el
 // neumático de la 2.5; 982 y 18 con el neumático provisional de la 2.4: los
 // pasos con reservas son los que el coche se mueve, y dependen de la trayectoria). Si un
 // cambio intencionado lo altera, se actualiza como la huella y se dice en el mensaje del
 // commit.
-constexpr int kExpectedJoltAllocations = 1980;
+constexpr int kExpectedJoltAllocations = 1990;
 
 // Suelo de 20 × 20 m con cuatro muros de 3 m, el coche de referencia parado en el centro
 // mirando a -z y una caja suelta para que haya contactos entre cuerpos dinámicos.
@@ -233,14 +234,16 @@ TEST_CASE("sim_world: throttle drives the car forward and steering right turns i
     CHECK(std::abs(rest.x) < 1e-3);
     CHECK(std::abs(rest.z) < 1e-3);
 
-    // Un segundo de acelerador a fondo: avanza hacia -z sin girar.
+    // 1,25 s de acelerador a fondo: avanza hacia -z sin girar (2.6: con el motor y el embrague
+    // reales, el coche arranca mientras el motor sube de vueltas; antes, 1 s). Con 1,5 s llega
+    // al giro tan rápido que choca con el muro norte.
     SimInput push;
     push.throttle = kAxisMax;
-    for (int i = 0; i < rally::sim::kStepsPerSecond; ++i) {
+    for (int i = 0; i < 5 * rally::sim::kStepsPerSecond / 4; ++i) {
         world.step(push);
     }
     const BodyPose pushed = world.car_pose();
-    MESSAGE("1 s a fondo: ", rest.z - pushed.z, " m hacia delante");
+    MESSAGE("1,25 s a fondo: ", rest.z - pushed.z, " m hacia delante");
     CHECK(rest.z - pushed.z > 2.0);
     CHECK(std::abs(pushed.x - rest.x) < 0.05);
     CHECK(std::abs(heading(pushed)) < 0.01);
@@ -425,11 +428,12 @@ TEST_CASE("sim_world impact: driving and turning on the floor stays below the th
     world.seal();
     max_impact(world, SimInput{}, rally::sim::kStepsPerSecond);
 
-    // Acelerador a fondo 0,5 s hacia -z con el teclado (sube con el limitador).
+    // Acelerador a fondo 1 s hacia -z con el teclado (sube con el limitador; 2.6: antes, 0,5 s,
+    // con la tracción provisional, que daba el par desde el primer paso).
     SimInput drive;
     drive.throttle = kAxisMax;
     drive.buttons = kButtonThrottleDigital;
-    const float driving = max_impact(world, drive, rally::sim::kStepsPerSecond / 2);
+    const float driving = max_impact(world, drive, rally::sim::kStepsPerSecond);
     // Suelta y gira con el freno hasta pararse, sin llegar al muro.
     SimInput coast;
     coast.steer = kAxisMax;

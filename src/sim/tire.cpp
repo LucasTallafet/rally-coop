@@ -187,20 +187,16 @@ TireForce tire_force(const TireSurface& tire, float kappa, float tan_alpha, floa
     return force;
 }
 
-TireForce step_tire(const CarData& car, const TireInput& in, float h, bool implicit,
-                    WheelDynamics& state) {
-    const float r = in.radius;
-    const float inertia = car.wheel_inertia;
-    TireForce force;
+TirePrediction predict_tire(const CarData& car, const TireInput& in, float h, bool implicit,
+                            const WheelDynamics& state) {
+    TirePrediction p;
     if (!(in.load > 0.0f)) {
         // Sin carga (en el aire): sin deformación ni fuerza. El motor acelera la rueda y el
         // freno la para.
-        state.u = 0.0f;
-        state.w = 0.0f;
-        const float k = h / inertia;
-        state.omega = coulomb(state.omega + k * in.drive_torque, k * in.stop_torque);
-        return force;
+        return p;
     }
+    p.loaded = true;
+    const float r = in.radius;
     const TireSurface& t = car.tire(in.surface);
     const float limit = peak_mu(t, in.load, car.nominal_load) * in.load; // D
     const float sigma_x = t.relaxation_long;
@@ -251,26 +247,66 @@ TireForce step_tire(const CarData& car, const TireInput& in, float h, bool impli
     if (!implicit) {
         slope = 0.0f;
     }
-    const float k = h / (inertia + h * r * slope);
-    state.omega = coulomb(state.omega + k * (in.drive_torque - r * fx0), k * in.stop_torque);
+    p.fx0 = fx0;
+    p.slope = slope;
+    p.limit = limit;
+    p.c_x = c_x;
+    p.c_y = c_y;
+    p.fade = fade;
+    p.rho_max = rho_max;
+    p.rx_e = rx.e;
+    p.rx_phi = rx.phi;
+    p.ry_e = ry.e;
+    p.ry_phi = ry.phi;
+    return p;
+}
+
+float wheel_effective_inertia(const CarData& car, const TireInput& in, float h,
+                              const TirePrediction& prediction) {
+    return car.wheel_inertia + h * in.radius * prediction.slope;
+}
+
+TireForce finish_tire(const CarData& car, const TireInput& in, float h,
+                      const TirePrediction& prediction, float omega, WheelDynamics& state) {
+    TireForce force;
+    state.omega = omega;
+    if (!prediction.loaded) {
+        state.u = 0.0f;
+        state.w = 0.0f;
+        return force;
+    }
+    const TireSurface& t = car.tire(in.surface);
+    const float u0 = state.u;
+    const float w0 = state.w;
+    const float inv_h = 1.0f / h;
+    const float s_y = -in.vy;
 
     // Deformación con el giro nuevo y su recorte: la huella desliza y no acumula más allá de
     // ρ_max.
-    const float s_x = state.omega * r - in.vx;
-    state.u = state.u * rx.e + s_x * rx.phi;
-    state.w = state.w * ry.e + s_y * ry.phi;
-    limit_footprint(t, rho_max, state.u, state.w);
-    const TireForce elastic =
-        tire_force(t, state.u / sigma_x, state.w / sigma_y, in.load, car.nominal_load);
+    const float s_x = state.omega * in.radius - in.vx;
+    state.u = state.u * prediction.rx_e + s_x * prediction.rx_phi;
+    state.w = state.w * prediction.ry_e + s_y * prediction.ry_phi;
+    limit_footprint(t, prediction.rho_max, state.u, state.w);
+    const TireForce elastic = tire_force(t, state.u / t.relaxation_long, state.w / t.relaxation_lat,
+                                         in.load, car.nominal_load);
     force = elastic;
-    force.fx = elastic.fx + c_x * fade * (state.u - u0) * inv_h;
-    force.fy = elastic.fy + c_y * fade * (state.w - w0) * inv_h;
+    force.fx = elastic.fx + prediction.c_x * prediction.fade * (state.u - u0) * inv_h;
+    force.fy = elastic.fy + prediction.c_y * prediction.fade * (state.w - w0) * inv_h;
     const float total = magnitude(force.fx, force.fy);
-    if (total > limit) {
-        force.fx *= limit / total;
-        force.fy *= limit / total;
+    if (total > prediction.limit) {
+        force.fx *= prediction.limit / total;
+        force.fy *= prediction.limit / total;
     }
     return force;
+}
+
+TireForce step_tire(const CarData& car, const TireInput& in, float h, bool implicit,
+                    WheelDynamics& state) {
+    const TirePrediction p = predict_tire(car, in, h, implicit, state);
+    const float k = h / wheel_effective_inertia(car, in, h, p);
+    const float omega =
+        coulomb(state.omega + k * (in.drive_torque - in.radius * p.fx0), k * in.stop_torque);
+    return finish_tire(car, in, h, p, omega, state);
 }
 
 } // namespace rally::sim

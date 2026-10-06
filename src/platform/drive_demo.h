@@ -87,6 +87,9 @@ public:
     void use_arena();
     // Semilla de la serie de pruebas a ciegas (--blind-seed).
     void set_blind_seed(std::uint64_t seed) { blind_seed_ = seed; }
+    // --hide-config: la pantalla no dice qué configuración se lleva (F8 sigue cambiándola;
+    // bloque C del protocolo de la 2.10). En el modo a ciegas tampoco se dice.
+    void set_hide_config(bool hide) { hide_config_ = hide; }
 
     // Medida del dibujo del suelo (--bench-zone): la cámara recorre la pista ciega a 100 km/h
     // a la altura del ojo durante kZoneBenchWarmupNs + kZoneBenchMeasureNs y escribe
@@ -115,6 +118,14 @@ private:
     void reset();
     // F5: relee el archivo del coche y reconstruye el mundo.
     void reload_car();
+    // F8: la configuración siguiente de kCarConfigs (en la carpeta del coche), siempre en el
+    // mismo orden, y reconstruye el mundo.
+    void next_car();
+    // Lee y comprueba `path`; si vale, es el coche nuevo y el mundo se reconstruye con él en el
+    // punto de recolocación más cercano. Si no, avisa (con `key` delante) y sigue el anterior.
+    bool load_car(const std::string& path, const char* key);
+    // La configuración no se dice en pantalla: a ciegas o con --hide-config.
+    bool config_hidden() const { return hide_config_ || blind_mode_; }
     void read_poses();
     // Descripción del mundo según el modo (zona o recinto) y la superficie de la pista ciega.
     void describe_world();
@@ -136,6 +147,7 @@ private:
     bool zone_mode_ = true;                             // K: zona de pruebas o recinto
     sim::Surface blind_surface_ = sim::Surface::Gravel; // G: superficie de la pista ciega
     bool blind_mode_ = false;                           // M: modo a ciegas
+    bool hide_config_ = false;                          // --hide-config
     std::uint64_t blind_seed_ = 1;                      // --blind-seed
     std::array<sim::Surface, sim::kBlindTrials> blind_series_{};
     int blind_trial_ = 0; // prueba en curso (0..14)

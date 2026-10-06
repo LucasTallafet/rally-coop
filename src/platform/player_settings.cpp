@@ -36,6 +36,13 @@ constexpr std::array kKeys = {
         1,
         "",
         {"teclado", "raton"}},
+    Key{"caja",
+        [](const PlayerSettings& p) { return p.sequential ? 1 : 0; },
+        [](PlayerSettings& p, int v) { p.sequential = v != 0; },
+        0,
+        1,
+        "",
+        {"automatica", "secuencial"}},
     Key{"raton_px_tope", [](const PlayerSettings& p) { return p.mouse_full_lock_px; },
         [](PlayerSettings& p, int v) { p.mouse_full_lock_px = v; }, kMouseFullLockPxMin,
         kMouseFullLockPxMax, " px"},
@@ -145,7 +152,8 @@ std::string format_settings(const PlayerSettings& settings) {
                       "# Asiento: desplazamiento del ojo del conductor en cm, de -15 a 15 "
                       "(alto: arriba; adelante: hacia delante; derecha: hacia la derecha).\n"
                       "# Dirección: ayuda_direccion 1 o 0 (F6); dispositivo_direccion teclado o "
-                      "raton (F7); raton_px_tope, píxeles del ratón para el tope, de 50 a 5000.\n";
+                      "raton (F7); raton_px_tope, píxeles del ratón para el tope, de 50 a 5000.\n"
+                      "# Caja: caja automatica o secuencial (F2).\n";
     for (const Key& spec : kKeys) {
         out += spec.name;
         out += " = ";

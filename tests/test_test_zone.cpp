@@ -319,8 +319,15 @@ struct WallHit {
 
 WallHit launch_at_wall(double x, double z, double heading, double speed) {
     const TestZone zone;
+    // 2.6: mide el muro, no el coche. El coche ya no llega a 80 m/s (5ª al limitador: ~58 m/s):
+    // sale en N, sin aire ni rodadura, y llega al muro a la velocidad de salida.
+    WorldDesc desc = rally::tests::in_neutral(zone_with_car_at(zone, x, z, heading, speed));
+    desc.car_data.cda = 0.0f;
+    for (rally::sim::TireSurface& tire : desc.car_data.tires) {
+        tire.rolling_resistance = 0.0f;
+    }
     SimWorld world;
-    world.build(zone_with_car_at(zone, x, z, heading, speed));
+    world.build(desc);
     world.seal();
     WallHit hit;
     double previous_speed = 0.0;
@@ -667,13 +674,16 @@ TEST_CASE("test_zone: crossing the line backwards or resetting during a lap give
     SimInput backward = forward; // en R, el acelerador lleva el coche hacia atrás
     SimInput reset;
     reset.buttons = rally::sim::kButtonReset;
-    // Cambia el selector con dos pulsaciones (parado): bajar dos veces da R, subir dos, adelante.
+    // Cambia de marcha con dos pulsaciones (parado, regla D4): bajar dos veces da R; subir dos,
+    // 1ª. Cada cambio dura shift_time (tarea 2.6): se espera a que termine.
     const auto shift = [](SimWorld& world, std::uint16_t button) {
         for (int i = 0; i < 2; ++i) {
             SimInput press;
             press.buttons = button;
             world.step(press);
-            world.step(SimInput{});
+            for (int k = 0; k < world.car_controller().car().shift_steps; ++k) {
+                world.step(SimInput{});
+            }
         }
     };
 
@@ -682,7 +692,7 @@ TEST_CASE("test_zone: crossing the line backwards or resetting during a lap give
         world.build(zone_with_car_at(zone, line.x, line.z - 5.0)); // 5 m pasada la línea
         world.seal();
         shift(world, rally::sim::kButtonShiftDown);
-        REQUIRE(world.car_controller().gear() == rally::sim::Gear::Reverse);
+        REQUIRE(world.car_controller().gear() == rally::sim::kReverseGear);
         for (int i = 0; i < 3 * rally::sim::kStepsPerSecond; ++i) {
             world.step(backward);
         }
@@ -695,7 +705,7 @@ TEST_CASE("test_zone: crossing the line backwards or resetting during a lap give
         CHECK(world.lap()->debt == 1);
         CHECK(world.lap()->lap_start == -1);
         shift(world, rally::sim::kButtonShiftUp);
-        REQUIRE(world.car_controller().gear() == rally::sim::Gear::Forward);
+        REQUIRE(world.car_controller().gear() == 1);
         for (int i = 0; i < 4 * rally::sim::kStepsPerSecond; ++i) {
             world.step(forward);
         }
@@ -708,15 +718,17 @@ TEST_CASE("test_zone: crossing the line backwards or resetting during a lap give
         SimWorld world;
         world.build(zone_with_car_at(zone, line.x, line.z + 5.0));
         world.seal();
-        for (int i = 0; i < 2 * rally::sim::kStepsPerSecond; ++i) {
+        // 2.6: con medio acelerador y el embrague real, 3 s para pasar la línea (antes, 2 s).
+        for (int i = 0; i < 3 * rally::sim::kStepsPerSecond; ++i) {
             world.step(forward);
         }
         REQUIRE(world.lap()->lap_start > 0);
         world.step(reset);
         CHECK(world.lap()->lap_start == -1);
         // Desde la recolocación (50 m antes de la meta) la siguiente pasada empieza otra
-        // vuelta, no termina ninguna.
-        for (int i = 0; i < 6 * rally::sim::kStepsPerSecond; ++i) {
+        // vuelta, no termina ninguna (2.6: con medio acelerador y el embrague real, 8 s; antes,
+        // 6 s).
+        for (int i = 0; i < 8 * rally::sim::kStepsPerSecond; ++i) {
             world.step(forward);
         }
         CHECK(world.lap()->lap_start > 0);

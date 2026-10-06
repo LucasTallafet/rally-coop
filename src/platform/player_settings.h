@@ -31,6 +31,9 @@ struct PlayerSettings {
     // del mundo y cambiarla lo reconstruye.
     bool steer_assist = true;
     SteerDevice steer_device = SteerDevice::Keyboard;
+    // Caja secuencial (tarea 2.6; automática por defecto). Cambia la simulación: va en la
+    // descripción del mundo (DriverAids::gearbox) y cambiarla lo reconstruye.
+    bool sequential = false;
     int mouse_full_lock_px = kMouseFullLockPxDefault;
     bool operator==(const PlayerSettings&) const = default;
 };
