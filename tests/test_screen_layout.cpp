@@ -4,7 +4,10 @@
 
 #include <doctest/doctest.h>
 
+#include <set>
 #include <string>
+#include <tuple>
+#include <vector>
 
 using rally::platform::kLayerCount;
 using rally::platform::Layer;
@@ -102,27 +105,44 @@ TEST_CASE("screen_layout: each layer's worst case text fits in its rectangle") {
     }
 }
 
-TEST_CASE("screen_layout: the help shows every key row inside its rectangle") {
+TEST_CASE("screen_layout: every help page fits its rectangle and each key shows once") {
     for (const Resolution res : kResolutions) {
         const ScreenLayout layout = layout_screen(res.width, res.height);
         INFO(res.width, "×", res.height);
         const UiRect help = inner(layout.rect(Layer::Help), layout.m.padding);
-        int entries = 0;
-        for (const rally::platform::HelpCell& cell : layout.help.cells) {
-            entries += cell.binding >= 0 ? 1 : 0;
+        const rally::platform::HelpGrid& grid = layout.help;
+        REQUIRE(grid.pages >= 1);
+        std::vector<int> shown(rally::platform::key_table().size(), 0);
+        std::set<std::tuple<int, int, int>> places;
+        for (const rally::platform::HelpCell& cell : grid.cells) {
+            if (cell.binding >= 0) {
+                ++shown[static_cast<std::size_t>(cell.binding)];
+            }
+            CHECK(cell.page < grid.pages);
+            CHECK(cell.column < grid.columns);
+            CHECK(cell.row >= 1); // la fila 0 es el título
             CHECK(cell.row < help.h / layout.m.line);
+            // Sin solaparse: una celda por sitio.
+            CHECK(places.insert({cell.page, cell.column, cell.row}).second);
         }
-        CHECK(entries == static_cast<int>(rally::platform::key_table().size()));
-        MESSAGE("ayuda a ", res.width, "×", res.height, ": ", layout.help.rows, " filas de ",
-                help.h / layout.m.line, " que caben");
-        CHECK(layout.help.rows * layout.m.line <= help.h);
+        for (const int n : shown) {
+            CHECK(n == 1);
+        }
+        MESSAGE("ayuda a ", res.width, "×", res.height, ": ", grid.pages, " páginas de ",
+                grid.columns, " columnas; ", grid.rows, " filas de ", help.h / layout.m.line,
+                " que caben");
+        CHECK(grid.rows * layout.m.line <= help.h);
         CHECK(rally::platform::layer_content_width(Layer::Help, layout) <= help.w);
+        for (int page = 0; page < grid.pages; ++page) {
+            CHECK(rally::platform::text_width(rally::platform::help_title(page, grid.pages),
+                                              layout.m.font) <= help.w);
+        }
         // Ninguna etiqueta de teclas se sale de su columna.
         for (const rally::platform::KeyBinding& b : rally::platform::key_table()) {
             CHECK(rally::platform::text_width(rally::platform::binding_label_short(b),
-                                              layout.m.font) <= layout.help.key_width);
-            CHECK(layout.help.text_x + rally::platform::text_width(b.text, layout.m.font) <=
-                  layout.help.column_width);
+                                              layout.m.font) <= grid.key_width);
+            CHECK(grid.text_x + rally::platform::text_width(b.text, layout.m.font) <=
+                  grid.column_width);
         }
     }
 }

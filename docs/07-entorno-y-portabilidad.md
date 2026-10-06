@@ -185,7 +185,7 @@ Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cier
 
 ## 8. Referencia rápida de la demo actual
 
-Válido desde la tarea 2.4b de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración. En pantalla, siempre, el indicador mínimo (velocidad, marcha, rpm, presión del turbo, modo de la caja y la configuración del coche, salvo a ciegas o con `--hide-config`; en la zona, la vuelta en curso y la mejor; a ciegas, «Prueba k/15») y «H: ayuda»; H enseña la ayuda de teclas, F3 el panel de depuración, F1 el rendimiento y T las gráficas, cada uno en su sitio fijo; mientras la ayuda está abierta, F3, F1 y T no se dibujan (desde la 2.5b la ayuda ocupa su sitio). La ayuda de dirección (F6, activada por defecto), la caja automática o secuencial (F2, automática por defecto; desde la 2.6) y la dirección con teclado o ratón (F7; con ratón, X o el botón central recentran y el indicador mínimo enseña el volante) se guardan en `ajustes.txt`, igual que el asiento (Re Pág / Av Pág, Inicio / Fin, Insert / Supr), que se guarda junto al exe; si ese archivo tiene una línea mal escrita, se avisa en pantalla con su número y se usa el valor por defecto.
+Válido desde la tarea 2.4b de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración. En pantalla, siempre, el indicador mínimo (velocidad, marcha, rpm, presión del turbo, modo de la caja y la configuración del coche, salvo a ciegas o con `--hide-config`; en la zona, la vuelta en curso y la mejor; a ciegas, «Prueba k/15») y «H: ayuda»; H enseña la ayuda de teclas, F3 el panel de depuración, F1 el rendimiento y T las gráficas, cada uno en su sitio fijo; mientras la ayuda está abierta, F3, F1 y T no se dibujan (desde la 2.5b la ayuda ocupa su sitio). La ayuda de dirección (F6, activada por defecto), la caja automática o secuencial (F2, automática por defecto; desde la 2.6) y la dirección con teclado o ratón (F7; con ratón, X o el botón central recentran y el indicador mínimo enseña el volante) se guardan en `ajustes.txt`, igual que el asiento (Re Pág / Av Pág, Inicio / Fin, Insert / Supr), que se guarda junto al exe; si ese archivo tiene una línea mal escrita, se avisa en pantalla con su número y se usa el valor por defecto. Desde la 2.7, en la vista del ojo se ven el interior provisional, la cabeza que se mueve con el coche (F9, activada por defecto) y suena el coche (F4: volumen 100, 70, 40 y 0 %); los dos se guardan también en `ajustes.txt`. La ayuda (H) va por páginas: H pasa a la siguiente y, tras la última, la oculta. F1 enseña además la CPU del hilo de audio, su llamada más larga y los cortes.
 
 Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el juego y la ayuda en pantalla); el test `keys: docs/07 section 8 matches the generated table` comprueba que coinciden. Para cambiarlas, se cambia `keys.cpp` y se copia aquí lo que imprime ese test al fallar.
 
@@ -212,6 +212,7 @@ Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el
 | Tecla / mando | Acción |
 | --- | --- |
 | Tab | Cámara: ojo del conductor (el del archivo del coche más el asiento), persecución y fija (recinto) o toda la zona, por turnos |
+| F9 | Movimiento de la cabeza: sí / no: el ojo se mueve con las aceleraciones del coche (solo la cámara del ojo); se guarda en ajustes.txt |
 | Re Pág/Av Pág | Asiento: arriba / abajo: 1 cm por pulsación, se repite al mantener; solo la vista del ojo, no la simulación ni la grabación; límite ± 15 cm en cada eje; se guarda en ajustes.txt junto al exe |
 | Inicio/Fin | Asiento: adelante / atrás |
 | Insert/Supr | Asiento: a los lados: derecha / izquierda |
@@ -252,8 +253,9 @@ Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el
 
 | Tecla / mando | Acción |
 | --- | --- |
-| H | Ayuda de teclas |
+| H | Ayuda de teclas: por páginas: página siguiente y, tras la última, oculta |
 | P | Pausa |
+| F4 | Volumen: 100, 70, 40 y 0 %, por turnos; se guarda en ajustes.txt |
 | F5 | Releer el archivo del coche: reconstruye el mundo con el coche en el punto de recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo muestra con su línea y sigue el coche anterior |
 | F8 | Configuración siguiente: mid_awd_turbo, front_awd_turbo_5cyl, front_rwd_na y front_awd_turbo_groupa, por turnos, de la carpeta del coche; reconstruye el mundo; a ciegas o con --hide-config, la pantalla no dice cuál |
 | Retroceso | Reiniciar el mundo: cierra la grabación y empieza otra |

@@ -35,6 +35,10 @@ struct PlayerSettings {
     // descripción del mundo (DriverAids::gearbox) y cambiarla lo reconstruye.
     bool sequential = false;
     int mouse_full_lock_px = kMouseFullLockPxDefault;
+    // Movimiento de la cabeza (tarea 2.7, F9; activado por defecto) y volumen general en % (F4).
+    // Solo presentación: ni reconstruyen el mundo ni van en la grabación.
+    bool head_motion = true;
+    int volume_pct = 100;
     bool operator==(const PlayerSettings&) const = default;
 };
 
@@ -51,6 +55,10 @@ PlayerSettings parse_settings(std::string_view text, std::vector<SettingsWarning
 // mismo formato que ajustes.txt. La ayuda va en la descripción del mundo, no aquí.
 std::string recording_settings_text(const PlayerSettings& settings);
 std::string format_settings(const PlayerSettings& settings);
+
+// F4: el volumen siguiente de la serie 100, 70, 40, 0 (y vuelta a 100). Desde un valor que no
+// está en la serie (escrito a mano), el siguiente por debajo.
+int next_volume_pct(int volume_pct);
 
 // Cuándo guardar: tras kSettingsSaveDelayNs sin cambios, para no escribir en cada repetición de
 // una tecla mantenida. Al salir se guarda si queda algo pendiente (dirty). Tiempos en ns de

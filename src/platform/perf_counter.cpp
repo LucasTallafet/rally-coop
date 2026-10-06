@@ -175,6 +175,16 @@ void PerfCounter::draw(const FramePacer& pacer, const FixedStepClock& clock, boo
     overlay.text_fit(Layer::Perf, x, y, TextFormat("gráfica: %s", renderer_), kText);
     next();
     overlay.text(Layer::Perf, x, y, TextFormat("GPU: muestras perdidas %d", gpu_.lost()), kDim);
+    next();
+    if (audio_.ready) {
+        overlay.text(Layer::Perf, x, y,
+                     TextFormat("audio: CPU %.2f %%   llamada máx. %.2f ms   cortes %lld",
+                                audio_.cpu_fraction * 100.0, audio_.max_call_ms,
+                                static_cast<long long>(audio_.gaps)),
+                     kText);
+    } else {
+        overlay.text(Layer::Perf, x, y, "audio: sin dispositivo", kDim);
+    }
     draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_enabled, x + g.graph_border,
                      top + g.graph_top + g.graph_border, overlay);
 }

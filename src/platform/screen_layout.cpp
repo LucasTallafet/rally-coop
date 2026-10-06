@@ -51,6 +51,7 @@ constexpr std::string_view kPerfSamples[] = {
     "memoria: working set 8888.8 MB   privados 8888.8 MB",
     "render: 8888×8888   pantalla: 8888×8888",
     "GPU: muestras perdidas 8888",
+    "audio: CPU 88.88 %   llamada máx. 88.88 ms   cortes 88888",
     // Las dos líneas de la gráfica de fotogramas.
     "últimos 240: 240 fuera de 88 pasos (perdidos 240, ruido 240)",
     "ajuste: sí   sin ajustar: 240   deuda: +888.888 ms",
@@ -240,7 +241,13 @@ int graph_page_height(const GraphPage& page, const UiMetrics& m, const GraphGeom
 int axis_bar_width(const UiMetrics& m) { return 10 * m.font; }
 int axis_bars_width(const UiMetrics& m) { return 3 * axis_bar_width(m) + 2 * m.font; }
 
-HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int max_rows) {
+std::string help_title(int page, int pages) {
+    return "Ayuda " + std::to_string(page + 1) + "/" + std::to_string(pages) +
+           (page + 1 < pages ? " · H: página siguiente" : " · H: ocultar");
+}
+
+HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int max_rows,
+                   int max_width) {
     HelpGrid grid;
     grid.column_gap = m.font * 3 / 2;
     int text_width_max = 0;
@@ -255,11 +262,12 @@ HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int ma
                                       grid.text_x);
     }
     grid.column_width = grid.text_x + text_width_max;
-    if (max_rows < 2) {
+    // La fila 0 es el título.
+    if (max_rows < 3) {
         return grid;
     }
     int column = 0;
-    int row = 0;
+    int row = 1;
     for (int block = 0; block < kKeyBlockCount; ++block) {
         bool header = false;
         for (std::size_t i = 0; i < table.size(); ++i) {
@@ -271,20 +279,32 @@ HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int ma
                 // Un encabezado necesita debajo al menos una entrada en la misma columna.
                 if (row + 2 > max_rows) {
                     ++column;
-                    row = 0;
+                    row = 1;
                 }
-                grid.cells.push_back({column, row++, b.block, -1});
+                grid.cells.push_back({0, column, row++, b.block, -1});
                 header = true;
             }
             if (row >= max_rows) {
                 ++column;
-                row = 0;
+                row = 1;
             }
-            grid.cells.push_back({column, row++, b.block, static_cast<int>(i)});
+            grid.cells.push_back({0, column, row++, b.block, static_cast<int>(i)});
             grid.rows = std::max(grid.rows, row);
         }
     }
-    grid.columns = grid.cells.empty() ? 0 : column + 1;
+    if (grid.cells.empty()) {
+        return grid;
+    }
+    // Páginas: las columnas que caben a lo ancho (al menos una).
+    const int per_page =
+        std::max(1, (max_width + grid.column_gap) / (grid.column_width + grid.column_gap));
+    const int total = column + 1;
+    grid.pages = (total + per_page - 1) / per_page;
+    grid.columns = std::min(total, per_page);
+    for (HelpCell& cell : grid.cells) {
+        cell.page = cell.column / per_page;
+        cell.column %= per_page;
+    }
     return grid;
 }
 
@@ -345,7 +365,8 @@ ScreenLayout layout_screen(int width, int height) {
     help.y = m.margin;
     help.w = width - 2 * m.margin;
     help.h = messages.y - m.gap / 2 - help.y;
-    layout.help = help_grid(key_table(), m, (help.h - 2 * m.padding) / m.line);
+    layout.help =
+        help_grid(key_table(), m, (help.h - 2 * m.padding) / m.line, help.w - 2 * m.padding);
     return layout;
 }
 

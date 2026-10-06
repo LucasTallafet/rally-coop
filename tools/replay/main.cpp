@@ -449,7 +449,8 @@ int synth(const char* out_path, const char* car_path) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 2;
     }
-    const rally::sim::CarParseResult car = rally::sim::parse_car(car_text);
+    const rally::sim::CarParseResult car =
+        rally::sim::parse_car(car_text, rally::sim::CarKeys::Sim);
     if (!car.ok) {
         std::fprintf(stderr, "error: %s: %s\n", car_path, car.error.c_str());
         return 2;
@@ -551,7 +552,7 @@ int tire_curves(const char* car_path, const char* csv_path) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 2;
     }
-    const rally::sim::CarParseResult parsed = rally::sim::parse_car(text);
+    const rally::sim::CarParseResult parsed = rally::sim::parse_car(text, rally::sim::CarKeys::Sim);
     if (!parsed.ok) {
         std::fprintf(stderr, "error: %s: %s\n", car_path, parsed.error.c_str());
         return 2;

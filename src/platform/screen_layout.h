@@ -66,7 +66,7 @@ inline constexpr int kMessageLines = 2;
 // Contador de rendimiento (F1): filas de texto con columnas alineadas a la derecha y, debajo,
 // la gráfica de fotogramas (platform/frame_graph).
 struct PerfGeometry {
-    int rows = 16;         // líneas de texto antes de la gráfica (con la vacía)
+    int rows = 17;         // líneas de texto antes de la gráfica (con la vacía)
     int average_right = 0; // borde derecho de la columna de medias, desde el texto
     int max_right = 0;     // el de los máximos
     int steps_gap = 0;     // de los máximos a «N pasos»
@@ -110,23 +110,32 @@ int graph_page_height(const GraphPage& page, const UiMetrics& m, const GraphGeom
 
 // Ayuda (H): bloques de la tabla de teclas en columnas. Cada fila es un encabezado de bloque o
 // una entrada; cada entrada, la etiqueta corta de sus teclas y su mando y, alineado, el texto.
+// Desde la 2.7 no cabe en una pantalla: las columnas que no caben a lo ancho pasan a la página
+// siguiente (H: página siguiente y, tras la última, oculta). La fila 0 de cada página es su
+// título (help_title); las celdas empiezan en la fila 1.
 struct HelpCell {
-    int column = 0;
-    int row = 0;
+    int page = 0;
+    int column = 0; // dentro de su página
+    int row = 0;    // desde 1: la 0 es el título
     KeyBlock block = KeyBlock::General;
     int binding = -1; // índice en key_table(); -1 en el encabezado
 };
 struct HelpGrid {
-    int columns = 0;
-    int rows = 0;         // filas de la columna más alta
+    int pages = 0;
+    int columns = 0;      // columnas por página (las de la página más ancha)
+    int rows = 0;         // filas de la columna más alta, con la del título
     int key_width = 0;    // ancho de la columna de las teclas
     int text_x = 0;       // del borde de la columna al texto
     int column_width = 0; // de la columna entera
     int column_gap = 0;
     std::vector<HelpCell> cells;
 };
-// Columnas de max_rows filas como mucho. Un encabezado nunca queda solo al final de una columna.
-HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int max_rows);
+// Columnas de max_rows filas como mucho (con la del título) y páginas de max_width de ancho. Un
+// encabezado nunca queda solo al final de una columna.
+HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int max_rows,
+                   int max_width);
+// Título de la página `page` (desde 0) de `pages`: "Ayuda 1/2 · H: página siguiente".
+std::string help_title(int page, int pages);
 
 struct ScreenLayout {
     int width = 0;

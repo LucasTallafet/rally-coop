@@ -133,6 +133,7 @@ limiter_ramp_rpm = 100    # corte en rampa de 8100 a 8200 rpm (2.6: rampa en vez
 inertia = 0.15            # kg·m² con volante y embrague. Estimado
 friction = 0.072          # N·m·s/rad: freno motor ~60 N·m a 8000 rpm. Estimado
 torque_scale = 1.0        # 1,0 = Evo 1; hasta ~1,3 ≈ Evo 2 (D2)
+cylinders = 4             # solo para el sonido del motor (tarea 2.7)
 
 # Par sin presión (N·m) por rpm: el 45 % del de plena presión (estimado). A plena presión
 # (× 2,222): 240 a 1000, 450 a 5000 (fuente: 332 lb-ft) y 307 a 8000 rpm (257 kW, fuente).
@@ -202,3 +203,30 @@ lsd_rear_coast = 0.30     # Estimado
 eye_left = 0.37           # m a la izquierda del eje del coche. Estimado
 eye_height = 1.05         # m sobre el suelo. Estimado
 eye_behind_front_axle = 1.00 # m. Estimado
+
+# Interior provisional (tarea 2.7; solo presentación, la simulación no lo lee). Metros relativos
+# al ojo nominal de [driver], sin el asiento del jugador. Medidas aproximadas de un 205 (prompt de la 2.7); verificar con fotos.
+[cockpit]
+windshield_base_ahead = 0.70   # base del parabrisas, por delante del ojo. Aproximado, de un 205
+windshield_base_below = 0.30   # ... y por debajo. Aproximado, de un 205
+windshield_top_ahead = 0.55    # borde superior del parabrisas. Aproximado, de un 205
+windshield_top_above = 0.15    # Aproximado, de un 205
+pillar_width = 0.08            # montantes del parabrisas. Aproximado, de un 205
+pillar_left = 0.25             # centro del montante izquierdo, a la izquierda del ojo. Aproximado, de un 205
+pillar_right = 1.05            # centro del montante derecho, a la derecha del ojo. Aproximado, de un 205
+roof_above = 0.18              # techo sobre el ojo. Estimado
+roof_behind = 0.60             # el techo llega hasta aquí por detrás del ojo. Estimado
+door_left = 0.31               # cara interior de la puerta izquierda (1,35 m de ancho interior). Estimado
+door_right = 1.04              # ... y de la derecha. Estimado
+sill_below = 0.28              # borde de abajo de la ventanilla lateral. Estimado
+dash_rear_ahead = 0.50         # borde trasero del salpicadero. Estimado
+wheel_ahead = 0.45             # centro del volante. Aproximado, de un 205
+wheel_diameter = 0.35          # Aproximado, de un 205
+wheel_center_below = 0.35      # con la inclinación, el borde superior queda a −25° (se ve). Estimado
+wheel_tilt_deg = 20            # aro inclinado, arriba hacia atrás. Estimado
+steering_ratio = 13            # 13:1, unas 2,2 vueltas de tope a tope con 30°. Aproximado, de un 205
+display_ahead = 0.60           # pantalla de marcha, rpm y presión. Estimado
+display_below = 0.24           # Estimado
+display_right = 0.0            # Estimado
+display_width = 0.16           # Estimado
+display_height = 0.06          # Estimado

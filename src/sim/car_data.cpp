@@ -139,12 +139,55 @@ constexpr std::array kTireKeys = {
     TireKeySpec{"rolling_resistance", &TireSurface::rolling_resistance, 1.0f, 0.0f, 1.0f},
 };
 
+// Claves de [cockpit] (tarea 2.7; solo presentación).
+struct CockpitKeySpec {
+    std::string_view name;
+    float CockpitData::* field;
+    float scale;
+    float min;
+    float max;
+};
+
+constexpr std::array kCockpitKeys = {
+    CockpitKeySpec{"windshield_base_ahead", &CockpitData::windshield_base_ahead, 1.0f, 0.1f, 3.0f},
+    CockpitKeySpec{"windshield_base_below", &CockpitData::windshield_base_below, 1.0f, 0.0f, 2.0f},
+    CockpitKeySpec{"windshield_top_ahead", &CockpitData::windshield_top_ahead, 1.0f, 0.1f, 3.0f},
+    CockpitKeySpec{"windshield_top_above", &CockpitData::windshield_top_above, 1.0f, -1.0f, 2.0f},
+    CockpitKeySpec{"pillar_width", &CockpitData::pillar_width, 1.0f, 0.01f, 0.5f},
+    CockpitKeySpec{"pillar_left", &CockpitData::pillar_left, 1.0f, 0.0f, 3.0f},
+    CockpitKeySpec{"pillar_right", &CockpitData::pillar_right, 1.0f, 0.0f, 3.0f},
+    CockpitKeySpec{"roof_above", &CockpitData::roof_above, 1.0f, 0.05f, 2.0f},
+    CockpitKeySpec{"roof_behind", &CockpitData::roof_behind, 1.0f, 0.0f, 3.0f},
+    CockpitKeySpec{"door_left", &CockpitData::door_left, 1.0f, 0.1f, 3.0f},
+    CockpitKeySpec{"door_right", &CockpitData::door_right, 1.0f, 0.1f, 3.0f},
+    CockpitKeySpec{"sill_below", &CockpitData::sill_below, 1.0f, 0.0f, 2.0f},
+    CockpitKeySpec{"dash_rear_ahead", &CockpitData::dash_rear_ahead, 1.0f, 0.1f, 3.0f},
+    CockpitKeySpec{"wheel_ahead", &CockpitData::wheel_ahead, 1.0f, 0.1f, 2.0f},
+    CockpitKeySpec{"wheel_diameter", &CockpitData::wheel_diameter, 1.0f, 0.1f, 1.0f},
+    CockpitKeySpec{"wheel_center_below", &CockpitData::wheel_center_below, 1.0f, 0.0f, 2.0f},
+    CockpitKeySpec{"wheel_tilt_deg", &CockpitData::wheel_tilt, kDeg, 0.0f, 80.0f * kDeg},
+    CockpitKeySpec{"steering_ratio", &CockpitData::steering_ratio, 1.0f, 1.0f, 50.0f},
+    CockpitKeySpec{"display_ahead", &CockpitData::display_ahead, 1.0f, 0.1f, 3.0f},
+    CockpitKeySpec{"display_below", &CockpitData::display_below, 1.0f, -1.0f, 2.0f},
+    CockpitKeySpec{"display_right", &CockpitData::display_right, 1.0f, -2.0f, 2.0f},
+    CockpitKeySpec{"display_width", &CockpitData::display_width, 1.0f, 0.01f, 1.0f},
+    CockpitKeySpec{"display_height", &CockpitData::display_height, 1.0f, 0.01f, 1.0f},
+};
+
+// [engine] cylinders (solo presentación): un entero en este rango.
+constexpr std::string_view kCylindersKey = "cylinders";
+constexpr int kMinCylinders = 1;
+constexpr int kMaxCylinders = 16;
+
 // Secciones del archivo. Las de los neumáticos van en el orden de Surface.
-constexpr std::size_t kFirstTireSection = 13;
+constexpr std::size_t kEngineSection = 6;
+constexpr std::size_t kCockpitSection = 13;
+constexpr std::size_t kFirstTireSection = 14;
 constexpr std::array<std::string_view, kFirstTireSection + static_cast<std::size_t>(kSurfaceCount)>
-    kSections = {"chassis", "wheels",        "suspension",  "brakes",    "steering",  "tire",
-                 "engine",  "engine.torque", "turbo",       "clutch",    "gearbox",   "driveline",
-                 "driver",  "tire.asphalt",  "tire.gravel", "tire.dirt", "tire.snow", "tire.sand"};
+    kSections = {"chassis",     "wheels",    "suspension",    "brakes",   "steering",
+                 "tire",        "engine",    "engine.torque", "turbo",    "clutch",
+                 "gearbox",     "driveline", "driver",        "cockpit",  "tire.asphalt",
+                 "tire.gravel", "tire.dirt", "tire.snow",     "tire.sand"};
 // [engine.torque]: sus líneas son "rpm = N·m", no claves fijas.
 constexpr std::size_t kTorqueSection = 7;
 constexpr std::size_t kTurboSection = 8;
@@ -181,12 +224,15 @@ CarParseResult fail(int line, const std::string& message) {
 
 } // namespace
 
-CarParseResult parse_car(std::string_view text) {
+CarParseResult parse_car(std::string_view text, CarKeys keys) {
     CarData car;
-    // Línea de cada clave leída (0 si falta): primero las de kKeys y después las de kTireKeys
-    // de cada superficie.
-    constexpr std::size_t kSlots =
-        kKeys.size() + static_cast<std::size_t>(kSurfaceCount) * kTireKeys.size();
+    // Línea de cada clave leída (0 si falta): primero las de kKeys, después las de kTireKeys
+    // de cada superficie y al final las de presentación: cylinders y las de kCockpitKeys.
+    constexpr std::size_t kTireSlots = static_cast<std::size_t>(kSurfaceCount) * kTireKeys.size();
+    constexpr std::size_t kCylindersSlot = kKeys.size() + kTireSlots;
+    constexpr std::size_t kFirstCockpitSlot = kCylindersSlot + 1;
+    constexpr std::size_t kSlots = kFirstCockpitSlot + kCockpitKeys.size();
+    float cylinders = 0.0f;
     std::array<int, kSlots> seen_line{};
     std::string_view section;
     std::size_t section_index = 0;
@@ -278,7 +324,23 @@ CarParseResult parse_car(std::string_view text) {
         float min = 0.0f;
         float max = 0.0f;
         float* target = nullptr;
-        if (section_index < kFirstTireSection) {
+        if (section_index == kCockpitSection) {
+            for (std::size_t k = 0; k < kCockpitKeys.size(); ++k) {
+                if (kCockpitKeys[k].name == key) {
+                    index = kFirstCockpitSlot + k;
+                    scale = kCockpitKeys[k].scale;
+                    min = kCockpitKeys[k].min;
+                    max = kCockpitKeys[k].max;
+                    target = &(car.cockpit.*kCockpitKeys[k].field);
+                    break;
+                }
+            }
+        } else if (section_index == kEngineSection && key == kCylindersKey) {
+            index = kCylindersSlot;
+            min = static_cast<float>(kMinCylinders);
+            max = static_cast<float>(kMaxCylinders);
+            target = &cylinders;
+        } else if (section_index < kFirstTireSection) {
             for (std::size_t k = 0; k < kKeys.size(); ++k) {
                 if (kKeys[k].section == section && kKeys[k].name == key) {
                     index = k;
@@ -323,6 +385,9 @@ CarParseResult parse_car(std::string_view text) {
             return fail(line_number,
                         "'" + std::string(key) + "' fuera de rango: " + std::string(value));
         }
+        if (index == kCylindersSlot && si != static_cast<float>(static_cast<int>(si))) {
+            return fail(line_number, "'cylinders' tiene que ser un entero: " + std::string(value));
+        }
         *target = si;
         seen_line[index] = line_number;
         section_end[section_index] = line_number;
@@ -356,6 +421,26 @@ CarParseResult parse_car(std::string_view text) {
             return fail(section_start[s], "[" + std::string(kSections[s]) + "]: " + error);
         }
     }
+    // Presentación: con CarKeys::Full se exigen todas; con CarKeys::Sim pueden faltar.
+    const auto missing_line = [&](std::size_t s) {
+        return section_end[s] != 0 ? section_end[s] : line_number;
+    };
+    bool presentation = seen_line[kCylindersSlot] != 0;
+    if (!presentation && keys == CarKeys::Full) {
+        return fail(missing_line(kEngineSection), "falta la clave 'cylinders' en [engine]");
+    }
+    for (std::size_t k = 0; k < kCockpitKeys.size(); ++k) {
+        if (seen_line[kFirstCockpitSlot + k] != 0) {
+            continue;
+        }
+        presentation = false;
+        if (keys == CarKeys::Full) {
+            return fail(missing_line(kCockpitSection),
+                        "falta la clave '" + std::string(kCockpitKeys[k].name) + "' en [cockpit]");
+        }
+    }
+    car.cylinders = static_cast<int>(cylinders);
+    car.has_presentation = presentation;
     car.nominal_load = car.mass * kGravity / static_cast<float>(kWheelsPerCar);
 
     // Tren motriz: comprobaciones entre claves y derivados.
@@ -439,8 +524,8 @@ CarParseResult parse_car(std::string_view text) {
     return result;
 }
 
-CarData load_car_or_abort(std::string_view text, std::string_view name) {
-    const CarParseResult result = parse_car(text);
+CarData load_car_or_abort(std::string_view text, std::string_view name, CarKeys keys) {
+    const CarParseResult result = parse_car(text, keys);
     if (!result.ok) {
         static std::string message; // vive hasta el abort
         message = "coche " + std::string(name) + ": " + result.error;

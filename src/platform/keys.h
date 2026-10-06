@@ -60,10 +60,12 @@ namespace rally::platform {
     KEY(F1, F1, 290, "F1", "F1")                                                                   \
     KEY(F2, F2, 291, "F2", "F2")                                                                   \
     KEY(F3, F3, 292, "F3", "F3")                                                                   \
+    KEY(F4, F4, 293, "F4", "F4")                                                                   \
     KEY(F5, F5, 294, "F5", "F5")                                                                   \
     KEY(F6, F6, 295, "F6", "F6")                                                                   \
     KEY(F7, F7, 296, "F7", "F7")                                                                   \
     KEY(F8, F8, 297, "F8", "F8")                                                                   \
+    KEY(F9, F9, 298, "F9", "F9")                                                                   \
     KEY(F11, F11, 300, "F11", "F11")
 
 enum class Key : int {
@@ -113,6 +115,7 @@ enum class Action : std::uint8_t {
     Gearbox,
     // Cámara y asiento
     Camera,
+    HeadMotion,
     SeatUp,
     SeatDown,
     SeatForward,
@@ -142,6 +145,7 @@ enum class Action : std::uint8_t {
     // General
     Help,
     Pause,
+    Volume,
     ReloadCar,
     NextCar,
     ResetWorld,

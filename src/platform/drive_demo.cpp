@@ -3,9 +3,11 @@
 #include "io/atomic_file.h"
 #include "io/recording.h"
 #include "platform/camera_space.h"
+#include "platform/cockpit_draw.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/forest_layout.h"
 #include "platform/frame_pacer.h"
+#include "platform/gamepad.h"
 #include "platform/input.h"
 #include "platform/input_shaping.h"
 #include "platform/keys_raylib.h"
@@ -325,8 +327,14 @@ DriveDemo::DriveDemo(std::string car_path) : car_path_(std::move(car_path)) {
               "hacia arriba; o --car <archivo>)";
     std::string error;
     RALLY_CHECK(!car_path_.empty() && io::read_file(car_path_, car_text_, error), message.c_str());
-    car_ = sim::load_car_or_abort(car_text_, car_path_);
+    car_ = sim::load_car_or_abort(car_text_, car_path_, sim::CarKeys::Full);
     load_settings();
+    audio_ = std::make_unique<AudioOutput>();
+    audio_->set_volume(static_cast<float>(settings_.volume_pct) / 100.0f);
+    if (!audio_->ready()) {
+        overlay_.set_message(Overlay::Message::Settings, "audio: no hay dispositivo, sin sonido",
+                             kError, kSettingsMessageNs);
+    }
     describe_world();
     reset();
 }
@@ -425,7 +433,7 @@ bool DriveDemo::load_car(const std::string& path, const char* key) {
                              kError);
         return false;
     }
-    const sim::CarParseResult parsed = sim::parse_car(text);
+    const sim::CarParseResult parsed = sim::parse_car(text, sim::CarKeys::Full);
     if (!parsed.ok) {
         overlay_.set_message(Overlay::Message::Car,
                              std::string(key) + ": " + file_name(path) + ", " + parsed.error +
@@ -501,6 +509,13 @@ void DriveDemo::reset() {
     shift_up_presses_ = 0;
     shift_down_presses_ = 0;
     reset_presses_ = 0;
+    // Conductor en el coche: todo a cero con el mundo nuevo (sin soplido ni golpe falso).
+    feedback_.rebuild(car_);
+    cockpit_ = build_cockpit(car_);
+    previous_steer_ = 0.0f;
+    current_steer_ = 0.0f;
+    ++audio_generation_;
+    rebuilt_ = true;
     read_poses();
     previous_ = current_;
     previous_car_ = current_car_;
@@ -582,7 +597,25 @@ void DriveDemo::handle_keys(FramePacer& pacer) {
         reload_car();
     }
     if (action_pressed(Action::Help, context)) {
-        help_visible_ = !help_visible_;
+        // Páginas: 1 → 2 → … → oculta (desde la 2.7 la ayuda no cabe en una).
+        const int pages = overlay_.layout().help.pages;
+        help_page_ = help_page_ + 1 < pages ? help_page_ + 1 : -1;
+    }
+    if (action_pressed(Action::HeadMotion, context)) {
+        settings_.head_motion = !settings_.head_motion;
+        settings_saver_.changed(now_ns());
+        overlay_.set_message(Overlay::Message::Settings,
+                             settings_.head_motion ? "F9: movimiento de la cabeza activado"
+                                                   : "F9: movimiento de la cabeza desactivado",
+                             kText, kShortMessageNs);
+    }
+    if (action_pressed(Action::Volume, context)) {
+        settings_.volume_pct = next_volume_pct(settings_.volume_pct);
+        settings_saver_.changed(now_ns());
+        audio_->set_volume(static_cast<float>(settings_.volume_pct) / 100.0f);
+        overlay_.set_message(Overlay::Message::Settings,
+                             "F4: volumen " + std::to_string(settings_.volume_pct) + " %", kText,
+                             kShortMessageNs);
     }
     if (action_pressed(Action::DebugPanel, context)) {
         debug_visible_ = !debug_visible_;
@@ -723,7 +756,31 @@ float DriveDemo::step(const sim::SimInput& input) {
     previous_car_ = current_car_;
     previous_wheels_ = current_wheels_;
     read_poses();
+    // Conductor en el coche: con la telemetría y la orientación de este paso.
+    const sim::CarTelemetry& telemetry = world_->telemetry();
+    previous_steer_ = current_steer_;
+    current_steer_ = telemetry.steer;
+    feedback_.step(telemetry, current_car_.rotation);
     return world_->last_impact();
+}
+
+void DriveDemo::update_feedback(Gamepads& pads, float frame_impact, std::int64_t frame_ns) {
+    // En pausa y al reconstruir el mundo, la vibración se para.
+    const RumbleInput rumble_input = feedback_.take_frame(blind_mode_);
+    const Rumble continuous = continuous_rumble(rumble_input, blind_mode_);
+    if (const std::optional<Rumble> rumble =
+            rumble_mixer_.update(continuous, frame_impact, frame_ns, paused_ || rebuilt_)) {
+        pads.rumble(*rumble);
+    }
+    if (audio_->ready()) {
+        AudioSnapshot snapshot;
+        feedback_.fill(snapshot);
+        snapshot.generation = audio_generation_;
+        snapshot.paused = paused_;
+        snapshot.blind = blind_mode_;
+        audio_->publish(snapshot);
+    }
+    rebuilt_ = false;
 }
 
 void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
@@ -774,10 +831,27 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
     } else if (view_ == 0) {
         // Ojo del conductor: el del archivo del coche más el asiento del jugador, en ejes del
         // coche (platform/seat). Dentro de la caja: sus caras quedan de espaldas y no se dibujan.
-        const Pose head = attach(drawn_car_, driver_eye(car_, settings_.seat));
+        // Con F9, la cabeza (platform/head_motion) lo desplaza y lo gira un poco, interpolada
+        // con el mismo alpha que la pose del coche.
+        Vec3d local = driver_eye(car_, settings_.seat);
+        Vec3d look{0.0, 0.0, -1.0};
+        Vec3d head_up{0.0, 1.0, 0.0};
+        if (settings_.head_motion) {
+            const HeadOffset h = feedback_.head().drawn(blend ? steps.alpha : 1.0);
+            local = {local.x + h.right, local.y + h.up, local.z - h.forward};
+            // Cabeceo alrededor de x (> 0 mira arriba) y alabeo alrededor de la vista (> 0 la
+            // parte de arriba de la cabeza a la derecha).
+            const double cp = std::cos(h.pitch);
+            const double sp = std::sin(h.pitch);
+            look = {0.0, sp, -cp};
+            const Vec3d pitched_up{0.0, cp, sp};
+            head_up = {std::sin(h.roll), pitched_up.y * std::cos(h.roll),
+                       pitched_up.z * std::cos(h.roll)};
+        }
+        const Pose head = attach(drawn_car_, local);
         eye = head.position;
-        forward = rotate(head.rotation, {0.0, 0.0, -1.0});
-        up = rotate(head.rotation, {0.0, 1.0, 0.0});
+        forward = rotate(head.rotation, look);
+        up = rotate(head.rotation, head_up);
     } else if (view_ == 1) {
         // Persecución: detrás y por encima del coche, girando con él.
         eye = attach(drawn_car_, kChaseOffset).position;
@@ -835,6 +909,24 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
         forest_.draw(forest_mode_,
                      relative_to_camera(Vec3d{desc_.bodies[0].x, 0.0, desc_.bodies[0].z}, origin));
     }
+    if (view_ == 0 && !zone_bench_) {
+        // Interior (tarea 2.7): lo fijo, el volante con la dirección aplicada interpolada y la
+        // pantalla con la marcha, las rpm y la presión del último paso.
+        cockpit_frame_ = cockpit_;
+        const float steer = blend ? previous_steer_ + (current_steer_ - previous_steer_) *
+                                                          static_cast<float>(steps.alpha)
+                                  : current_steer_;
+        append_steering_wheel(cockpit_frame_, car_, steering_wheel_angle(steer, car_));
+        const sim::CarTelemetry& t = world_->telemetry();
+        CockpitDisplay display;
+        display.gear = t.gear;
+        display.rpm_fraction = t.engine_omega / car_.limiter_speed;
+        display.red_fraction = car_.upshift_full / car_.limiter_speed;
+        display.turbo = car_.boost_max > 0.0f;
+        display.boost_fraction = display.turbo ? t.boost / car_.boost_max : 0.0f;
+        append_display(cockpit_frame_, car_, display);
+        draw_cockpit(cockpit_frame_, drawn_car_, origin);
+    }
     EndMode3D();
     if (target_.id != 0) {
         EndTextureMode();
@@ -854,7 +946,7 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
     overlay_.text(Layer::HelpHint, hint.x, hint.y, layer_samples(Layer::HelpHint)[0], kDim);
     // La ayuda ocupa el sitio de los paneles de arriba: mientras se ve, no se dibujan
     // (screen_layout, layers_exclusive). Siguen encendidos y vuelven al cerrarla.
-    if (help_visible_) {
+    if (help_page_ >= 0) {
         draw_help();
     } else {
         if (debug_visible_) {
@@ -863,6 +955,7 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
         if (graphs_.visible(blind_mode_) >= 0) {
             draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_), overlay_);
         }
+        perf.set_audio(audio_->stats());
         perf.draw(pacer, clock, snap_, render_width(), render_height(), overlay_);
     }
     if (!recording_.error().empty()) {
@@ -951,7 +1044,13 @@ void DriveDemo::draw_help() {
     overlay_.panel(Layer::Help, kPanelBackground);
     const int x0 = overlay_.content_x(Layer::Help);
     const int y0 = overlay_.content_y(Layer::Help);
+    // Si la ventana cambia de tamaño, puede haber menos páginas.
+    const int page = std::min(help_page_, grid.pages - 1);
+    overlay_.text(Layer::Help, x0, y0, help_title(page, grid.pages), kDim);
     for (const HelpCell& cell : grid.cells) {
+        if (cell.page != page) {
+            continue;
+        }
         const int x = x0 + cell.column * (grid.column_width + grid.column_gap);
         const int y = y0 + cell.row * layout.m.line;
         if (cell.binding < 0) {

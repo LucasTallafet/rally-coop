@@ -1,11 +1,15 @@
 #pragma once
 
+#include "platform/audio_output.h"
+#include "platform/car_feedback.h"
+#include "platform/cockpit.h"
 #include "platform/forest_scene.h"
 #include "platform/frame_log.h"
 #include "platform/interpolation.h"
 #include "platform/overlay.h"
 #include "platform/player_settings.h"
 #include "platform/recording_session.h"
+#include "platform/surface_feel.h"
 #include "platform/telemetry_history.h"
 #include "platform/zone_draw.h"
 #include "sim/car_data.h"
@@ -24,13 +28,18 @@ namespace rally::platform {
 
 class DriverInput;
 class FixedStepClock;
+class Gamepads;
 class FramePacer;
 class PerfCounter;
 struct FrameSteps;
 
 // Demo de conducción (desde la tarea 2.4): el coche del archivo .car simulado a 240 Hz en
 // SimWorld, conducido con el teclado o el mando, en la zona de pruebas de la fase 2 (por
-// defecto) o en el recinto de la fase 1. Sin interior todavía (tarea 2.7).
+// defecto) o en el recinto de la fase 1. Desde la 2.7, en la vista del ojo, el interior
+// provisional (platform/cockpit), la cabeza que se mueve con el coche (platform/head_motion, F9),
+// la vibración por superficie y deslizamiento (platform/surface_feel) y el sonido sintético
+// (platform/car_synth en su hilo, platform/audio_output; F4 el volumen). Todo solo lee la
+// simulación: la telemetría y la pose de cada paso (platform/car_feedback).
 //
 // Teclas: la tabla de platform/keys (la ayuda, H, las enseña en pantalla). Retroceso reinicia el
 // mundo, K alterna la zona y el recinto, y en el recinto O lo reconstruye a 20 km del origen (o
@@ -108,6 +117,10 @@ public:
     // Un paso de 1/240 s, que queda grabado. Devuelve el impacto del coche en ese paso (m/s; 0 en
     // pausa), para la vibración. En pausa no hay paso ni grabación.
     float step(const sim::SimInput& input);
+
+    // Tras los pasos del fotograma: la vibración (continua y del impacto, mezcladas en
+    // RumbleMixer) y la instantánea del sonido. frame_impact: el pico de sus pasos.
+    void update_feedback(Gamepads& pads, float frame_impact, std::int64_t frame_ns);
 
     // Dibuja y presenta el fotograma, con el contador encima. input: la entrada aplicada en
     // este fotograma; frame_impact: el pico de sus pasos.
@@ -192,7 +205,7 @@ private:
     bool capture_requested_ = false;  // C: captura del búfer al final del fotograma
     bool far_from_origin_ = false;    // O: mundo a 20 km del origen en x y z
     bool world_float_ = false;        // J: dibujo en float del mundo en vez de relativo
-    bool help_visible_ = false;       // H: ayuda de teclas
+    int help_page_ = -1;              // H: página de la ayuda de teclas (-1 oculta)
     bool debug_visible_ = false;      // F3: panel de depuración
     bool snap_ = true;                // N: ajuste del dt al refresco
     float last_rumble_impact_ = 0.0f; // último pico que hizo vibrar, en m/s
@@ -210,6 +223,18 @@ private:
     // T: gráficas de la telemetría (no en el modo a ciegas). La historia se llena siempre.
     TelemetryHistory telemetry_history_;
     GraphPager graphs_;
+    // Conductor en el coche (tarea 2.7): lo que sale de cada paso, el interior (fijo y el del
+    // fotograma, con el volante y la pantalla), la dirección aplicada en los dos últimos pasos
+    // (el volante se dibuja interpolado), la vibración y el sonido.
+    CarFeedback feedback_;
+    std::vector<CockpitTri> cockpit_;
+    std::vector<CockpitTri> cockpit_frame_;
+    float previous_steer_ = 0.0f;
+    float current_steer_ = 0.0f;
+    RumbleMixer rumble_mixer_;
+    std::unique_ptr<AudioOutput> audio_;
+    std::uint32_t audio_generation_ = 0;
+    bool rebuilt_ = true; // el mundo se ha reconstruido desde el último update_feedback
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).
     int shift_up_presses_ = 0;
     int shift_down_presses_ = 0;

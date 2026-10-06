@@ -137,6 +137,7 @@ limiter_ramp_rpm = 100    # corte en rampa de 7100 a 7200 rpm
 inertia = 0.13            # kg·m². Estimado
 friction = 0.070          # N·m·s/rad. Estimado
 torque_scale = 1.0
+cylinders = 4             # solo para el sonido del motor (tarea 2.7)
 
 # Par sin presión (N·m) por rpm: el 50 % del de plena presión (estimado). A plena presión
 # (× 2): 420 a 4000 y 352 a 6000 rpm (221 kW).
@@ -202,3 +203,30 @@ lsd_rear_coast = 0.30
 eye_left = 0.37           # m. Estimado
 eye_height = 1.07         # m. Estimado
 eye_behind_front_axle = 1.15 # m. Estimado
+
+# Interior provisional (tarea 2.7; solo presentación, la simulación no lo lee). Metros relativos
+# al ojo nominal de [driver], sin el asiento del jugador. Copiado del 205 (mid_awd_turbo.car), sin verificar: el interior de cada coche no es de esta fase.
+[cockpit]
+windshield_base_ahead = 0.70   # base del parabrisas, por delante del ojo. Copiado del 205, sin verificar
+windshield_base_below = 0.30   # ... y por debajo. Copiado del 205, sin verificar
+windshield_top_ahead = 0.55    # borde superior del parabrisas. Copiado del 205, sin verificar
+windshield_top_above = 0.15    # Copiado del 205, sin verificar
+pillar_width = 0.08            # montantes del parabrisas. Copiado del 205, sin verificar
+pillar_left = 0.25             # centro del montante izquierdo, a la izquierda del ojo. Copiado del 205, sin verificar
+pillar_right = 1.05            # centro del montante derecho, a la derecha del ojo. Copiado del 205, sin verificar
+roof_above = 0.18              # techo sobre el ojo. Estimado
+roof_behind = 0.60             # el techo llega hasta aquí por detrás del ojo. Estimado
+door_left = 0.31               # cara interior de la puerta izquierda (1,35 m de ancho interior). Estimado
+door_right = 1.04              # ... y de la derecha. Estimado
+sill_below = 0.28              # borde de abajo de la ventanilla lateral. Estimado
+dash_rear_ahead = 0.50         # borde trasero del salpicadero. Estimado
+wheel_ahead = 0.45             # centro del volante. Copiado del 205, sin verificar
+wheel_diameter = 0.35          # Copiado del 205, sin verificar
+wheel_center_below = 0.35      # con la inclinación, el borde superior queda a −25° (se ve). Estimado
+wheel_tilt_deg = 20            # aro inclinado, arriba hacia atrás. Estimado
+steering_ratio = 13            # 13:1, unas 2,2 vueltas de tope a tope con 30°. Copiado del 205, sin verificar
+display_ahead = 0.60           # pantalla de marcha, rpm y presión. Estimado
+display_below = 0.24           # Estimado
+display_right = 0.0            # Estimado
+display_width = 0.16           # Estimado
+display_height = 0.06          # Estimado

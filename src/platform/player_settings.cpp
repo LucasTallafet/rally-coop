@@ -46,6 +46,10 @@ constexpr std::array kKeys = {
     Key{"raton_px_tope", [](const PlayerSettings& p) { return p.mouse_full_lock_px; },
         [](PlayerSettings& p, int v) { p.mouse_full_lock_px = v; }, kMouseFullLockPxMin,
         kMouseFullLockPxMax, " px"},
+    Key{"cabeza", [](const PlayerSettings& p) { return p.head_motion ? 1 : 0; },
+        [](PlayerSettings& p, int v) { p.head_motion = v != 0; }, 0, 1, ""},
+    Key{"volumen_pct", [](const PlayerSettings& p) { return p.volume_pct; },
+        [](PlayerSettings& p, int v) { p.volume_pct = v; }, 0, 100, " %"},
 };
 
 bool has_words(const Key& key) { return !key.words[0].empty(); }
@@ -185,6 +189,15 @@ void SettingsSaver::changed(std::int64_t now_ns) {
 
 bool SettingsSaver::due(std::int64_t now_ns) const {
     return dirty_ && now_ns - last_change_ns_ >= kSettingsSaveDelayNs;
+}
+
+int next_volume_pct(int volume_pct) {
+    for (const int step : {70, 40, 0}) {
+        if (volume_pct > step) {
+            return step;
+        }
+    }
+    return 100;
 }
 
 } // namespace rally::platform

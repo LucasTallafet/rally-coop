@@ -123,7 +123,7 @@ TEST_CASE("tire: curvature E of 1 or more, or a missing tire key, fails with its
     SUBCASE("E = 1") {
         std::string bad = text;
         bad.replace(at, 15, "curvature_e = 1");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(bad);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(bad, rally::sim::CarKeys::Sim);
         MESSAGE(r.error);
         CHECK_FALSE(r.ok);
         CHECK(r.error.rfind("línea " + std::to_string(line) + ": [tire.gravel]", 0) == 0);
@@ -132,7 +132,7 @@ TEST_CASE("tire: curvature E of 1 or more, or a missing tire key, fails with its
     SUBCASE("E = 0.9 reads") {
         std::string good = text;
         good.replace(at, 15, "curvature_e = 0.9");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(good);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(good, rally::sim::CarKeys::Sim);
         REQUIRE_MESSAGE(r.ok, r.error);
         CHECK(rally::sim::tire_curve(r.car.tire(Surface::Gravel), 1.0f) ==
               doctest::Approx(1.0).epsilon(1e-5));
@@ -140,7 +140,7 @@ TEST_CASE("tire: curvature E of 1 or more, or a missing tire key, fails with its
     SUBCASE("missing key") {
         std::string bad = text;
         bad.replace(at, 15, "");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(bad);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(bad, rally::sim::CarKeys::Sim);
         MESSAGE(r.error);
         CHECK_FALSE(r.ok);
         CHECK(r.error.find("falta la clave 'curvature_e' en [tire.gravel]") != std::string::npos);

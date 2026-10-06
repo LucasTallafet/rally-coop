@@ -134,7 +134,8 @@ SimInput pedal(std::int16_t throttle, std::int16_t brake, std::uint16_t buttons 
 // --- 1. Lector -------------------------------------------------------------------------------
 
 TEST_CASE("car_data: the reference car reads whole and degrees become radians") {
-    const rally::sim::CarParseResult result = rally::sim::parse_car(reference_car_text());
+    const rally::sim::CarParseResult result =
+        rally::sim::parse_car(reference_car_text(), rally::sim::CarKeys::Sim);
     REQUIRE_MESSAGE(result.ok, result.error);
     const CarData& car = result.car;
     CHECK(car.mass == 1100.0f);
@@ -170,7 +171,7 @@ TEST_CASE("car_data: an unknown key, a missing key or a bad number fails with it
     const std::string& text = reference_car_text();
     SUBCASE("unknown key") {
         const std::string bad = replace_line(text, "cg_height = 0.45", "cg_heigth = 0.45");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(bad);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(bad, rally::sim::CarKeys::Sim);
         CHECK_FALSE(r.ok);
         const std::string expected = "línea " + std::to_string(line_of(bad, "cg_heigth")) + ":";
         MESSAGE(r.error);
@@ -179,7 +180,7 @@ TEST_CASE("car_data: an unknown key, a missing key or a bad number fails with it
     }
     SUBCASE("bad number") {
         const std::string bad = replace_line(text, "track = 1.43", "track = 1,43");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(bad);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(bad, rally::sim::CarKeys::Sim);
         CHECK_FALSE(r.ok);
         MESSAGE(r.error);
         CHECK(r.error.rfind("línea " + std::to_string(line_of(bad, "track = 1,43")) + ":", 0) == 0);
@@ -187,7 +188,7 @@ TEST_CASE("car_data: an unknown key, a missing key or a bad number fails with it
     }
     SUBCASE("missing key") {
         const std::string bad = replace_line(text, "radius = 0.31", "");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(bad);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(bad, rally::sim::CarKeys::Sim);
         CHECK_FALSE(r.ok);
         MESSAGE(r.error);
         CHECK(r.error.rfind("línea ", 0) == 0);
@@ -195,13 +196,13 @@ TEST_CASE("car_data: an unknown key, a missing key or a bad number fails with it
     }
     SUBCASE("repeated key") {
         const std::string bad = replace_line(text, "track = 1.43", "track = 1.43\ntrack = 1.5");
-        const rally::sim::CarParseResult r = rally::sim::parse_car(bad);
+        const rally::sim::CarParseResult r = rally::sim::parse_car(bad, rally::sim::CarKeys::Sim);
         CHECK_FALSE(r.ok);
         CHECK(r.error.find("repetida") != std::string::npos);
     }
     SUBCASE("out of range") {
         const std::string bad = replace_line(text, "front_weight = 0.45", "front_weight = 4.5");
-        CHECK_FALSE(rally::sim::parse_car(bad).ok);
+        CHECK_FALSE(rally::sim::parse_car(bad, rally::sim::CarKeys::Sim).ok);
     }
 }
 
@@ -215,12 +216,76 @@ TEST_CASE("car_data: a Spanish process locale reads the same numbers") {
     char formatted[16];
     std::snprintf(formatted, sizeof(formatted), "%.1f", 0.5);
     CHECK(std::string(formatted) == "0,5"); // el idioma está activo de verdad
-    const rally::sim::CarParseResult r = rally::sim::parse_car(reference_car_text());
+    const rally::sim::CarParseResult r =
+        rally::sim::parse_car(reference_car_text(), rally::sim::CarKeys::Sim);
     std::setlocale(LC_ALL, previous.c_str());
     REQUIRE(r.ok);
     CHECK(r.car.track == reference_car().track);
     CHECK(r.car.max_steer == reference_car().max_steer);
     CHECK(r.car.tire(Surface::Gravel).mu_peak == reference_car().tire(Surface::Gravel).mu_peak);
+}
+
+TEST_CASE(
+    "car_data: presentation keys are required for the game cars and optional for recordings") {
+    // reference.car (el de las grabaciones de test) no los lleva: con Sim se lee igual.
+    const rally::sim::CarParseResult sim =
+        rally::sim::parse_car(reference_car_text(), rally::sim::CarKeys::Sim);
+    REQUIRE(sim.ok);
+    CHECK_FALSE(sim.car.has_presentation);
+    CHECK(sim.car.cylinders == 0);
+    // Con Full, falta cylinders en [engine].
+    const rally::sim::CarParseResult full =
+        rally::sim::parse_car(reference_car_text(), rally::sim::CarKeys::Full);
+    CHECK_FALSE(full.ok);
+    MESSAGE(full.error);
+    CHECK(full.error.find("falta la clave 'cylinders' en [engine]") != std::string::npos);
+
+    const std::string with_cylinders = replace_line(reference_car_text(), "torque_scale = 1.0",
+                                                    "torque_scale = 1.0\ncylinders = 5");
+    const rally::sim::CarParseResult no_cockpit =
+        rally::sim::parse_car(with_cylinders, rally::sim::CarKeys::Full);
+    CHECK_FALSE(no_cockpit.ok);
+    CHECK(no_cockpit.error.find("en [cockpit]") != std::string::npos);
+    const rally::sim::CarParseResult cylinders_only =
+        rally::sim::parse_car(with_cylinders, rally::sim::CarKeys::Sim);
+    REQUIRE(cylinders_only.ok);
+    CHECK(cylinders_only.car.cylinders == 5);
+    CHECK_FALSE(cylinders_only.car.has_presentation);
+
+    const std::string fractional = replace_line(with_cylinders, "cylinders = 5", "cylinders = 4.5");
+    const rally::sim::CarParseResult bad =
+        rally::sim::parse_car(fractional, rally::sim::CarKeys::Sim);
+    CHECK_FALSE(bad.ok);
+    CHECK(bad.error.rfind("línea " + std::to_string(line_of(fractional, "cylinders = 4.5")) + ":",
+                          0) == 0);
+}
+
+TEST_CASE("car_data: the four game cars carry cylinders and the cockpit") {
+    const std::array<std::pair<const char*, int>, 4> cars = {{{"mid_awd_turbo", 4},
+                                                              {"front_awd_turbo_5cyl", 5},
+                                                              {"front_rwd_na", 4},
+                                                              {"front_awd_turbo_groupa", 4}}};
+    for (const auto& [name, cylinders] : cars) {
+        CAPTURE(name);
+        std::string text;
+        std::string error;
+        REQUIRE(rally::io::read_file(std::string(RALLY_SOURCE_DIR "/data/cars/") + name + ".car",
+                                     text, error));
+        const rally::sim::CarParseResult r = rally::sim::parse_car(text, rally::sim::CarKeys::Full);
+        REQUIRE_MESSAGE(r.ok, r.error);
+        CHECK(r.car.has_presentation);
+        CHECK(r.car.cylinders == cylinders);
+        CHECK(r.car.cockpit.steering_ratio == 13.0f);
+        CHECK(r.car.cockpit.windshield_base_ahead == 0.70f);
+        CHECK(r.car.cockpit.wheel_tilt == doctest::Approx(20.0 * 3.14159265358979 / 180.0));
+        // Quitar una clave del interior es un error con Full.
+        const std::string bad = replace_line(text, "pillar_width = 0.08", "");
+        const rally::sim::CarParseResult missing =
+            rally::sim::parse_car(bad, rally::sim::CarKeys::Full);
+        CHECK_FALSE(missing.ok);
+        CHECK(missing.error.find("falta la clave 'pillar_width' en [cockpit]") !=
+              std::string::npos);
+    }
 }
 
 // --- 2. Equilibrio ---------------------------------------------------------------------------
@@ -939,7 +1004,8 @@ TEST_CASE("car: SaveState at 10 s and RestoreState in a fresh world give the sam
 TEST_CASE("car: building with a heavier car file changes the car mass and nothing else") {
     const rally::sim::JoltRuntime runtime;
     const CarData heavy = rally::sim::load_car_or_abort(
-        replace_line(reference_car_text(), "mass = 1100", "mass = 1300"), "heavy");
+        replace_line(reference_car_text(), "mass = 1100", "mass = 1300"), "heavy",
+        rally::sim::CarKeys::Sim);
     SimWorld light_world;
     light_world.build(rally::sim::zone_world(Surface::Gravel, reference_car()));
     light_world.seal();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/audio_output.h"
 #include "platform/frame_history.h"
 #include "platform/gl_probe.h"
 #include "platform/perf_stats.h"
@@ -52,6 +53,8 @@ public:
     // escena.
     void draw(const FramePacer& pacer, const FixedStepClock& clock, bool snap_enabled,
               int render_width, int render_height, Overlay& overlay) const;
+    // Medidas del hilo de audio (tarea 2.7) para su línea del panel.
+    void set_audio(const AudioStats& audio) { audio_ = audio; }
 
     // Última muestra cerrada (la del fotograma anterior) y la memoria leída por última vez.
     const FrameSample& last_sample() const { return last_; }
@@ -75,6 +78,7 @@ private:
     std::int64_t step_start_ns_ = 0;
     std::int64_t render_start_ns_ = 0;
     std::int64_t present_start_ns_ = 0;
+    AudioStats audio_;
 };
 
 } // namespace rally::platform

@@ -41,6 +41,35 @@ struct TireSurface {
     float slide_cap = 0.0f;      // ρ máximo de la huella a velocidad (sim/tire.h)
 };
 
+// Interior provisional ([cockpit], tarea 2.7; solo presentación). Metros relativos al ojo
+// NOMINAL de [driver] (sin el asiento del jugador): adelante, derecha y arriba positivos; las
+// claves _below, _left y _behind miden hacia el otro lado. Ángulos en radianes.
+struct CockpitData {
+    float windshield_base_ahead = 0.0f; // base del parabrisas
+    float windshield_base_below = 0.0f;
+    float windshield_top_ahead = 0.0f; // borde superior del parabrisas
+    float windshield_top_above = 0.0f;
+    float pillar_width = 0.0f;    // montantes del parabrisas
+    float pillar_left = 0.0f;     // centro del montante izquierdo, a la izquierda del ojo
+    float pillar_right = 0.0f;    // centro del montante derecho, a la derecha del ojo
+    float roof_above = 0.0f;      // techo
+    float roof_behind = 0.0f;     // hasta dónde llega el techo por detrás del ojo
+    float door_left = 0.0f;       // cara interior de la puerta izquierda
+    float door_right = 0.0f;      // ... y de la derecha
+    float sill_below = 0.0f;      // borde de abajo de la ventanilla lateral
+    float dash_rear_ahead = 0.0f; // borde trasero del salpicadero (a la altura de la base)
+    float wheel_ahead = 0.0f;     // centro del volante
+    float wheel_diameter = 0.0f;
+    float wheel_center_below = 0.0f;
+    float wheel_tilt = 0.0f; // rad: inclinación del aro respecto a la vertical (arriba hacia atrás)
+    float steering_ratio = 0.0f; // giro del volante / giro de la rueda interior
+    float display_ahead = 0.0f;  // pantalla de marcha, rpm y presión: centro
+    float display_below = 0.0f;
+    float display_right = 0.0f;
+    float display_width = 0.0f;
+    float display_height = 0.0f;
+};
+
 struct CarData {
     // [chassis]
     float mass = 0.0f;          // kg, con ocupantes y combustible
@@ -146,6 +175,13 @@ struct CarData {
     float eye_height = 0.0f;            // m sobre el suelo, en equilibrio
     float eye_behind_front_axle = 0.0f; // m
 
+    // Datos solo de presentación (tarea 2.7): la simulación no los lee. Con CarKeys::Sim pueden
+    // faltar y se quedan a 0 (has_presentation = false).
+    bool has_presentation = false;
+    // [engine] cylinders: número de cilindros, para el sonido del motor.
+    int cylinders = 0;
+    CockpitData cockpit;
+
     // Derivados al cargar.
     float nominal_load = 0.0f;    // N: F_z0, la carga estática media por rueda (m·g/4)
     float clutch_capacity = 0.0f; // N·m
@@ -164,13 +200,19 @@ struct CarParseResult {
     CarData car;
 };
 
+// Qué claves se exigen. Full: todas (el juego con data/cars: F5, F8 y el arranque). Sim: solo las
+// que lee la simulación; las de presentación (cylinders y [cockpit]) se leen si están, pero
+// pueden faltar. Para las grabaciones (rally_replay y la reproducción), que guardan el texto del
+// coche de su momento, y para tests/data/cars/reference.car.
+enum class CarKeys { Full, Sim };
+
 // Lee el texto de un .car: secciones [nombre], "clave = valor" y comentarios con #. Los
 // números se leen con std::from_chars (no dependen del idioma del proceso). Una clave
 // desconocida, repetida o fuera de sección, un número mal escrito, un valor fuera de rango o
-// una clave que falta son errores con su número de línea.
-CarParseResult parse_car(std::string_view text);
+// una clave exigida que falta son errores con su número de línea.
+CarParseResult parse_car(std::string_view text, CarKeys keys);
 
 // parse_car o aborta (RALLY_CHECK) con el error y `name` delante. Al arrancar y en los tests.
-CarData load_car_or_abort(std::string_view text, std::string_view name);
+CarData load_car_or_abort(std::string_view text, std::string_view name, CarKeys keys);
 
 } // namespace rally::sim

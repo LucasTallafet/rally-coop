@@ -29,7 +29,8 @@ bool build_world(const Recording& recording, sim::SimWorld& world, std::string& 
         return false;
     }
     if (desc.car) {
-        const sim::CarParseResult car = sim::parse_car(recording.header.car_text);
+        const sim::CarParseResult car =
+            sim::parse_car(recording.header.car_text, sim::CarKeys::Sim);
         if (!car.ok) {
             error = "coche de la grabación: " + car.error;
             if (recording.header.sim_version != sim::kSimVersion) {

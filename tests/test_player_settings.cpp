@@ -68,6 +68,30 @@ void check_bad_values() {
 
 TEST_CASE("player_settings: round trip is exact") { check_round_trip(); }
 
+TEST_CASE("player_settings: head motion and volume are read, written and cycled") {
+    std::vector<SettingsWarning> warnings;
+    PlayerSettings settings = parse_settings("cabeza = 0\nvolumen_pct = 40\n", warnings);
+    CHECK(warnings.empty());
+    CHECK_FALSE(settings.head_motion);
+    CHECK(settings.volume_pct == 40);
+    CHECK(parse_settings(format_settings(settings), warnings) == settings);
+    // Por defecto: con cabeza y al 100 %.
+    CHECK(PlayerSettings{}.head_motion);
+    CHECK(PlayerSettings{}.volume_pct == 100);
+    // Fuera de rango: aviso y el valor por defecto.
+    settings = parse_settings("volumen_pct = 140\n", warnings);
+    CHECK(warnings.size() == 1);
+    CHECK(settings.volume_pct == 100);
+    // F4: 100 → 70 → 40 → 0 → 100; desde 55 (escrito a mano), 40.
+    CHECK(rally::platform::next_volume_pct(100) == 70);
+    CHECK(rally::platform::next_volume_pct(70) == 40);
+    CHECK(rally::platform::next_volume_pct(40) == 0);
+    CHECK(rally::platform::next_volume_pct(0) == 100);
+    CHECK(rally::platform::next_volume_pct(55) == 40);
+    // No van en la cabecera de la grabación.
+    CHECK(rally::platform::recording_settings_text(settings).find("cabeza") == std::string::npos);
+}
+
 TEST_CASE("player_settings: an unknown key warns with its line and the rest is read") {
     std::vector<SettingsWarning> warnings;
     const PlayerSettings parsed = parse_settings(

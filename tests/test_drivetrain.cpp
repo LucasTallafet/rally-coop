@@ -56,7 +56,7 @@ const CarData& data_car(const char* name) {
                 const std::string path =
                     std::string(RALLY_SOURCE_DIR "/data/cars/") + name + ".car";
                 REQUIRE(rally::io::read_file(path, bytes, error));
-                cars[i] = rally::sim::load_car_or_abort(bytes, name);
+                cars[i] = rally::sim::load_car_or_abort(bytes, name, rally::sim::CarKeys::Full);
                 loaded[i] = true;
             }
             return cars[i];
@@ -1044,17 +1044,18 @@ TEST_CASE("drivetrain: a rear-drive car with a viscous coupling or a front diff 
         return t;
     };
     const rally::sim::CarParseResult rwd_viscous = rally::sim::parse_car(
-        set("front_share = 0.33        # reparto 33/67", "front_share = 0 # reparto"));
+        set("front_share = 0.33        # reparto 33/67", "front_share = 0 # reparto"),
+        rally::sim::CarKeys::Sim);
     CHECK_FALSE(rwd_viscous.ok);
     MESSAGE("propulsión con viscoacoplador: ", rwd_viscous.error);
     // Histéresis del automático imposible: bajar por encima de subir.
-    const rally::sim::CarParseResult hunt =
-        rally::sim::parse_car(set("downshift_rpm_full = 4200", "downshift_rpm_full = 7000"));
+    const rally::sim::CarParseResult hunt = rally::sim::parse_car(
+        set("downshift_rpm_full = 4200", "downshift_rpm_full = 7000"), rally::sim::CarKeys::Sim);
     CHECK_FALSE(hunt.ok);
     MESSAGE("histéresis: ", hunt.error);
     // Curva de par con rpm que no crecen.
     const rally::sim::CarParseResult curve =
-        rally::sim::parse_car(set("3000 = 175.5", "1500 = 175.5"));
+        rally::sim::parse_car(set("3000 = 175.5", "1500 = 175.5"), rally::sim::CarKeys::Sim);
     CHECK_FALSE(curve.ok);
     MESSAGE("curva: ", curve.error);
     CHECK(curve.error.rfind("línea ", 0) == 0);

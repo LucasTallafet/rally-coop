@@ -26,7 +26,8 @@ inline const std::string& reference_car_text() {
 
 // tests/data/cars/reference.car: el coche congelado de la huella y de los tests.
 inline const sim::CarData& reference_car() {
-    static const sim::CarData car = sim::load_car_or_abort(reference_car_text(), "reference.car");
+    static const sim::CarData car =
+        sim::load_car_or_abort(reference_car_text(), "reference.car", sim::CarKeys::Sim);
     return car;
 }
 

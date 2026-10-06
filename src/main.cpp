@@ -130,8 +130,8 @@ int main(int argc, char** argv) {
             frame_impact = std::max(frame_impact, demo.step(input));
             perf.end_step();
         }
-        // Vibración por el pico de impacto de los pasos del fotograma.
-        driver.gamepads().rumble(rally::platform::rumble_for_impact(frame_impact));
+        // Vibración (continua y por el pico de impacto de los pasos del fotograma) y sonido.
+        demo.update_feedback(driver.gamepads(), frame_impact, frame_ns);
         // Presenta y recoge los eventos del próximo fotograma.
         demo.draw(steps, frame_ns, pacer, clock, driver, input, frame_impact, perf);
     }

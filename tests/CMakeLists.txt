@@ -5,11 +5,15 @@ add_executable(rally_tests
     new_counter.cpp
     test_button_latch.cpp
     test_car.cpp
+    test_car_feedback.cpp
+    test_car_synth.cpp
+    test_cockpit.cpp
     test_drivetrain.cpp
     test_camera_space.cpp
     test_fixed_step_clock.cpp
     test_forest_layout.cpp
     test_frame_history.cpp
+    test_head_motion.cpp
     test_input_shaping.cpp
     test_input_smoothing.cpp
     test_interpolation.cpp
@@ -25,6 +29,7 @@ add_executable(rally_tests
     test_seat.cpp
     test_sim_world.cpp
     test_steer_assist.cpp
+    test_surface_feel.cpp
     test_telemetry.cpp
     test_test_road.cpp
     test_test_zone.cpp
