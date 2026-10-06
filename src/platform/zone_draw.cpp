@@ -228,6 +228,8 @@ Rect snapped_footprint(const ZoneArea& a, double margin) {
     return {down(a.min_x - margin), up(a.max_x + margin), down(a.min_z), up(a.max_z)};
 }
 
+bool is_road(AreaId id) { return id == AreaId::Road || id == AreaId::RoadShoulder; }
+
 bool is_relief(AreaId id) {
     return id == AreaId::BumpsAsphalt || id == AreaId::BumpsGravel || id == AreaId::Ramp ||
            id == AreaId::Crest;
@@ -360,6 +362,7 @@ ZoneDraw::~ZoneDraw() {
 }
 
 void ZoneDraw::unload_meshes() {
+    trees_.reset();
     for (std::vector<Mesh>* layer : {&ground_, &decals_, &lines_}) {
         for (Mesh& mesh : *layer) {
             UnloadMesh(mesh);
@@ -388,7 +391,7 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
     const double hi = -zone::kGroundOrigin;
     std::vector<Rect> background{{lo, hi, lo, hi}};
     for (const ZoneArea& a : zone.areas()) {
-        if (!is_relief(a.id)) {
+        if (!is_relief(a.id) || is_road(a.id)) {
             continue;
         }
         const Rect hole = snapped_footprint(a, relief_margin(a.id));
@@ -409,6 +412,78 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
                 const Color c = color_of(zone.surface_at(x + 0.5 * s, z + 0.5 * s));
                 ground.triangle(p00, p01, p11, c);
                 ground.triangle(p00, p11, p10, c);
+            }
+        }
+    }
+    {
+        // Carretera: su caja, por filas de la rejilla de Jolt. Una celda con alguna esquina a
+        // otra altura que 0 o con otra superficie que la tierra va con su relieve; las seguidas
+        // que no, en una tira llana.
+        const sim::TestRoad& road = zone.road();
+        const double s = zone::kGroundSpacing;
+        const auto down = [s](double v) {
+            return zone::kGroundOrigin + std::floor((v - zone::kGroundOrigin) / s) * s;
+        };
+        const auto up = [s](double v) {
+            return zone::kGroundOrigin + std::ceil((v - zone::kGroundOrigin) / s) * s;
+        };
+        const Rect box{down(road.min_x()), up(road.max_x()), down(road.min_z()), up(road.max_z())};
+        std::vector<Rect> next;
+        for (const Rect& r : background) {
+            subtract(r, box, next);
+        }
+        background = std::move(next);
+        const int nx = static_cast<int>(std::lround((box.x1 - box.x0) / s));
+        const int nz = static_cast<int>(std::lround((box.z1 - box.z0) / s));
+        std::vector<float> y(static_cast<std::size_t>(nx + 1) * (nz + 1));
+        for (int j = 0; j <= nz; ++j) {
+            for (int i = 0; i <= nx; ++i) {
+                y[static_cast<std::size_t>(j) * (nx + 1) + i] =
+                    static_cast<float>(zone.ground_height(box.x0 + i * s, box.z0 + j * s));
+            }
+        }
+        const Color dirt = color_of(sim::Surface::Dirt);
+        for (int j = 0; j < nz; ++j) {
+            const double z = box.z0 + j * s;
+            int flat_from = -1;
+            for (int i = 0; i <= nx; ++i) {
+                bool relief = false;
+                sim::Surface surface = sim::Surface::Dirt;
+                if (i < nx) {
+                    const std::size_t a = static_cast<std::size_t>(j) * (nx + 1) + i;
+                    const std::size_t c = a + static_cast<std::size_t>(nx + 1);
+                    relief = y[a] != 0.0f || y[a + 1] != 0.0f || y[c] != 0.0f || y[c + 1] != 0.0f;
+                    if (!relief) {
+                        surface = zone.surface_at(box.x0 + (i + 0.5) * s, z + 0.5 * s);
+                        relief = surface != sim::Surface::Dirt;
+                    }
+                }
+                if ((relief || i == nx) && flat_from >= 0) {
+                    const double x0 = box.x0 + flat_from * s;
+                    const double x1 = box.x0 + i * s;
+                    ground.quad(v3(x0, 0.0, z), v3(x0, 0.0, z + s), v3(x1, 0.0, z + s),
+                                v3(x1, 0.0, z), dirt);
+                    flat_from = -1;
+                }
+                if (i == nx) {
+                    break;
+                }
+                if (!relief) {
+                    if (flat_from < 0) {
+                        flat_from = i;
+                    }
+                    continue;
+                }
+                const double x = box.x0 + i * s;
+                const std::size_t a = static_cast<std::size_t>(j) * (nx + 1) + i;
+                const std::size_t c = a + static_cast<std::size_t>(nx + 1);
+                const Vector3 p00 = v3(x, y[a], z);
+                const Vector3 p10 = v3(x + s, y[a + 1], z);
+                const Vector3 p11 = v3(x + s, y[c + 1], z + s);
+                const Vector3 p01 = v3(x, y[c], z + s);
+                const Color color = color_of(zone.surface_at(x + 0.5 * s, z + 0.5 * s));
+                ground.triangle(p00, p01, p11, color);
+                ground.triangle(p00, p11, p10, color);
             }
         }
     }
@@ -436,7 +511,7 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
     // Áreas llanas: rectángulos y calzadas, en el plano del suelo.
     TriangleList decals;
     for (const ZoneArea& a : zone.areas()) {
-        if (is_relief(a.id)) {
+        if (is_relief(a.id) || is_road(a.id)) {
             continue;
         }
         const Color c = color_of(a.surface);
@@ -509,6 +584,26 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
             polyline(points, a.closed, kLineWidth, kLineWhite);
         }
     }
+    // Carretera: líneas de salida y meta y, en el modo a ciegas (donde los colores no la
+    // marcan), los bordes de la calzada, como la pista ciega.
+    for (const sim::FinishLine* line : {&zone.road_start_line(), &zone.road_finish_line()}) {
+        const double half = zone::kRoadHalfWidth;
+        polyline({{line->x - half * -line->forward_z, line->z - half * line->forward_x},
+                  {line->x + half * -line->forward_z, line->z + half * line->forward_x}},
+                 false, 0.6f, kLineWhite);
+    }
+    if (blind) {
+        const sim::TestRoad& road = zone.road();
+        for (const double side : {-1.0, 1.0}) {
+            std::vector<std::array<double, 2>> points;
+            const double offset = side * (zone::kRoadHalfWidth - 0.25);
+            for (double s = road.first_s(); s <= road.last_s(); s += 0.5) {
+                const sim::RoadPoint p = road.point(s);
+                points.push_back({p.x + offset * std::cos(p.psi), p.z + offset * std::sin(p.psi)});
+            }
+            polyline(points, false, kLineWidth, kLineWhite);
+        }
+    }
     // Línea de meta de la pista ciega.
     const sim::FinishLine& finish = zone.finish_line();
     const double half_road = 0.5 * zone::kBlindRoadWidth;
@@ -528,6 +623,24 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
     lines.upload(lines_);
 
     // Conos del eslalon y postes cada 100 m a los lados de la recta.
+    // Árboles de la carretera: el del bosque de medida a escala 1 (tronco de 0,25 m, como el
+    // cilindro de Jolt), hundido 5 cm y con un giro distinto cada uno (solo se ve).
+    {
+        const sim::TestRoad& road = zone.road();
+        trees_center_ = {0.5 * (road.min_x() + road.max_x()), 0.0,
+                         0.5 * (road.min_z() + road.max_z())};
+        std::vector<Matrix> transforms;
+        transforms.reserve(road.trees().size());
+        for (std::size_t i = 0; i < road.trees().size(); ++i) {
+            const sim::TreeSpot& t = road.trees()[i];
+            const auto yaw = static_cast<float>(2.399963 * static_cast<double>(i));
+            transforms.push_back(MatrixMultiply(
+                MatrixRotateY(yaw), MatrixTranslate(static_cast<float>(t.x - trees_center_.x),
+                                                    static_cast<float>(t.y - 0.05),
+                                                    static_cast<float>(t.z - trees_center_.z))));
+        }
+        trees_ = std::make_unique<TreeInstances>(transforms);
+    }
     cones_ = zone.slalom_cones();
     posts_.clear();
     for (int i = 0; i <= 10; ++i) {
@@ -700,6 +813,9 @@ void ZoneDraw::draw(const Vec3d& eye, const Vec3d& origin) {
     draw_props(origin);
     rlDrawRenderBatchActive();
     rlEnableBackfaceCulling();
+    if (trees_) {
+        trees_->draw(relative_to_camera(trees_center_, origin));
+    }
     record_time(std::chrono::duration<double, std::milli>(Clock::now() - start).count());
 }
 

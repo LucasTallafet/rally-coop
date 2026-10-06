@@ -96,7 +96,9 @@ public:
     // rendimiento_zona_NNN.txt junto al exe. zone_bench_done() pasa a true al terminar.
     static constexpr std::int64_t kZoneBenchWarmupNs = 3'000'000'000;
     static constexpr std::int64_t kZoneBenchMeasureNs = 20'000'000'000;
-    void start_zone_bench();
+    // Con `road`, la cámara recorre la carretera de prueba (--bench-road) y el informe es
+    // rendimiento_carretera_NNN.txt.
+    void start_zone_bench(bool road = false);
     bool zone_bench_done() const { return zone_bench_done_; }
     void request_capture() { capture_requested_ = true; }
 
@@ -146,15 +148,18 @@ private:
     sim::WorldDesc desc_;
     bool zone_mode_ = true;                             // K: zona de pruebas o recinto
     sim::Surface blind_surface_ = sim::Surface::Gravel; // G: superficie de la pista ciega
-    bool blind_mode_ = false;                           // M: modo a ciegas
-    bool hide_config_ = false;                          // --hide-config
-    std::uint64_t blind_seed_ = 1;                      // --blind-seed
+    sim::Surface road_surface_ = sim::Surface::Gravel;  // U: calzada de la carretera de prueba
+    bool road_start_ = false;      // Y: el coche sale en la carretera de prueba, no en la recta
+    bool blind_mode_ = false;      // M: modo a ciegas
+    bool hide_config_ = false;     // --hide-config
+    std::uint64_t blind_seed_ = 1; // --blind-seed
     std::array<sim::Surface, sim::kBlindTrials> blind_series_{};
     int blind_trial_ = 0; // prueba en curso (0..14)
     int view_ = 0;        // Tab: 0 ojo del conductor, 1 persecución, 2 fija o toda la zona
     ZoneDraw zone_draw_;
     // --bench-zone: recorrido de la cámara y tiempo transcurrido.
     bool zone_bench_ = false;
+    bool zone_bench_road_ = false; // --bench-road
     bool zone_bench_done_ = false;
     std::int64_t zone_bench_ns_ = 0;
     bool zone_bench_measuring_ = false;

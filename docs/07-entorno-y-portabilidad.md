@@ -223,6 +223,8 @@ Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el
 | G | Superficie de la pista ciega: la siguiente; reconstruye el mundo |
 | G | A ciegas: siguiente prueba: de la serie de 15 (--blind-seed) |
 | M | Modo a ciegas sí / no: todas las superficies del mismo color, sin microrrelieve ni nombres; en pantalla, «Prueba k/15»; cada prueba sale en la pista ciega |
+| U | Superficie de la carretera de prueba: grava / asfalto; reconstruye el mundo con el coche en la salida de la carretera |
+| Y | Salida: recta / carretera: dónde sale el coche (también al reconstruir el mundo con G, F2, F6 o Retroceso); reconstruye el mundo |
 
 **Grabación**
 
@@ -268,6 +270,7 @@ Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el
 | `--frame-log` | Graba el registro por fotograma desde el inicio |
 | `--bench-forest` | Mide los cuatro modos del bosque en el recinto a 1920×1080 sin sincronización vertical, escribe `rendimiento_NNN.txt` junto al exe y se cierra |
 | `--bench-zone` | Mide la CPU del dibujo del suelo de la zona en pantalla completa sin bordes, con la cámara por la pista ciega a 100 km/h (3 s de calentamiento y 20 s de medida); escribe `rendimiento_zona_NNN.txt` junto al exe y se cierra |
+| `--bench-road` | Lo mismo con la cámara por la carretera de prueba (con sus árboles), de la entrada a la frenada; escribe `rendimiento_carretera_NNN.txt` |
 | `--hide-config` | La pantalla no dice qué configuración del coche se lleva (F8 sigue cambiándola): bloque C del protocolo de la 2.10 |
 | `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
 

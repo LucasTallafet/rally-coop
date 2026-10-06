@@ -113,6 +113,8 @@ TEST_CASE("screen_layout: the help shows every key row inside its rectangle") {
             CHECK(cell.row < help.h / layout.m.line);
         }
         CHECK(entries == static_cast<int>(rally::platform::key_table().size()));
+        MESSAGE("ayuda a ", res.width, "×", res.height, ": ", layout.help.rows, " filas de ",
+                help.h / layout.m.line, " que caben");
         CHECK(layout.help.rows * layout.m.line <= help.h);
         CHECK(rally::platform::layer_content_width(Layer::Help, layout) <= help.w);
         // Ninguna etiqueta de teclas se sale de su columna.

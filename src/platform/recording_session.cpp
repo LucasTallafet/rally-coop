@@ -56,7 +56,8 @@ void RecordingSession::finish(const sim::SimWorld& world) {
     }
     io::set_crash_recording(nullptr, {});
     const bool has_steps = recorder_.steps() > 0;
-    const io::Recording recording = recorder_.finish(world.state_hash(), io::timed_steps(world));
+    const io::Recording recording =
+        recorder_.finish(world.state_hash(), io::timed_steps(world), io::road_result(world));
     if (has_steps && !io::write_file(path_, io::serialize(recording), error_)) {
         TraceLog(LOG_WARNING, "grabación: %s", error_.c_str());
     }

@@ -12,7 +12,9 @@ add_library(rally_sim STATIC
     pcg32.cpp
     sim_world.cpp
     steer_assist.cpp
+    test_road.cpp
     test_zone.cpp
+    zone_axis.cpp
     drivetrain.cpp
     tire.cpp
 )

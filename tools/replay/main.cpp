@@ -10,7 +10,7 @@
 //   rally_replay synth <salida.rrec> --car <archivo.car>
 //                                            120 s de entradas sintéticas deterministas en la
 //                                            zona (tests/data/recordings/bench_lap.rrec)
-//   rally_replay zone --json <archivo> [--blind <superficie>]
+//   rally_replay zone --json <archivo> [--blind <superficie>] [--road <gravel|asphalt>]
 //                                            trazado de la zona de pruebas en JSON
 //   rally_replay columns --md [<archivo>]    tabla de columnas de la telemetría en Markdown
 //                                            (tools/telemetry/columns.md); sin archivo, a la
@@ -58,11 +58,23 @@ int usage() {
                "  rally_replay run <archivo.rrec> [--telemetry <salida.csv>] [--bench N]\n"
                "  rally_replay rewrite <archivo.rrec>\n"
                "  rally_replay synth <salida.rrec> --car <archivo.car>\n"
-               "  rally_replay zone --json <archivo.json> [--blind <superficie>]\n"
+               "  rally_replay zone --json <archivo.json> [--blind <superficie>] [--road "
+               "<gravel|asphalt>]\n"
                "  rally_replay columns --md [<archivo.md>]\n"
                "  rally_replay tire-curves <archivo.car> [--csv <salida.csv>]\n",
                stderr);
     return 2;
+}
+
+// Pasada por la carretera de prueba del pie: la última completa y sus recolocaciones.
+void print_road(const char* label, const rally::io::RoadResult& road) {
+    if (road.last_run < 0) {
+        std::printf("%s ninguna\n", label);
+        return;
+    }
+    std::printf("%s %" PRId64 " pasos (%.3f s)%s, %u recolocaciones; %u pasadas\n", label,
+                road.last_run, static_cast<double>(road.last_run) / rally::sim::kStepsPerSecond,
+                road.last_resets > 0 ? " con recolocación" : "", road.last_resets, road.runs);
 }
 
 void print_timed(const char* label, std::int64_t steps) {
@@ -114,8 +126,9 @@ int info(const char* path) {
                     h.format_version < 4 ? " (formato anterior a la 4: no existía)" : "");
         if (desc.test_zone) {
             // La superficie real: en las pruebas a ciegas solo se ve aquí.
-            std::printf("zona de pruebas:     sí, pista ciega de %s\n",
-                        rally::sim::surface_name(desc.blind_surface));
+            std::printf("zona de pruebas:     sí, pista ciega de %s, carretera de %s\n",
+                        rally::sim::surface_name(desc.blind_surface),
+                        rally::sim::surface_name(desc.road_surface));
         } else {
             std::printf("zona de pruebas:     no\n");
         }
@@ -147,6 +160,7 @@ int info(const char* path) {
         std::printf("hash final:          ninguno (grabación incompleta: se guardó al abortar)\n");
     }
     print_timed("tiempo cronometrado:", f.timed_steps);
+    print_road("carretera:          ", f.road);
     return 0;
 }
 
@@ -265,8 +279,8 @@ int run(const char* path, int bench_repetitions, const char* telemetry_path) {
             std::fprintf(stderr, "error: %s\n", error.c_str());
             return 2;
         }
-        const std::string header =
-            rally::io::telemetry_csv_header(file_name(path), desc.test_zone, desc.blind_surface);
+        const std::string header = rally::io::telemetry_csv_header(
+            file_name(path), desc.test_zone, desc.blind_surface, desc.road_surface);
         if (!writer.open(telemetry_path, header, error)) {
             std::fprintf(stderr, "error: %s\n", error.c_str());
             return 2;
@@ -294,6 +308,7 @@ int run(const char* path, int bench_repetitions, const char* telemetry_path) {
     std::printf("pasos: %" PRIu64 " (%.2f s)   hash: 0x%016" PRIx64 "\n", result.steps,
                 static_cast<double>(result.steps) / rally::sim::kStepsPerSecond, result.hash);
     print_timed("vuelta:", result.timed_steps);
+    print_road("carretera:", result.road);
     int code = 0;
     if (result.hash_ok) {
         std::puts("hash OK");
@@ -459,7 +474,8 @@ int synth(const char* out_path, const char* car_path) {
         world.step(in);
         recorder.append(in);
     }
-    const Recording recording = recorder.finish(world.state_hash(), rally::io::timed_steps(world));
+    const Recording recording = recorder.finish(world.state_hash(), rally::io::timed_steps(world),
+                                                rally::io::road_result(world));
     if (!rally::io::write_file(out_path, rally::io::serialize(recording), error)) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 2;
@@ -470,30 +486,41 @@ int synth(const char* out_path, const char* car_path) {
     return 0;
 }
 
-// Trazado de la zona de pruebas en JSON. Sin --blind, la pista ciega es de grava.
-int zone_json(const char* path, const char* blind) {
-    rally::sim::Surface surface = rally::sim::Surface::Gravel;
-    if (blind != nullptr) {
-        bool found = false;
-        for (int s = 0; s < rally::sim::kSurfaceCount; ++s) {
-            const auto candidate = static_cast<rally::sim::Surface>(s);
-            if (std::strcmp(blind, rally::sim::surface_key(candidate)) == 0) {
-                surface = candidate;
-                found = true;
-            }
-        }
-        if (!found) {
-            std::fprintf(stderr, "error: superficie desconocida: %s\n", blind);
-            return 2;
+// Superficie por su nombre en inglés ("gravel"...); false si no existe.
+bool surface_from_key(const char* key, rally::sim::Surface& surface) {
+    for (int s = 0; s < rally::sim::kSurfaceCount; ++s) {
+        const auto candidate = static_cast<rally::sim::Surface>(s);
+        if (std::strcmp(key, rally::sim::surface_key(candidate)) == 0) {
+            surface = candidate;
+            return true;
         }
     }
-    const rally::sim::TestZone zone(surface);
+    return false;
+}
+
+// Trazado de la zona de pruebas en JSON. Sin --blind, la pista ciega es de grava; sin --road,
+// la carretera también.
+int zone_json(const char* path, const char* blind, const char* road) {
+    rally::sim::Surface surface = rally::sim::Surface::Gravel;
+    if (blind != nullptr && !surface_from_key(blind, surface)) {
+        std::fprintf(stderr, "error: superficie desconocida: %s\n", blind);
+        return 2;
+    }
+    rally::sim::Surface road_surface = rally::sim::Surface::Gravel;
+    if (road != nullptr &&
+        (!surface_from_key(road, road_surface) || (road_surface != rally::sim::Surface::Gravel &&
+                                                   road_surface != rally::sim::Surface::Asphalt))) {
+        std::fprintf(stderr, "error: la carretera es de gravel o de asphalt, no %s\n", road);
+        return 2;
+    }
+    const rally::sim::TestZone zone(surface, road_surface);
     std::string error;
     if (!rally::io::write_file(path, zone.to_json(), error)) {
         std::fprintf(stderr, "error: %s\n", error.c_str());
         return 2;
     }
-    std::printf("zona escrita: %s (pista ciega de %s)\n", path, rally::sim::surface_name(surface));
+    std::printf("zona escrita: %s (pista ciega de %s, carretera de %s)\n", path,
+                rally::sim::surface_name(surface), rally::sim::surface_name(road_surface));
     return 0;
 }
 
@@ -626,14 +653,21 @@ int main(int argc, char** argv) {
     const rally::sim::JoltRuntime jolt;
     const char* command = argv[1];
     if (std::strcmp(command, "zone") == 0) {
-        if (argc == 4 && std::strcmp(argv[2], "--json") == 0) {
-            return zone_json(argv[3], nullptr);
+        if (argc < 4 || argc % 2 != 0 || std::strcmp(argv[2], "--json") != 0) {
+            return usage();
         }
-        if (argc == 6 && std::strcmp(argv[2], "--json") == 0 &&
-            std::strcmp(argv[4], "--blind") == 0) {
-            return zone_json(argv[3], argv[5]);
+        const char* blind = nullptr;
+        const char* road = nullptr;
+        for (int i = 4; i + 1 < argc; i += 2) {
+            if (std::strcmp(argv[i], "--blind") == 0) {
+                blind = argv[i + 1];
+            } else if (std::strcmp(argv[i], "--road") == 0) {
+                road = argv[i + 1];
+            } else {
+                return usage();
+            }
         }
-        return usage();
+        return zone_json(argv[3], blind, road);
     }
     if (std::strcmp(command, "tire-curves") == 0) {
         if (argc == 3) {

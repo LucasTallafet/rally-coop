@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -83,6 +84,8 @@ struct SimWorld::Impl {
     // Zona de pruebas (si la descripción la pide).
     std::unique_ptr<TestZone> zone;
     std::unique_ptr<LapTimer> lap;
+    std::unique_ptr<RoadTimer> road;
+    std::vector<JPH::BodyID> trees; // en el orden de TestZone::road().trees()
     JPH::BodyID ground;
     std::uint64_t ground_hash = 0;
     std::uint64_t zone_hash = 0;
@@ -102,7 +105,12 @@ void SimWorld::build(const WorldDesc& desc) {
     Impl& w = *impl_;
     RALLY_CHECK(w.state == State::Empty,
                 "SimWorld::build: el mundo ya está construido (tras seal() no se añaden cuerpos)");
-    RALLY_CHECK(desc.bodies.size() + (desc.test_zone ? 1 + kWallCount : 0) + 1 <= kMaxBodies,
+    // La zona se construye antes de contar: sus árboles son cuerpos.
+    if (desc.test_zone) {
+        w.zone = std::make_unique<TestZone>(desc.blind_surface, desc.road_surface);
+    }
+    const std::size_t zone_bodies = w.zone ? 1 + kWallCount + w.zone->road().trees().size() : 0;
+    RALLY_CHECK(desc.bodies.size() + zone_bodies + 1 <= kMaxBodies,
                 "SimWorld::build: demasiados cuerpos");
     RALLY_CHECK(!desc.car || desc.car_data.mass > 0.0f,
                 "SimWorld::build: el coche no tiene datos (WorldDesc::car_data)");
@@ -113,8 +121,8 @@ void SimWorld::build(const WorldDesc& desc) {
     // descripción y el coche.
     std::vector<JPH::BodyID> batch;
     if (desc.test_zone) {
-        w.zone = std::make_unique<TestZone>(desc.blind_surface);
         w.lap = std::make_unique<LapTimer>(w.zone->finish_line());
+        w.road = std::make_unique<RoadTimer>(w.zone->road_start_line(), w.zone->road_finish_line());
         std::vector<float> heights;
         std::vector<std::uint8_t> surfaces;
         w.zone->fill_ground(heights, surfaces);
@@ -156,6 +164,21 @@ void SimWorld::build(const WorldDesc& desc) {
             const JPH::Body* wall_body = bodies.CreateBody(wall_settings);
             RALLY_CHECK(wall_body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
             batch.push_back(wall_body->GetID());
+        }
+        // Árboles de la carretera, detrás de los muros y en el orden de la zona: cilindros
+        // estáticos con una forma compartida, la base hundida kTreeSink en el suelo.
+        const JPH::Ref<JPH::Shape> trunk = new JPH::CylinderShape(
+            static_cast<float>(zone::kTreeHalfHeight), static_cast<float>(zone::kTreeRadius),
+            JPH::cDefaultConvexRadius, new SurfaceMaterial(Surface::Dirt, MicroRelief::None));
+        w.trees.reserve(w.zone->road().trees().size());
+        for (const TreeSpot& tree : w.zone->road().trees()) {
+            const JPH::BodyCreationSettings tree_settings(
+                trunk, JPH::RVec3(tree.x, tree.y + zone::kTreeHalfHeight - zone::kTreeSink, tree.z),
+                JPH::Quat::sIdentity(), JPH::EMotionType::Static, layers::kStatic);
+            const JPH::Body* tree_body = bodies.CreateBody(tree_settings);
+            RALLY_CHECK(tree_body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
+            w.trees.push_back(tree_body->GetID());
+            batch.push_back(tree_body->GetID());
         }
     }
     w.bodies.reserve(desc.bodies.size());
@@ -290,6 +313,7 @@ void SimWorld::step(const SimInput& input) {
         if (w.lap) {
             const JPH::RVec3 after = bodies.GetPosition(w.car);
             w.lap->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
+            w.road->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
         }
     }
     ++w.steps;
@@ -306,8 +330,8 @@ void SimWorld::Impl::reset_car() {
     JPH::Quat rotation = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), w.car_spawn.yaw);
     if (w.zone) {
         const JPH::RVec3 at = body_interface.GetPosition(w.car);
-        const RespawnPoint& r = w.zone->respawns()[static_cast<std::size_t>(
-            w.zone->nearest_respawn(at.GetX(), at.GetZ()))];
+        const RespawnPoint& r =
+            w.zone->respawns()[static_cast<std::size_t>(w.zone->respawn_for(at.GetX(), at.GetZ()))];
         // El origen del coche está en el suelo.
         target = JPH::RVec3(r.x, w.zone->ground_height(r.x, r.z), r.z);
         rotation = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), static_cast<float>(r.yaw));
@@ -380,6 +404,10 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
         const LapState& lap_state = w.lap->state();
         t.laps = lap_state.laps;
         t.lap_steps = lap_state.current();
+        const RoadRunState& run = w.road->state();
+        t.road_steps = run.current();
+        t.road_resets = run.resets;
+        t.road_runs = run.runs;
     }
     t.impact = w.last_impact;
     const CarController& controller = *w.car_controller;
@@ -543,6 +571,21 @@ const TestZone* SimWorld::zone() const { return impl_->zone.get(); }
 
 const LapState* SimWorld::lap() const { return impl_->lap ? &impl_->lap->state() : nullptr; }
 
+const RoadRunState* SimWorld::road_run() const {
+    return impl_->road ? &impl_->road->state() : nullptr;
+}
+
+int SimWorld::tree_count() const { return static_cast<int>(impl_->trees.size()); }
+
+BodyPose SimWorld::tree_pose(int index) const {
+    RALLY_CHECK(index >= 0 && index < tree_count(), "SimWorld::tree_pose: índice fuera de rango");
+    const JPH::BodyInterface& bodies = impl_->system.GetBodyInterfaceNoLock();
+    const JPH::BodyID id = impl_->trees[static_cast<std::size_t>(index)];
+    const JPH::RVec3 p = bodies.GetPosition(id);
+    const JPH::Quat q = bodies.GetRotation(id);
+    return {p.GetX(), p.GetY(), p.GetZ(), q.GetX(), q.GetY(), q.GetZ(), q.GetW()};
+}
+
 std::uint64_t SimWorld::ground_hash() const { return impl_->ground_hash; }
 
 std::uint64_t SimWorld::zone_hash() const { return impl_->zone_hash; }
@@ -617,6 +660,16 @@ std::uint64_t SimWorld::state_hash() const {
         hash.add_u32(static_cast<std::uint32_t>(lap.laps));
         add_i64(lap.last_lap);
         add_i64(lap.best_lap);
+        const RoadRunState& run = impl_->road->state();
+        add_i64(run.steps);
+        add_i64(run.run_start);
+        hash.add_u32(static_cast<std::uint32_t>(run.resets));
+        hash.add_u32(static_cast<std::uint32_t>(run.start_debt));
+        hash.add_u32(static_cast<std::uint32_t>(run.finish_debt));
+        hash.add_u32(static_cast<std::uint32_t>(run.runs));
+        add_i64(run.last_run);
+        hash.add_u32(static_cast<std::uint32_t>(run.last_resets));
+        add_i64(run.best_clean);
     }
     return hash.value();
 }

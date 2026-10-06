@@ -143,7 +143,8 @@ std::size_t header_bytes(const RecordingHeader& header) {
 
 std::string serialize(const Recording& recording) {
     std::string out;
-    out.reserve(header_bytes(recording.header) + recording.runs.size() * kRunBytes + kFooterBytes);
+    out.reserve(header_bytes(recording.header) + recording.runs.size() * kRunBytes +
+                footer_bytes(recording.header.format_version));
     Writer w(out);
     const RecordingHeader& h = recording.header;
     w.raw(kMagic);
@@ -169,6 +170,11 @@ std::string serialize(const Recording& recording) {
     w.u64(f.total_steps);
     w.u64(f.final_hash);
     w.i64(f.timed_steps);
+    if (h.format_version >= 6) {
+        w.i64(f.road.last_run);
+        w.u32(f.road.last_resets);
+        w.u32(f.road.runs);
+    }
     w.raw(kEndMagic);
     return out;
 }
@@ -205,7 +211,8 @@ ParseResult parse(std::string_view bytes) {
         return result;
     }
     // Antes de reservar: los tramos que dice tienen que caber en lo que queda.
-    if (static_cast<std::uint64_t>(run_count) * kRunBytes + kFooterBytes > r.remaining()) {
+    if (static_cast<std::uint64_t>(run_count) * kRunBytes + footer_bytes(h.format_version) >
+        r.remaining()) {
         result.error = at("archivo truncado: faltan tramos o el pie", r.offset());
         return result;
     }
@@ -235,6 +242,11 @@ ParseResult parse(std::string_view bytes) {
     f.total_steps = r.u64();
     f.final_hash = r.u64();
     f.timed_steps = r.i64();
+    if (h.format_version >= 6) {
+        f.road.last_run = r.i64();
+        f.road.last_resets = r.u32();
+        f.road.runs = r.u32();
+    }
     const std::size_t end_offset = r.offset();
     if (r.raw(kEndMagic.size()) != kEndMagic || !r.ok()) {
         result.error = at("pie dañado (falta REND)", end_offset);
@@ -279,6 +291,7 @@ std::string serialize_world(const sim::WorldDesc& desc) {
     w.u8(desc.aids.steer_assist ? 1 : 0);
     w.u8(static_cast<std::uint8_t>(desc.aids.gearbox));
     w.u8(static_cast<std::uint8_t>(desc.car_spawn.gear));
+    w.u8(static_cast<std::uint8_t>(desc.road_surface));
     return out;
 }
 
@@ -290,12 +303,14 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
     // y su h, y detrás va el coche. Desde la 4, al final, las ayudas del jugador (u8 ayuda de
     // dirección); hasta la 3, sin ayudas (no existían). Desde la 5, detrás, el modo de la caja
     // (u8) y la marcha de salida de los tests (i8; 127: la que da la velocidad); hasta la 4,
-    // automático y la marcha que da la velocidad.
+    // automático y la marcha que da la velocidad. Desde la 6, detrás, la superficie de la
+    // calzada de la carretera (u8: grava o asfalto); hasta la 5, grava.
     const bool v3 = format_version >= 3;
     const std::size_t body_bytes = 1 + 3 * 8 + 3 * 4 + (v3 ? 4 + 1 + 1 : 0);
     const std::size_t car_bytes = 1 + 3 * 8 + 2 * 4;
     const std::size_t tail_bytes = (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0) +
-                                   (format_version >= 4 ? 1 : 0) + (format_version >= 5 ? 2 : 0);
+                                   (format_version >= 4 ? 1 : 0) + (format_version >= 5 ? 2 : 0) +
+                                   (format_version >= 6 ? 1 : 0);
     Reader r(bytes);
     const std::uint32_t count = r.u32();
     if (!r.ok() || static_cast<std::uint64_t>(count) * body_bytes + tail_bytes != r.remaining()) {
@@ -379,6 +394,15 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
         desc.aids.gearbox = static_cast<sim::GearboxMode>(gearbox);
         desc.car_spawn.gear = gear;
     }
+    if (format_version >= 6) {
+        const std::uint8_t road = r.u8();
+        if (road != static_cast<std::uint8_t>(sim::Surface::Gravel) &&
+            road != static_cast<std::uint8_t>(sim::Surface::Asphalt)) {
+            error = "descripción del mundo: superficie de la carretera no válida";
+            return false;
+        }
+        desc.road_surface = static_cast<sim::Surface>(road);
+    }
     return true;
 }
 
@@ -445,11 +469,16 @@ void Recorder::append(const sim::SimInput& input) {
     ++recording_.footer.total_steps;
 }
 
-Recording Recorder::finish(std::uint64_t final_hash, std::int64_t timed_steps) {
+std::size_t footer_bytes(std::uint32_t format_version) {
+    return format_version >= 6 ? kFooterBytes : 32;
+}
+
+Recording Recorder::finish(std::uint64_t final_hash, std::int64_t timed_steps, RoadResult road) {
     RALLY_CHECK(active_, "Recorder::finish: no hay grabación empezada");
     recording_.footer.complete = true;
     recording_.footer.final_hash = final_hash;
     recording_.footer.timed_steps = timed_steps;
+    recording_.footer.road = road;
     active_ = false;
     return std::move(recording_);
 }

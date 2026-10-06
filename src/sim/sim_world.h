@@ -74,9 +74,12 @@ struct WorldDesc {
     // Diagnóstico de los tests: ruedas con integración explícita. No se graba.
     bool explicit_wheels = false;
     // Zona de pruebas de la fase 2 (sim/test_zone.h): suelo de Jolt con una superficie por
-    // área, recolocación al punto más cercano y recorrido cronometrado por la pista ciega.
+    // área, recolocación al punto más cercano, recorrido cronometrado por la pista ciega y, desde
+    // la 2.6b, la carretera de prueba con sus árboles (cilindros estáticos detrás de los muros)
+    // y su cronómetro de punto a punto.
     bool test_zone = false;
     Surface blind_surface = Surface::Gravel; // superficie de la pista ciega
+    Surface road_surface = Surface::Gravel;  // calzada de la carretera (grava o asfalto)
 };
 
 // Lo que hay bajo (x, z) en el suelo de la zona, según Jolt (un rayo vertical).
@@ -203,6 +206,11 @@ public:
     const TestZone* zone() const;
     // Cronómetro de la pista ciega; nullptr sin zona.
     const LapState* lap() const;
+    // Cronómetro de la carretera de prueba; nullptr sin zona.
+    const RoadRunState* road_run() const;
+    // Árboles de la carretera en Jolt (en el orden de TestZone::road().trees()); 0 sin zona.
+    int tree_count() const;
+    BodyPose tree_pose(int index) const;
     // Hash de las alturas y superficies que entraron en el suelo de Jolt (0 sin zona) y
     // memoria que ocupa el HeightFieldShape.
     std::uint64_t ground_hash() const;
@@ -221,7 +229,8 @@ public:
     void restore_state(const std::string& state, const ControlState& controls);
 
     // Hash del estado completo de la simulación: FNV-1a de save_state() seguido de
-    // ControlState y, en la zona, del cronómetro (campo a campo, en little-endian). Es el hash
+    // ControlState y, en la zona, de los cronómetros de la pista ciega y de la carretera (campo
+    // a campo, en little-endian). Es el hash
     // final de las grabaciones y la huella de los tests. Reserva memoria: no se llama dentro del
     // paso.
     std::uint64_t state_hash() const;

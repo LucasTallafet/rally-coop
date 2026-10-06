@@ -175,6 +175,14 @@ constexpr std::array kColumns = {
       [](const CarTelemetry& t) {
           return t.lap_steps < 0 ? -1.0 : static_cast<double>(t.lap_steps) / sim::kStepsPerSecond;
       }, nullptr},
+    C{"road_time", "s", "−1 sin pasada", "Tiempo de la pasada en curso por la carretera de prueba (de la salida a la meta)", kReal, 6,
+      [](const CarTelemetry& t) {
+          return t.road_steps < 0 ? -1.0 : static_cast<double>(t.road_steps) / sim::kStepsPerSecond;
+      }, nullptr},
+    C{"road_resets", "", "≥ 0", "Recolocaciones en la pasada en curso por la carretera", kInt, 0,
+      [](const CarTelemetry& t) { return static_cast<double>(t.road_resets); }, nullptr},
+    C{"road_runs", "", "≥ 0", "Pasadas completas por la carretera", kInt, 0,
+      [](const CarTelemetry& t) { return static_cast<double>(t.road_runs); }, nullptr},
     C{"impact", "m/s", "≥ 0", "Cambio de velocidad del paso que no explican la gravedad ni las fuerzas propias: suspensión y contactos de la carrocería (SimWorld::last_impact)", kReal, 4,
       [](const CarTelemetry& t) { return static_cast<double>(t.impact); }, nullptr},
     C{"gear", "", "−1 R, 0 N, 1..5", "Marcha engranada", kInt, 0,
@@ -260,7 +268,7 @@ void append_integer(double value, std::string& out) {
 std::span<const TelemetryColumn> telemetry_columns() { return kColumns; }
 
 std::string telemetry_csv_header(std::string_view recording_name, bool zone,
-                                 sim::Surface blind_surface) {
+                                 sim::Surface blind_surface, sim::Surface road_surface) {
     std::string out;
     out += "# rally telemetry\n# format=";
     out += std::to_string(kTelemetryFormatVersion);
@@ -270,6 +278,8 @@ std::string telemetry_csv_header(std::string_view recording_name, bool zone,
     out += recording_name;
     out += "\n# blind_surface=";
     out += zone ? sim::surface_key(blind_surface) : "none";
+    out += "\n# road_surface=";
+    out += zone ? sim::surface_key(road_surface) : "none";
     out += '\n';
     bool first = true;
     for (const TelemetryColumn& column : kColumns) {
@@ -317,7 +327,8 @@ std::string telemetry_columns_markdown() {
           "Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV), "
           "`sim_version` (`kSimVersion`), `recording` (nombre de la grabación, sin ruta) y "
           "`blind_surface` (superficie de la pista ciega: `asphalt`, `gravel`, `dirt`, `snow`, "
-          "`sand`, o `none` sin zona de pruebas).\n\n"
+          "`sand`, o `none` sin zona de pruebas) y `road_surface` (calzada de la carretera de "
+          "prueba: `gravel` o `asphalt`, o `none` sin zona).\n\n"
           "## Convenciones\n\n"
           "- Unidades SI: m, s, m/s, m/s², rad, rad/s. Los scripts muestran km/h y grados.\n"
           "- Números con punto decimal y precisión fija por columna; un valor que redondea a 0 "

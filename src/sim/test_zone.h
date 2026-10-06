@@ -1,6 +1,8 @@
 #pragma once
 
 #include "sim/surface.h"
+#include "sim/test_road.h"
+#include "sim/zone_axis.h"
 
 #include <array>
 #include <cstdint>
@@ -21,7 +23,8 @@ namespace rally::sim {
 //   recta de asfalto de 1000 × 12 m (x = 0, z de 650 a -350), seguida de los baches: 150 m de
 //   asfalto (ondulaciones y dos baches sueltos, en la geometría) y 150 m de grava
 //   (ondulaciones de 0,8 m, en h). Al oeste: círculo, explanada, eslalon, horquilla y rampa;
-//   al este: parches de tierra, nieve y arena, pista ciega y cresta.
+//   al este: parches de tierra, nieve y arena, pista ciega y cresta. Al oeste de todo, la
+//   carretera de prueba (tarea 2.6b, sim/test_road.h): calzada, arcén y su relieve.
 namespace zone {
 
 // Suelo de Jolt: un HeightFieldShape de kGroundSamples² muestras cada kGroundSpacing metros,
@@ -101,31 +104,10 @@ enum class AreaId : std::uint8_t {
     PatchSnow,
     PatchSand,
     BlindTrack,
+    RoadShoulder, // arcén de arena de la carretera (calzada y arcén; la calzada va encima)
+    Road,         // calzada de la carretera de prueba
 };
-inline constexpr int kAreaCount = 13;
-
-// Tramo del eje de una calzada: recta o arco de circunferencia.
-struct AxisSegment {
-    double x0 = 0.0; // inicio
-    double z0 = 0.0;
-    double psi0 = 0.0;   // rumbo al inicio
-    double length = 0.0; // a lo largo del eje
-    double radius = 0.0; // 0 en las rectas
-    double turn = 0.0;   // giro total con signo (positivo a la derecha); 0 en las rectas
-    double cx = 0.0;     // centro del arco
-    double cz = 0.0;
-    // Caja del tramo (solo el eje), para no calcular la distancia a los tramos lejanos.
-    double min_x = 0.0;
-    double max_x = 0.0;
-    double min_z = 0.0;
-    double max_z = 0.0;
-};
-
-struct AxisPoint {
-    double x = 0.0;
-    double z = 0.0;
-    double psi = 0.0;
-};
+inline constexpr int kAreaCount = 15;
 
 // Área: un rectángulo alineado con los ejes o una calzada (eje y anchura).
 struct ZoneArea {
@@ -188,10 +170,14 @@ struct MicroWave {
 
 class TestZone {
 public:
-    // La pista ciega tiene la superficie `blind_surface`; el resto de la zona no cambia.
-    explicit TestZone(Surface blind_surface = Surface::Gravel);
+    // La pista ciega tiene la superficie `blind_surface` y la calzada de la carretera,
+    // `road_surface`; el resto de la zona no cambia.
+    explicit TestZone(Surface blind_surface = Surface::Gravel,
+                      Surface road_surface = Surface::Gravel);
 
     Surface blind_surface() const { return blind_surface_; }
+    Surface road_surface() const { return road_surface_; }
+    const TestRoad& road() const { return road_; }
 
     // Altura de la geometría (rampa, cresta, baches de asfalto; 0 en el resto, también junto
     // a los muros). Es la que va al suelo de Jolt, muestreada cada kGroundSpacing.
@@ -227,14 +213,25 @@ public:
     }
     // Índice del punto de recolocación más cercano en el plano (el primero si empatan).
     int nearest_respawn(double x, double z) const;
+    // Punto al que recoloca el coche desde (x, z): a menos de kRoadRespawnBand del eje de la
+    // carretera, el último de la carretera con s ≤ la s del coche (nunca hacia delante); fuera,
+    // el más cercano.
+    int respawn_for(double x, double z) const;
     const FinishLine& finish_line() const { return finish_; }
+    // Líneas de salida y meta de la carretera (el avance, el sentido de la marcha).
+    const FinishLine& road_start_line() const { return road_start_line_; }
+    const FinishLine& road_finish_line() const { return road_finish_line_; }
     // Muros perimetrales (norte, sur, oeste y este), en el orden en que entran en Jolt.
     const std::array<WallBox, kWallCount>& walls() const { return walls_; }
     // Salida del cuerpo controlado: el primer punto de recolocación (inicio de la recta).
     const RespawnPoint& start() const { return respawns_.front(); }
     // Punto de recolocación de la pista ciega (50 m antes de la meta): salida de las pruebas
     // a ciegas.
-    const RespawnPoint& blind_start() const { return respawns_.back(); }
+    const RespawnPoint& blind_start() const { return respawns_[blind_start_]; }
+    // Salida de la carretera: kRoadRespawnBack antes de la línea de salida.
+    const RespawnPoint& road_start() const { return respawns_[road_first_]; }
+    // Índice del primer punto de recolocación de la carretera (los demás le siguen, por s).
+    std::size_t road_respawn_first() const { return road_first_; }
 
     // Longitud del eje de una calzada y punto a una distancia s a lo largo de él.
     static double axis_length(const ZoneArea& area);
@@ -256,9 +253,16 @@ public:
 
 private:
     Surface blind_surface_;
+    Surface road_surface_;
+    TestRoad road_;
     std::vector<ZoneArea> areas_;
     std::vector<RespawnPoint> respawns_;
+    std::vector<double> road_respawn_s_; // s de cada punto de la carretera
+    std::size_t blind_start_ = 0;
+    std::size_t road_first_ = 0;
     FinishLine finish_;
+    FinishLine road_start_line_;
+    FinishLine road_finish_line_;
     std::array<WallBox, kWallCount> walls_{};
     std::array<std::array<MicroWave, zone::kMicroWaves>, kSurfaceCount> waves_{};
 };
@@ -268,8 +272,8 @@ std::uint64_t ground_hash(const std::vector<float>& heights,
                           const std::vector<std::uint8_t>& surfaces);
 // Hash de la zona: lo mismo que ground_hash seguido de la tabla de ondas de h (amplitud,
 // números de onda y fase de cada onda de cada superficie, sus bits), los parámetros de las
-// ondulaciones de la grava (longitud de onda y amplitud) y las cajas de los muros (centro y
-// medias medidas de cada una).
+// ondulaciones de la grava (longitud de onda y amplitud), las cajas de los muros (centro y
+// medias medidas de cada una) y los árboles de la carretera (centro y altura del suelo).
 std::uint64_t zone_hash(const std::vector<float>& heights,
                         const std::vector<std::uint8_t>& surfaces, const TestZone& zone);
 

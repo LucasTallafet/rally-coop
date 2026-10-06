@@ -1,5 +1,6 @@
 """Comprueba el JSON de la zona de pruebas (rally_replay zone --json) contra las medidas de la
-tabla de la tarea 2.2. Solo biblioteca estándar. Lo lanza ctest:
+tabla de la tarea 2.2 y de la carretera de prueba (2.6b). Solo biblioteca estándar. Lo lanza
+ctest:
 
     python test_zone_json.py <zone.json>
 
@@ -48,6 +49,8 @@ class ZoneJson(unittest.TestCase):
             "patch_snow": "snow",
             "patch_sand": "sand",
             "blind_track": self.zone["blind_surface"],
+            "road_shoulder": "sand",
+            "road": self.zone["road"]["surface"],
         }
         self.assertEqual(set(self.areas), set(expected))
         for name, surface in expected.items():
@@ -135,6 +138,42 @@ class ZoneJson(unittest.TestCase):
             self.assertLess(abs(x), half, r["name"])
             self.assertLess(abs(z), half, r["name"])
 
+    def test_road(self):
+        road = self.zone["road"]
+        self.assertIn(road["surface"], ("gravel", "asphalt"))
+        self.assertAlmostEqual(road["length"], 992.54, delta=0.01)
+        self.assertEqual(road["width"], 6.0)
+        self.assertAlmostEqual(road["shoulder_width"], 1.6)
+        self.assertAlmostEqual(road["ditch"]["depth"], 0.4)
+        self.assertAlmostEqual(road["footprint"] - road["ditch"]["outer_edge"], 30.0)
+        fields = road["axis_fields"]
+        self.assertEqual(fields, ["s", "x", "z", "heading", "width", "bank", "height"])
+        axis = [dict(zip(fields, row)) for row in road["axis"]]
+        # Cada metro, de la entrada (20 m antes de la salida) a la frenada (100 m después).
+        for a, b in zip(axis, axis[1:]):
+            self.assertAlmostEqual(b["s"] - a["s"], 1.0)
+            self.assertAlmostEqual(math.dist((a["x"], a["z"]), (b["x"], b["z"])), 1.0, delta=0.01)
+        self.assertAlmostEqual(axis[0]["s"], -20.0)
+        self.assertGreaterEqual(axis[-1]["s"], road["length"] + 99.0)
+        self.assertEqual([p["name"] for p in road["pieces"]][1], "start")
+        # Salida y meta en el eje, mirando en el sentido de la marcha.
+        for key, s in (("start_line", 0.0), ("finish_line", road["length"])):
+            line = road[key]
+            p = min(axis, key=lambda a: abs(a["s"] - s))
+            self.assertLess(math.dist(line["center"], (p["x"], p["z"])), 1.0, key)
+            forward = (math.sin(p["heading"]), -math.cos(p["heading"]))
+            self.assertGreater(forward[0] * line["forward"][0] + forward[1] * line["forward"][1],
+                               0.99, key)
+            self.assertAlmostEqual(line["half_length"], 4.0)
+        # Árboles fuera de la calzada, el arcén y la cuneta (con el eje muestreado cada metro).
+        self.assertGreater(len(road["trees"]), 150)
+        for tree in road["trees"]:
+            d = min(math.dist(tree, (a["x"], a["z"])) for a in axis)
+            self.assertGreater(d, road["ditch"]["outer_edge"] + road["tree_radius"], tree)
+        # Puntos de recolocación de la carretera: uno antes de la salida y cada 100 m.
+        names = [r["name"] for r in self.zone["respawns"] if r["name"].startswith("road_")]
+        self.assertEqual(names, ["road_start"] + [f"road_{k}00" for k in range(1, 10)])
+
     def test_ramp_and_crest(self):
         self.assertAlmostEqual(self.zone["ramp"]["grade"], 0.15, delta=0.003)
         self.assertAlmostEqual(self.zone["ramp"]["height"], 0.15 * 40.0, delta=0.01)
@@ -148,11 +187,12 @@ class ZoneJson(unittest.TestCase):
             self.assertAlmostEqual(math.dist(a, b), 25.0)
 
     def test_areas_apart(self):
-        straight_group = {"straight", "bumps_asphalt", "bumps_gravel"}
+        # Se tocan: las tres de la recta, y la calzada de la carretera con su arcén.
+        groups = [{"straight", "bumps_asphalt", "bumps_gravel"}, {"road", "road_shoulder"}]
         names = sorted(self.areas)
         for i, a in enumerate(names):
             for b in names[i + 1:]:
-                if a in straight_group and b in straight_group:
+                if any(a in g and b in g for g in groups):
                     continue
                 # Solo se miran de cerca las que tienen las cajas a menos de 40 m.
                 ax0, ax1, az0, az1 = polygon_bounds(self.areas[a]["polygon"][0])

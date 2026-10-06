@@ -39,12 +39,17 @@ namespace rally::io {
 // ayuda de dirección) y los ajustes, texto de la plataforma; las de la versión 3 se leen con la
 // ayuda desactivada (no existía). 5 (tarea 2.6): detrás de las ayudas, el modo de la caja (u8)
 // y la marcha de salida de los tests (i8); las de la versión 4 se leen con el cambio automático
-// y la marcha que da la velocidad.
+// y la marcha que da la velocidad. 6 (tarea 2.6b): detrás, la superficie de la calzada de la
+// carretera de prueba (u8), y el pie lleva antes de "REND" la última pasada completa por la
+// carretera (i64 pasos, −1 si ninguna; u32 sus recolocaciones) y el número de pasadas (u32); las
+// de la versión 5 se leen con la carretera de grava y sin pasada.
 
-inline constexpr std::uint32_t kRecordingFormatVersion = 5;
+inline constexpr std::uint32_t kRecordingFormatVersion = 6;
 inline constexpr std::uint32_t kOldestRecordingFormatVersion = 1;
 inline constexpr std::size_t kRunBytes = 12;
-inline constexpr std::size_t kFooterBytes = 32;
+inline constexpr std::size_t kFooterBytes = 48; // el de la versión actual
+// Bytes del pie de una versión del formato (32 hasta la 5).
+std::size_t footer_bytes(std::uint32_t format_version);
 
 struct InputRun {
     std::uint32_t count = 0; // pasos seguidos con la misma entrada
@@ -67,11 +72,20 @@ struct RecordingHeader {
     std::uint64_t zone_hash = 0;
 };
 
+// Pasada por la carretera de prueba del pie (sim::RoadRunState): la última completa.
+struct RoadResult {
+    std::int64_t last_run = -1; // pasos; -1 si ninguna
+    std::uint32_t last_resets = 0;
+    std::uint32_t runs = 0;
+    bool operator==(const RoadResult&) const = default;
+};
+
 struct RecordingFooter {
     bool complete = false;
     std::uint64_t total_steps = 0;
     std::uint64_t final_hash = 0;
     std::int64_t timed_steps = -1;
+    RoadResult road; // desde la versión 6
 };
 
 struct Recording {
@@ -134,7 +148,7 @@ public:
 
     // Termina la grabación con el hash del estado final y la devuelve; el Recorder queda
     // inactivo.
-    Recording finish(std::uint64_t final_hash, std::int64_t timed_steps);
+    Recording finish(std::uint64_t final_hash, std::int64_t timed_steps, RoadResult road = {});
 
 private:
     Recording recording_;

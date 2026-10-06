@@ -37,9 +37,11 @@ namespace rally::platform {
     KEY(R, R, 82, "R", "R")                                                                        \
     KEY(S, S, 83, "S", "S")                                                                        \
     KEY(T, T, 84, "T", "T")                                                                        \
+    KEY(U, U, 85, "U", "U")                                                                        \
     KEY(V, V, 86, "V", "V")                                                                        \
     KEY(W, W, 87, "W", "W")                                                                        \
     KEY(X, X, 88, "X", "X")                                                                        \
+    KEY(Y, Y, 89, "Y", "Y")                                                                        \
     KEY(A, A, 65, "A", "A")                                                                        \
     KEY(Escape, ESCAPE, 256, "Esc", "Esc")                                                         \
     KEY(Enter, ENTER, 257, "Intro", "Intro")                                                       \
@@ -121,6 +123,8 @@ enum class Action : std::uint8_t {
     NextSurface,
     NextTrial,
     BlindMode,
+    RoadSurface,
+    ZoneStart,
     // Grabación
     Capture,
     FrameLog,

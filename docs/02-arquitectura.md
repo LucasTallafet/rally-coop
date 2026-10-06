@@ -141,6 +141,26 @@ Se usa `VehicleConstraint` de Jolt (suspensión, contacto por cylinder cast) con
     - **Candidatos descartados:** además de PASA y NO PASA, el script lista los candidatos que no llegan a evaluarse, con su motivo: velocidad al empezar < 95 km/h, ventana < 0,5 s, derrape fuera de 40 ± 8 m del centro o derrape previo < 0,5 s al soltar.
 
   Si no pasa tras el ajuste (tarea 2.10), se reconsidera cambiar de motor de física. Referencia: el paso límite por un radio de 40 m en grava es de ~60 km/h (√(μ·g·r), μ ≈ 0,7).
+- **Carretera de prueba de la zona (tarea 2.6b, `sim/test_road`)**: el manejo se ajusta y se juzga también en una carretera estrecha, no solo en la zona abierta. Va desde constantes, en el mismo `HeightFieldShape` de la zona: sin piezas de colisión aparte bajo la calzada, por la junta de la 2.5.
+  - **Trazado:** 992,5 m de punto a punto al oeste de la zona, con la salida en (−390, 300) hacia el norte. Antes de la salida, una entrada de 20 m, y tras la meta, una frenada de 100 m, sin cronometrar. Piezas: recta de 150 m, derecha R 150 · 40°, recta de 80 m, izquierda que se cierra (R 50 · 60° + R 35 · 30°), S de R 40 · 45° + 45°, cresta, izquierda R 60 · 50°, bajada del 7 %, horquilla a la derecha R 12 · 180°, subida del 5 % con izquierda R 90 · 60° y recta de 100 m.
+  - **Sección:**
+    - calzada de 6 m, de grava o de asfalto (elegible al construir; U en la demo);
+    - arcén de arena de 1,6 m;
+    - cuneta de tierra en U de 3,25 m y 0,4 m de fondo (0,75 m de fondo plano y laderas en coseno);
+    - berma de 1 m;
+    - talud de tierra (28 m rectos y redondeos de 1 m) hasta la altura 0 de la zona, a 30 m del borde de la cuneta.
+
+    Son los anchos mínimos que la rejilla de 0,75 m deja en cualquier ángulo: al menos una celda de arena en la normal y más del 85 % del fondo de la cuneta. Con 1 m de arcén hay secciones sin arena, y una V de 1,5 m conserva el 32 % de su fondo.
+  - **Relieve:**
+    - eje a +5,55 m en la salida, para centrar el trazado en el 0 de la zona: +7,05 m en la cresta y −7,05 m en la horquilla;
+    - curvas verticales de 20 m dentro de cada tramo con pendiente;
+    - cresta de 1,5 m en 40 m, con tres parábolas (vaguadas de 6 m y R 40 m; cumbre de R 93 m, que despega a 109 km/h);
+    - peralte del 4 % en las curvas 4 y 6 y del −3 % en la 2, con transiciones de 20 m centradas en los extremos del arco;
+    - junto a la horquilla, la bajada y la subida se juntan: en trinchera las dos, gana la más baja (continua, sin más pendiente que cada una).
+  - **Árboles:** 226 cilindros estáticos de Jolt (r 0,25 m), creados en `build()` detrás de los muros. Van a 8,6–13,6 m del eje, separados 6–15 m en la fila (4–8 m en el exterior de la horquilla y de la curva 4), con PCG32 de semilla fija; ninguno dentro del círculo de la horquilla. Entran en el hash de la zona.
+  - **Cronómetro de punto a punto** (`RoadTimer`): cruzar la salida empieza una pasada; recolocar la marca y cuenta las veces; hacia atrás no cuenta. Va al pie de la grabación (formato 6) y a la telemetría (`road_time`, `road_resets`, `road_runs`).
+  - **Recolocación:** puntos en s = −10 y cada 100 m. A menos de 40 m del eje, recolocar lleva al último con s ≤ la del coche: nunca hacia delante.
+  - **`tools/telemetry/road_check.py`:** por pasada, el tiempo, las recolocaciones, las salidas (centro de masas a más de 4,6 m del eje), la velocidad mínima en la horquilla y el |β| máximo por curva.
 
 ### 4.4 Interior del coche [post-1.0]
 

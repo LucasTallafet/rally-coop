@@ -157,7 +157,7 @@ TEST_CASE("recording: the file is exactly header plus 12 bytes per run plus foot
     const std::size_t header = 8 + 4 + 4 + (4 + h.commit.size()) + (4 + h.world.size()) +
                                (4 + h.car_text.size()) + (4 + h.settings.size()) + 8 + 4;
     CHECK(rally::io::header_bytes(h) == header);
-    CHECK(bytes.size() == header + 12 * recording.runs.size() + 32);
+    CHECK(bytes.size() == header + 12 * recording.runs.size() + rally::io::kFooterBytes);
 
     // RLE: entradas que cambian cada 4 pasos dan un tramo cada 4 pasos; si se repite la del
     // fotograma anterior, el tramo se alarga.
@@ -207,7 +207,7 @@ TEST_CASE("recording: a truncated file or a bad signature is an error, never an 
     CHECK_FALSE(rally::io::parse(huge_string).ok);
     // Un pie que no cuadra con los tramos.
     std::string wrong_steps = bytes;
-    wrong_steps[bytes.size() - 32 + 4] ^= 1;
+    wrong_steps[bytes.size() - rally::io::kFooterBytes + 4] ^= 1;
     CHECK_FALSE(rally::io::parse(wrong_steps).ok);
 }
 
@@ -382,7 +382,7 @@ TEST_CASE("recording: a format 1 or 2 recording of the box reads and replays war
         recording.footer.final_hash = 0x1234u;
         const std::string bytes = rally::io::serialize(recording);
         CHECK(bytes.size() == rally::io::header_bytes(recording.header) +
-                                  12 * recording.runs.size() + rally::io::kFooterBytes);
+                                  12 * recording.runs.size() + rally::io::footer_bytes(format));
         const rally::io::ParseResult parsed = rally::io::parse(bytes);
         REQUIRE_MESSAGE(parsed.ok, parsed.error);
         CHECK(parsed.recording.header.format_version == format);

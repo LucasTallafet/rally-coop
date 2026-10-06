@@ -39,27 +39,6 @@ void main() {
 }
 )";
 
-Mesh upload_tree() {
-    const std::array<TreeVertex, kTreeVertices> tree = build_tree();
-    Mesh mesh{};
-    mesh.vertexCount = kTreeVertices;
-    mesh.triangleCount = kTreeTriangles;
-    // UnloadMesh libera estos arrays con RL_FREE.
-    mesh.vertices = static_cast<float*>(MemAlloc(kTreeVertices * 3 * sizeof(float)));
-    mesh.colors = static_cast<unsigned char*>(MemAlloc(kTreeVertices * 4));
-    for (std::size_t i = 0; i < tree.size(); ++i) {
-        mesh.vertices[3 * i + 0] = tree[i].x;
-        mesh.vertices[3 * i + 1] = tree[i].y;
-        mesh.vertices[3 * i + 2] = tree[i].z;
-        mesh.colors[4 * i + 0] = tree[i].r;
-        mesh.colors[4 * i + 1] = tree[i].g;
-        mesh.colors[4 * i + 2] = tree[i].b;
-        mesh.colors[4 * i + 3] = tree[i].a;
-    }
-    UploadMesh(&mesh, false);
-    return mesh;
-}
-
 void draw_ground() {
     rlBegin(RL_QUADS);
     rlColor4ub(kGround.r, kGround.g, kGround.b, kGround.a);
@@ -104,52 +83,25 @@ ForestScene::ForestScene() {
     std::vector<TreePlacement> trees(kForestTrees);
     place_trees(trees, kForestSeed, kForestInnerRadius, kForestOuterRadius);
     transforms_.reserve(trees.size());
-    std::vector<float16> packed;
-    packed.reserve(trees.size());
     for (const TreePlacement& tree : trees) {
         const Matrix transform =
             MatrixMultiply(MatrixMultiply(MatrixScale(tree.scale, tree.scale, tree.scale),
                                           MatrixRotateY(tree.yaw)),
                            MatrixTranslate(tree.x, 0.0f, tree.z));
         transforms_.push_back(transform);
-        packed.push_back(MatrixToFloatV(transform));
     }
 
-    single_mesh_ = upload_tree();
-    instanced_mesh_ = upload_tree();
+    single_mesh_ = upload_tree_mesh();
+    instanced_mesh_ = upload_tree_mesh();
     default_material_ = LoadMaterialDefault();
     instanced_material_ = LoadMaterialDefault();
     instanced_material_.shader =
         LoadShaderFromMemory(kInstancedVertexShader, kInstancedFragmentShader);
-    const Shader& shader = instanced_material_.shader;
-
-    // VAO persistente: posiciones y colores de single_mesh_ y las transformaciones, que no
-    // vuelven a subirse.
-    persistent_vao_ = rlLoadVertexArray();
-    rlEnableVertexArray(persistent_vao_);
-    rlEnableVertexBuffer(single_mesh_.vboId[RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION]);
-    rlSetVertexAttribute(shader.locs[SHADER_LOC_VERTEX_POSITION], 3, RL_FLOAT, false, 0, 0);
-    rlEnableVertexAttribute(shader.locs[SHADER_LOC_VERTEX_POSITION]);
-    rlEnableVertexBuffer(single_mesh_.vboId[RL_DEFAULT_SHADER_ATTRIB_LOCATION_COLOR]);
-    rlSetVertexAttribute(shader.locs[SHADER_LOC_VERTEX_COLOR], 4, RL_UNSIGNED_BYTE, true, 0, 0);
-    rlEnableVertexAttribute(shader.locs[SHADER_LOC_VERTEX_COLOR]);
-    persistent_vbo_ =
-        rlLoadVertexBuffer(packed.data(), static_cast<int>(packed.size() * sizeof(float16)), false);
-    for (int column = 0; column < 4; ++column) {
-        const auto location =
-            static_cast<unsigned int>(shader.locs[SHADER_LOC_VERTEX_INSTANCETRANSFORM] + column);
-        rlEnableVertexAttribute(location);
-        rlSetVertexAttribute(location, 4, RL_FLOAT, false, sizeof(float16),
-                             column * static_cast<int>(sizeof(Vector4)));
-        rlSetVertexAttributeDivisor(location, 1);
-    }
-    rlDisableVertexBuffer();
-    rlDisableVertexArray();
+    persistent_ = std::make_unique<TreeInstances>(transforms_);
 }
 
 ForestScene::~ForestScene() {
-    rlUnloadVertexArray(persistent_vao_);
-    rlUnloadVertexBuffer(persistent_vbo_);
+    persistent_.reset();
     UnloadMaterial(instanced_material_); // también descarga el shader de instancias
     UnloadMaterial(default_material_);
     UnloadMesh(instanced_mesh_);
@@ -175,20 +127,9 @@ void ForestScene::draw(ForestMode mode, const Vec3f& center) const {
         DrawMeshInstanced(instanced_mesh_, instanced_material_, transforms_.data(),
                           static_cast<int>(transforms_.size()));
         break;
-    case ForestMode::Persistent: {
-        // Lo mismo que hace DrawMeshInstanced con las matrices, sin subir las transformaciones.
-        rlDrawRenderBatchActive();
-        const Shader& shader = instanced_material_.shader;
-        rlEnableShader(shader.id);
-        const Matrix model_view = MatrixMultiply(rlGetMatrixTransform(), rlGetMatrixModelview());
-        rlSetUniformMatrix(shader.locs[SHADER_LOC_MATRIX_MVP],
-                           MatrixMultiply(model_view, rlGetMatrixProjection()));
-        rlEnableVertexArray(persistent_vao_);
-        rlDrawVertexArrayInstanced(0, kTreeVertices, static_cast<int>(transforms_.size()));
-        rlDisableVertexArray();
-        rlDisableShader();
+    case ForestMode::Persistent:
+        persistent_->draw(Vec3f{});
         break;
-    }
     }
     rlPopMatrix();
 }

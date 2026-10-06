@@ -82,6 +82,11 @@ int main(int argc, char** argv) {
             window.toggle_fullscreen();
             perf.set_visible(true);
             demo.start_zone_bench();
+        } else if (std::strcmp(argv[i], "--bench-road") == 0 && !bench) {
+            // Lo mismo por la carretera de prueba (rendimiento_carretera_NNN.txt).
+            window.toggle_fullscreen();
+            perf.set_visible(true);
+            demo.start_zone_bench(true);
         } else if (std::strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
             ++i; // ya leído
         } else if (std::strcmp(argv[i], "--hide-config") == 0) {

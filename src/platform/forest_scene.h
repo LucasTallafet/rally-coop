@@ -1,9 +1,11 @@
 #pragma once
 
 #include "platform/camera_space.h"
+#include "platform/tree_instances.h"
 
 #include <raylib.h>
 
+#include <memory>
 #include <vector>
 
 namespace rally::platform {
@@ -28,7 +30,8 @@ ForestMode next_forest_mode(ForestMode mode);
 // - RaylibInstanced: DrawMeshInstanced; en raylib 6.0 reserva las 20 000 matrices (RL_CALLOC)
 //   y crea y destruye un VBO con ellas en cada llamada.
 // - Persistent: un VAO propio con los VBO de la malla y uno de transformaciones subido al
-//   crear la escena; un glDrawArraysInstanced por fotograma.
+//   crear la escena; un glDrawArraysInstanced por fotograma (platform/tree_instances, el mismo
+//   que dibuja los árboles de la carretera de prueba).
 // Los dos instanciados usan el mismo shader. Necesita la ventana abierta.
 class ForestScene {
 public:
@@ -41,13 +44,12 @@ public:
     void draw(ForestMode mode, const Vec3f& center) const;
 
 private:
-    Mesh single_mesh_{};    // para DrawMesh y el VAO persistente
+    Mesh single_mesh_{};    // para DrawMesh
     Mesh instanced_mesh_{}; // para DrawMeshInstanced, que cambia los atributos de su VAO
     Material default_material_{};
     Material instanced_material_{}; // con el shader de instancias
     std::vector<Matrix> transforms_;
-    unsigned int persistent_vao_ = 0;
-    unsigned int persistent_vbo_ = 0;
+    std::unique_ptr<TreeInstances> persistent_;
 };
 
 } // namespace rally::platform

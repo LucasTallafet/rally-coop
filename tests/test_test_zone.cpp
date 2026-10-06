@@ -44,7 +44,7 @@ constexpr double kPi = 3.14159265358979323846;
 // Hash del suelo de la zona (alturas y superficies que entran en Jolt) con la pista ciega de
 // grava. Tiene que ser el mismo en Debug y en Release. Si un cambio intencionado de la zona
 // lo altera, se copia aquí el valor nuevo y se dice en el mensaje del commit.
-constexpr std::uint64_t kExpectedGroundHash = 0xaa490d68c75928a0ull;
+constexpr std::uint64_t kExpectedGroundHash = 0x2c688c9b1672ee18ull;
 
 // Reservas de Jolt 5.6.0 por paso sobre el suelo de la zona: la misma reconstrucción de la
 // broad phase que en el recinto (tests/test_sim_world.cpp), pero con un solo cuerpo en la
@@ -70,12 +70,15 @@ WorldDesc zone_with_car_at(const TestZone& zone, double x, double z, double head
     return desc;
 }
 
-// Un punto dentro de cada área, lejos de sus bordes.
+// Un punto dentro de cada área, lejos de sus bordes. El arcén de la carretera va bajo la
+// calzada: su punto está en el arcén, a un lado de ella.
 void inside_point(const ZoneArea& a, double& x, double& z) {
     if (a.road) {
         const AxisPoint p = TestZone::axis_point(a, 0.5 * TestZone::axis_length(a));
-        x = p.x;
-        z = p.z;
+        const double t =
+            a.id == AreaId::RoadShoulder ? zone::kRoadHalfWidth + 0.5 * zone::kShoulderWidth : 0.0;
+        x = p.x + t * std::cos(p.psi);
+        z = p.z + t * std::sin(p.psi);
     } else {
         x = a.cx;
         z = a.cz;
@@ -171,13 +174,17 @@ TEST_CASE("test_zone: a point inside each area gives its surface and the backgro
 TEST_CASE("test_zone: areas are at least 30 m apart") {
     const TestZone zone;
     // Distancia entre áreas por muestreo: puntos del contorno de una contra la distancia con
-    // signo de la otra. Las tres de la recta (recta, baches de asfalto y de grava) se tocan.
+    // signo de la otra. Las tres de la recta (recta, baches de asfalto y de grava) se tocan, y
+    // la calzada de la carretera va sobre su arcén.
     const auto touching = [](AreaId a, AreaId b) {
         const auto straight = [](AreaId id) {
             return id == AreaId::Straight || id == AreaId::BumpsAsphalt ||
                    id == AreaId::BumpsGravel;
         };
-        return straight(a) && straight(b);
+        const auto road = [](AreaId id) {
+            return id == AreaId::Road || id == AreaId::RoadShoulder;
+        };
+        return (straight(a) && straight(b)) || (road(a) && road(b));
     };
     double closest = 1e9;
     for (const ZoneArea& a : zone.areas()) {
@@ -400,7 +407,8 @@ TEST_CASE("test_zone: reset from 10 far points goes to the nearest respawn, stil
     const rally::sim::JoltRuntime runtime;
     const TestZone zone;
     const double far_points[][2] = {
-        {700.0, 700.0}, {-700.0, 700.0},  {700.0, -700.0}, {-700.0, -700.0}, {-300.0, 0.0},
+        // 2.6b: (-300, 0) pasa a (-500, 600): la carretera de prueba queda a 32 m de él.
+        {700.0, 700.0}, {-700.0, 700.0},  {700.0, -700.0}, {-700.0, -700.0}, {-500.0, 600.0},
         {300.0, 100.0}, {-250.0, -400.0}, {500.0, -300.0}, {-300.0, -740.0}, {250.0, 650.0}};
     SimInput reset;
     reset.buttons = rally::sim::kButtonReset;
@@ -604,7 +612,8 @@ rally::io::Recording drive_blind_lap(int seconds, std::int64_t& laps) {
         recorder.append(in);
     }
     laps = world.lap()->laps;
-    return recorder.finish(world.state_hash(), rally::io::timed_steps(world));
+    return recorder.finish(world.state_hash(), rally::io::timed_steps(world),
+                           rally::io::road_result(world));
 }
 
 } // namespace

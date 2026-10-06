@@ -16,6 +16,7 @@ El CSV tiene una fila por paso de 1/240 s, con unidades SI. Sus columnas, unidad
 | `plot.py` | `python plot.py vuelta.csv beta yaw_rate speed [--from 10 --to 40] [--out vuelta.png]` | matplotlib |
 | `compare.py` | `python compare.py a.csv b.csv beta speed [--out ab.png]` | matplotlib |
 | `drift_check.py` | `python drift_check.py vuelta.csv zona.json`: prueba de derrape de `docs/02-arquitectura.md` §4.3 | Biblioteca estándar |
+| `road_check.py` | `python road_check.py pasada.csv zona.json`: por cada pasada de la carretera de prueba (tarea 2.6b), tiempo, recolocaciones, salidas de la calzada, velocidad mínima en la horquilla y \|β\| máximo por curva | Biblioteca estándar |
 
 - **Unidades en pantalla:** los scripts muestran km/h y grados.
 - **matplotlib:** `python -m pip install --user -r tools/telemetry/requirements.txt`.

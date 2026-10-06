@@ -161,91 +161,6 @@ double strip_height(double x, double z, double center_x, double half_width, doub
     return v < 0.0 ? -magnitude : magnitude;
 }
 
-double wrap_angle(double a, double low) { return a - kTwoPi * rmath::floor((a - low) / kTwoPi); }
-
-// Constructor de ejes: encadena rectas y arcos desde una posición y un rumbo.
-class AxisBuilder {
-public:
-    AxisBuilder(double x, double z, double psi) : x_(x), z_(z), psi_(psi) {}
-
-    void straight(double length) {
-        AxisSegment seg;
-        seg.x0 = x_;
-        seg.z0 = z_;
-        seg.psi0 = psi_;
-        seg.length = length;
-        segments_.push_back(seg);
-        x_ += length * rmath::sin(psi_);
-        z_ -= length * rmath::cos(psi_);
-    }
-
-    // turn > 0 gira a la derecha.
-    void arc(double radius, double turn) {
-        AxisSegment seg;
-        seg.x0 = x_;
-        seg.z0 = z_;
-        seg.psi0 = psi_;
-        seg.radius = radius;
-        seg.turn = turn;
-        seg.length = radius * rmath::abs(turn);
-        const double side = turn > 0.0 ? 1.0 : -1.0;
-        seg.cx = x_ + side * radius * rmath::cos(psi_);
-        seg.cz = z_ + side * radius * rmath::sin(psi_);
-        segments_.push_back(seg);
-        psi_ += turn;
-        x_ = seg.cx - side * radius * rmath::cos(psi_);
-        z_ = seg.cz - side * radius * rmath::sin(psi_);
-    }
-
-    double x() const { return x_; }
-    double z() const { return z_; }
-    std::vector<AxisSegment> take() { return std::move(segments_); }
-
-private:
-    double x_;
-    double z_;
-    double psi_;
-    std::vector<AxisSegment> segments_;
-};
-
-AxisPoint segment_point(const AxisSegment& seg, double s) {
-    if (seg.radius == 0.0) {
-        return {seg.x0 + s * rmath::sin(seg.psi0), seg.z0 - s * rmath::cos(seg.psi0), seg.psi0};
-    }
-    const double side = seg.turn > 0.0 ? 1.0 : -1.0;
-    const double psi = seg.psi0 + side * s / seg.radius;
-    return {seg.cx - side * seg.radius * rmath::cos(psi),
-            seg.cz - side * seg.radius * rmath::sin(psi), psi};
-}
-
-double segment_distance(const AxisSegment& seg, double x, double z) {
-    if (seg.radius == 0.0) {
-        const double dx = rmath::sin(seg.psi0);
-        const double dz = -rmath::cos(seg.psi0);
-        const double t = rmath::clamp((x - seg.x0) * dx + (z - seg.z0) * dz, 0.0, seg.length);
-        const double px = x - (seg.x0 + t * dx);
-        const double pz = z - (seg.z0 + t * dz);
-        return rmath::sqrt(px * px + pz * pz);
-    }
-    const double side = seg.turn > 0.0 ? 1.0 : -1.0;
-    const double vx = x - seg.cx;
-    const double vz = z - seg.cz;
-    const double r = rmath::sqrt(vx * vx + vz * vz);
-    // Rumbo del punto del arco en la dirección de (x, z) desde el centro.
-    const double psi = rmath::atan2(-side * vz, -side * vx);
-    const double delta = wrap_angle(psi - seg.psi0, 0.5 * seg.turn - kPi);
-    const bool inside =
-        seg.turn > 0.0 ? delta >= 0.0 && delta <= seg.turn : delta <= 0.0 && delta >= seg.turn;
-    if (inside) {
-        return rmath::abs(r - seg.radius);
-    }
-    const AxisPoint a = segment_point(seg, 0.0);
-    const AxisPoint b = segment_point(seg, seg.length);
-    const double da = rmath::sqrt((x - a.x) * (x - a.x) + (z - a.z) * (z - a.z));
-    const double db = rmath::sqrt((x - b.x) * (x - b.x) + (z - b.z) * (z - b.z));
-    return rmath::min(da, db);
-}
-
 ZoneArea rect_area(AreaId id, const char* key, const char* name, Surface surface, double cx,
                    double cz, double half_x, double half_z) {
     ZoneArea a;
@@ -283,24 +198,10 @@ ZoneArea road_area(AreaId id, const char* key, const char* name, Surface surface
     a.half_width = 0.5 * width;
     a.closed = closed;
     // Caja por muestreo del eje cada metro (y los extremos de cada tramo).
+    fit_segment_boxes(a.axis);
     a.min_x = a.max_x = a.axis.front().x0;
     a.min_z = a.max_z = a.axis.front().z0;
-    for (AxisSegment& seg : a.axis) {
-        const int steps = static_cast<int>(rmath::ceil(seg.length));
-        seg.min_x = seg.max_x = seg.x0;
-        seg.min_z = seg.max_z = seg.z0;
-        for (int i = 0; i <= steps; ++i) {
-            const AxisPoint p = segment_point(seg, seg.length * i / steps);
-            seg.min_x = rmath::min(seg.min_x, p.x);
-            seg.max_x = rmath::max(seg.max_x, p.x);
-            seg.min_z = rmath::min(seg.min_z, p.z);
-            seg.max_z = rmath::max(seg.max_z, p.z);
-        }
-        // El muestreo de un arco puede quedarse corto por menos de un milímetro.
-        seg.min_x -= 0.01;
-        seg.max_x += 0.01;
-        seg.min_z -= 0.01;
-        seg.max_z += 0.01;
+    for (const AxisSegment& seg : a.axis) {
         a.min_x = rmath::min(a.min_x, seg.min_x);
         a.max_x = rmath::max(a.max_x, seg.max_x);
         a.min_z = rmath::min(a.min_z, seg.min_z);
@@ -496,9 +397,116 @@ void write_axis(Json& json, const ZoneArea& area) {
     json.end_object();
 }
 
+void write_line(Json& json, const FinishLine& line) {
+    json.begin_object();
+    json.key("center");
+    json.point(line.x, line.z);
+    json.key("forward");
+    json.point(line.forward_x, line.forward_z);
+    json.key("half_length");
+    json.number(line.half_length);
+    json.end_object();
+}
+
+// Carretera de prueba: sección, piezas, eje cada metro (s, x, z, rumbo, ancho de la calzada,
+// peralte y altura del eje), líneas, árboles y tramos densos.
+void write_road(Json& json, const TestRoad& road, Surface surface, const FinishLine& start,
+                const FinishLine& finish) {
+    json.begin_object();
+    json.key("surface");
+    json.string(surface_key(surface));
+    json.key("length");
+    json.number(road.length());
+    json.key("width");
+    json.number(2.0 * zone::kRoadHalfWidth);
+    json.key("shoulder_width");
+    json.number(zone::kShoulderWidth);
+    json.key("ditch");
+    json.begin_object();
+    json.key("flat");
+    json.number(zone::kDitchFlat);
+    json.key("side");
+    json.number(zone::kDitchSide);
+    json.key("depth");
+    json.number(zone::kDitchDepth);
+    json.key("outer_edge");
+    json.number(zone::kDitchEdge);
+    json.end_object();
+    json.key("footprint");
+    json.number(zone::kRoadFootprint);
+    json.key("pieces");
+    json.begin_array();
+    for (const RoadSegment& seg : road.segments()) {
+        json.begin_object();
+        json.key("name");
+        json.string(seg.key);
+        json.key("s0");
+        json.number(seg.s0);
+        json.key("length");
+        json.number(seg.axis.length);
+        json.key("radius");
+        json.number(seg.axis.radius);
+        json.key("turn");
+        json.number(seg.axis.turn);
+        json.key("bank");
+        json.number(seg.bank);
+        json.end_object();
+    }
+    json.end_array();
+    json.key("axis_fields");
+    json.begin_array();
+    for (const char* field : {"s", "x", "z", "heading", "width", "bank", "height"}) {
+        json.string(field);
+    }
+    json.end_array();
+    json.key("axis");
+    json.begin_array();
+    const int count = static_cast<int>(rmath::floor(road.last_s() - road.first_s())) + 1;
+    for (int i = 0; i < count; ++i) {
+        const RoadPoint p = road.point(road.first_s() + i);
+        json.begin_array();
+        json.number(p.s);
+        json.number(p.x);
+        json.number(p.z);
+        json.number(p.psi);
+        json.number(2.0 * zone::kRoadHalfWidth);
+        json.number(p.bank);
+        json.number(p.height);
+        json.end_array();
+    }
+    json.end_array();
+    json.key("start_line");
+    write_line(json, start);
+    json.key("finish_line");
+    write_line(json, finish);
+    json.key("tree_radius");
+    json.number(zone::kTreeRadius);
+    json.key("trees");
+    json.begin_array();
+    for (const TreeSpot& tree : road.trees()) {
+        json.point(tree.x, tree.z);
+    }
+    json.end_array();
+    json.key("dense");
+    json.begin_array();
+    for (const DenseRange& d : road.dense_ranges()) {
+        json.begin_object();
+        json.key("side");
+        json.number(d.side);
+        json.key("s0");
+        json.number(d.s0);
+        json.key("s1");
+        json.number(d.s1);
+        json.end_object();
+    }
+    json.end_array();
+    json.end_object();
+}
+
 } // namespace
 
-TestZone::TestZone(Surface blind_surface) : blind_surface_(blind_surface) {
+TestZone::TestZone(Surface blind_surface, Surface road_surface)
+    : blind_surface_(blind_surface), road_surface_(road_surface) {
     using zone::kHairpinRadius;
     using zone::kHairpinStraight;
     {
@@ -579,6 +587,11 @@ TestZone::TestZone(Surface blind_surface) : blind_surface_(blind_surface) {
         areas_.push_back(road_area(AreaId::BlindTrack, "blind_track", "pista ciega", blind_surface,
                                    b.take(), zone::kBlindRoadWidth, true));
     }
+    // Carretera de prueba: el arcén ocupa calzada y arcén; la calzada va encima (más prioridad).
+    areas_.push_back(road_area(AreaId::RoadShoulder, "road_shoulder", "arcén de la carretera",
+                               Surface::Sand, road_.axis(), 2.0 * zone::kShoulderEdge, false));
+    areas_.push_back(road_area(AreaId::Road, "road", "carretera", road_surface, road_.axis(),
+                               2.0 * zone::kRoadHalfWidth, false));
     RALLY_CHECK(static_cast<int>(areas_.size()) == kAreaCount, "TestZone: faltan áreas");
 
     // Puntos de recolocación: al principio de cada área, mirando hacia donde se recorre.
@@ -600,12 +613,38 @@ TestZone::TestZone(Surface blind_surface) : blind_surface_(blind_surface) {
         {"patch_sand", 40.0, 220.0, kEast},
         {"blind_track", kBlindX, kBlindZ + 50.0, kNorth},
     };
+    blind_start_ = respawns_.size() - 1;
+    // Carretera: uno antes de la salida y uno cada kRoadRespawnSpacing, en el eje y mirando en
+    // el sentido de la marcha; ninguno pasada la meta.
+    static constexpr const char* kRoadRespawnKeys[] = {
+        "road_start", "road_100", "road_200", "road_300", "road_400",
+        "road_500",   "road_600", "road_700", "road_800", "road_900"};
+    road_first_ = respawns_.size();
+    for (int i = 0; i < 10; ++i) {
+        const double s = i == 0 ? -zone::kRoadRespawnBack : i * zone::kRoadRespawnSpacing;
+        RALLY_CHECK(s < road_.length(), "TestZone: punto de recolocación pasada la meta");
+        const RoadPoint p = road_.point(s);
+        respawns_.push_back({kRoadRespawnKeys[i], p.x, p.z, -p.psi});
+        road_respawn_s_.push_back(s);
+    }
 
     finish_.x = kBlindX;
     finish_.z = kBlindZ;
     finish_.forward_x = 0.0;
     finish_.forward_z = -1.0;
     finish_.half_length = 0.5 * zone::kBlindRoadWidth + zone::kFinishMargin;
+    const auto road_line = [this](double s) {
+        const RoadPoint p = road_.point(s);
+        FinishLine line;
+        line.x = p.x;
+        line.z = p.z;
+        line.forward_x = rmath::sin(p.psi);
+        line.forward_z = -rmath::cos(p.psi);
+        line.half_length = zone::kRoadHalfWidth + zone::kRoadLineMargin;
+        return line;
+    };
+    road_start_line_ = road_line(0.0);
+    road_finish_line_ = road_line(road_.length());
 
     // Microrrelieve: por superficie, una onda en cada franja logarítmica de la banda, con
     // posición en la franja, dirección y fase de PCG32. La amplitud da el RMS de partida.
@@ -650,6 +689,8 @@ double TestZone::ground_height(double x, double z) const {
                       ramp_profile);
     h += strip_height(x, z, kCrestCenterX, kCrestHalfWidth, kCrestStartZ, kCrestTotal,
                       crest_profile);
+    // 0 exacto fuera de la carretera: las demás áreas no cambian.
+    h += road_.height(x, z);
     return h;
 }
 
@@ -736,6 +777,21 @@ int TestZone::nearest_respawn(double x, double z) const {
     return best;
 }
 
+int TestZone::respawn_for(double x, double z) const {
+    double distance = 0.0;
+    const double s = road_.nearest_s(x, z, distance);
+    if (distance >= zone::kRoadRespawnBand) {
+        return nearest_respawn(x, z);
+    }
+    std::size_t best = 0;
+    for (std::size_t i = 0; i < road_respawn_s_.size(); ++i) {
+        if (road_respawn_s_[i] <= s) {
+            best = i;
+        }
+    }
+    return static_cast<int>(road_first_ + best);
+}
+
 double TestZone::axis_length(const ZoneArea& area) {
     double length = 0.0;
     for (const AxisSegment& seg : area.axis) {
@@ -791,7 +847,7 @@ std::string TestZone::to_json() const {
     Json json;
     json.begin_object();
     json.key("format");
-    json.number(1);
+    json.number(2);
     json.key("axes");
     json.string("x east, z south, metres; forward is -z; heading 0 = -z, positive turns right");
     json.key("ground");
@@ -864,6 +920,9 @@ std::string TestZone::to_json() const {
     write_axis(json, area(AreaId::Hairpin));
     json.key("blind_track_axis");
     write_axis(json, area(AreaId::BlindTrack));
+
+    json.key("road");
+    write_road(json, road_, road_surface_, road_start_line_, road_finish_line_);
 
     json.key("finish_line");
     json.begin_object();
@@ -968,6 +1027,11 @@ std::uint64_t zone_hash(const std::vector<float>& heights,
         add_double(hash, wall.half_x);
         add_double(hash, wall.half_y);
         add_double(hash, wall.half_z);
+    }
+    for (const TreeSpot& tree : zone.road().trees()) {
+        add_double(hash, tree.x);
+        add_double(hash, tree.z);
+        add_double(hash, tree.y);
     }
     return hash.value();
 }

@@ -4,7 +4,7 @@ Generado por `rally_replay columns --md`; no se edita a mano (un test comprueba 
 
 ## Cabecera
 
-Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV), `sim_version` (`kSimVersion`), `recording` (nombre de la grabación, sin ruta) y `blind_surface` (superficie de la pista ciega: `asphalt`, `gravel`, `dirt`, `snow`, `sand`, o `none` sin zona de pruebas).
+Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV), `sim_version` (`kSimVersion`), `recording` (nombre de la grabación, sin ruta) y `blind_surface` (superficie de la pista ciega: `asphalt`, `gravel`, `dirt`, `snow`, `sand`, o `none` sin zona de pruebas) y `road_surface` (calzada de la carretera de prueba: `gravel` o `asphalt`, o `none` sin zona).
 
 ## Convenciones
 
@@ -62,6 +62,9 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `surface` | — | texto | Superficie bajo el centro de masas (área de la zona); none sin zona |
 | `laps` | — | ≥ 0 | Vueltas completas a la pista ciega |
 | `lap_time` | s | −1 sin vuelta | Tiempo de la vuelta en curso |
+| `road_time` | s | −1 sin pasada | Tiempo de la pasada en curso por la carretera de prueba (de la salida a la meta) |
+| `road_resets` | — | ≥ 0 | Recolocaciones en la pasada en curso por la carretera |
+| `road_runs` | — | ≥ 0 | Pasadas completas por la carretera |
 | `impact` | m/s | ≥ 0 | Cambio de velocidad del paso que no explican la gravedad ni las fuerzas propias: suspensión y contactos de la carrocería (SimWorld::last_impact) |
 | `gear` | — | −1 R, 0 N, 1..5 | Marcha engranada |
 | `target_gear` | — | −1 R, 0 N, 1..5 | Marcha del cambio en curso (la engranada si no hay cambio) |

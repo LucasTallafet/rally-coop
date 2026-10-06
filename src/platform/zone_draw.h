@@ -1,11 +1,13 @@
 #pragma once
 
 #include "platform/camera_space.h"
+#include "platform/tree_instances.h"
 #include "sim/test_zone.h"
 
 #include <raylib.h>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace rally::platform {
@@ -27,6 +29,11 @@ namespace rally::platform {
 //   dentro del círculo y lo cercano no se dibuja fuera.
 // - Modo a ciegas: todas las superficies del mismo color neutro y sin h (ni rejilla cercana):
 //   solo quedan la geometría y las líneas pintadas.
+// - Carretera de prueba (2.6b): su caja sale del fondo llano y se dibuja por filas: las celdas
+//   con relieve o con otra superficie que la tierra, con la rejilla de Jolt y el color de la
+//   superficie de su centro (calzada, arcén, cuneta y talud); las demás, en tiras llanas. Líneas
+//   de salida y meta y, en el modo a ciegas, los bordes de la calzada, como la pista ciega. Los
+//   árboles (cuerpos de Jolt) van instanciados con su VBO persistente (platform/tree_instances).
 // Los conos y los postes solo se dibujan: no son cuerpos de la simulación.
 class ZoneDraw {
 public:
@@ -108,6 +115,9 @@ private:
     // Conos y postes.
     std::vector<sim::AxisPoint> cones_;
     std::vector<Vec3d> posts_;
+    // Árboles de la carretera, relativos a trees_center_.
+    std::unique_ptr<TreeInstances> trees_;
+    Vec3d trees_center_{};
 
     double last_ms_ = 0.0;
     Breakdown breakdown_;

@@ -369,9 +369,13 @@ void DriveDemo::save_settings() {
 void DriveDemo::describe_world() {
     if (zone_mode_) {
         // A ciegas, cada prueba sale en la pista ciega; si no, al principio de la recta.
-        desc_ = blind_mode_ ? sim::zone_world(blind_series_[static_cast<std::size_t>(blind_trial_)],
-                                              car_, sim::ZoneStart::BlindTrack)
-                            : sim::zone_world(blind_surface_, car_);
+        // Y: al principio de la recta o en la salida de la carretera de prueba.
+        desc_ = blind_mode_
+                    ? sim::zone_world(blind_series_[static_cast<std::size_t>(blind_trial_)], car_,
+                                      sim::ZoneStart::BlindTrack)
+                    : sim::zone_world(blind_surface_, car_,
+                                      road_start_ ? sim::ZoneStart::Road : sim::ZoneStart::Straight,
+                                      road_surface_);
     } else {
         desc_ = sim::demo_arena(far_from_origin_ ? kFarOffset : 0.0, car_);
     }
@@ -429,8 +433,7 @@ bool DriveDemo::load_car(const std::string& path, const char* key) {
                              kError);
         return false;
     }
-    // El coche nuevo sale parado en el punto de recolocación más cercano (en el recinto, en
-    // su salida).
+    // El coche nuevo sale parado donde lo dejaría recolocar (en el recinto, en su salida).
     const Vec3d at = current_car_.position;
     car_path_ = path;
     car_text_ = std::move(text);
@@ -438,7 +441,7 @@ bool DriveDemo::load_car(const std::string& path, const char* key) {
     describe_world();
     if (const sim::TestZone* zone = world_->zone(); zone != nullptr && !zone_bench_) {
         const sim::RespawnPoint& r =
-            zone->respawns()[static_cast<std::size_t>(zone->nearest_respawn(at.x, at.z))];
+            zone->respawns()[static_cast<std::size_t>(zone->respawn_for(at.x, at.z))];
         desc_.car_spawn.x = r.x;
         desc_.car_spawn.y = zone->ground_height(r.x, r.z);
         desc_.car_spawn.z = r.z;
@@ -615,6 +618,25 @@ void DriveDemo::handle_keys(FramePacer& pacer) {
         describe_world();
         reset();
     }
+    if (action_pressed(Action::RoadSurface, context)) {
+        road_surface_ =
+            road_surface_ == sim::Surface::Gravel ? sim::Surface::Asphalt : sim::Surface::Gravel;
+        road_start_ = true;
+        describe_world();
+        reset();
+        overlay_.set_message(Overlay::Message::Car,
+                             std::string("U: carretera de ") + sim::surface_name(road_surface_),
+                             kText, kShortMessageNs);
+    }
+    if (action_pressed(Action::ZoneStart, context)) {
+        road_start_ = !road_start_;
+        describe_world();
+        reset();
+        overlay_.set_message(Overlay::Message::Car,
+                             road_start_ ? "Y: salida en la carretera de prueba"
+                                         : "Y: salida en la recta",
+                             kText, kShortMessageNs);
+    }
     if (action_pressed(Action::WorldFloat, context)) {
         world_float_ = !world_float_;
     }
@@ -732,13 +754,21 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
     Vec3d forward;
     Vec3d up{0.0, 1.0, 0.0};
     if (zone_bench_) {
-        // --bench-zone: el ojo recorre el eje de la pista ciega a 100 km/h.
+        // --bench-zone: el ojo recorre el eje de la pista ciega a 100 km/h; --bench-road, el
+        // de la carretera de prueba, de la entrada a la frenada y vuelta a empezar.
         advance_zone_bench(frame_ns);
-        const sim::ZoneArea& track = world_->zone()->area(sim::AreaId::BlindTrack);
-        const double length = sim::TestZone::axis_length(track);
-        const double s =
-            std::fmod(static_cast<double>(zone_bench_ns_) * 1e-9 * kZoneBenchSpeed, length);
-        const sim::AxisPoint p = sim::TestZone::axis_point(track, s);
+        const double travelled = static_cast<double>(zone_bench_ns_) * 1e-9 * kZoneBenchSpeed;
+        sim::AxisPoint p;
+        if (zone_bench_road_) {
+            const sim::TestRoad& road = world_->zone()->road();
+            const double s = road.first_s() + std::fmod(travelled, road.last_s() - road.first_s());
+            const sim::RoadPoint q = road.point(s);
+            p = {q.x, q.z, q.psi};
+        } else {
+            const sim::ZoneArea& track = world_->zone()->area(sim::AreaId::BlindTrack);
+            const double length = sim::TestZone::axis_length(track);
+            p = sim::TestZone::axis_point(track, std::fmod(travelled, length));
+        }
         eye = {p.x, world_->zone()->ground_height(p.x, p.z) + kZoneBenchEyeHeight, p.z};
         forward = {std::sin(p.psi), -0.05, -std::cos(p.psi)};
     } else if (view_ == 0) {
@@ -882,6 +912,19 @@ void DriveDemo::draw_indicator(const DriverInput& driver) {
         used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
                               "   vuelta %s   mejor %s", lap_text(lap.current()).text,
                               lap_text(lap.best_lap).text);
+        // Carretera: la pasada en curso o, si no hay, la última, con sus recolocaciones.
+        const sim::RoadRunState& run = *world_->road_run();
+        const bool running = run.run_start >= 0;
+        if (running || run.last_run >= 0) {
+            const std::int32_t resets = running ? run.resets : run.last_resets;
+            used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
+                                  "   carretera %s%s", running ? "" : "última ",
+                                  lap_text(running ? run.current() : run.last_run).text);
+            if (resets > 0) {
+                used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
+                                      " · %d recol.", resets);
+            }
+        }
     }
     if (blind_mode_) {
         used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used),
@@ -1015,12 +1058,17 @@ void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
             const int area = zone.area_at(car.position.x, car.position.z);
             const char* where =
                 area < 0 ? "fondo" : zone.areas()[static_cast<std::size_t>(area)].name;
-            line(TextFormat("zona: %s (%s)   pista ciega: %s", where,
+            line(TextFormat("zona: %s (%s)   pista ciega: %s   carretera: %s", where,
                             sim::surface_name(zone.surface_at(car.position.x, car.position.z)),
-                            sim::surface_name(zone.blind_surface())));
+                            sim::surface_name(zone.blind_surface()),
+                            sim::surface_name(zone.road_surface())));
         }
         const sim::LapState& lap = *world_->lap();
         line(TextFormat("vueltas: %d   última: %s", lap.laps, lap_text(lap.last_lap).text));
+        const sim::RoadRunState& run = *world_->road_run();
+        line(TextFormat("carretera: %d pasadas   última: %s (%d recol.)   mejor sin recolocar: %s",
+                        run.runs, lap_text(run.last_run).text, run.last_resets,
+                        lap_text(run.best_clean).text));
         line(TextFormat("suelo (CPU): %.2f ms   media %.2f ms   máx. %.2f ms",
                         zone_draw_.last_cpu_ms(), zone_draw_.mean_cpu_ms(),
                         zone_draw_.max_cpu_ms()));
@@ -1063,7 +1111,7 @@ void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
     line(TextFormat("pasos en el fotograma: %d   alpha: %.2f", steps.count, steps.alpha));
 }
 
-void DriveDemo::start_zone_bench() {
+void DriveDemo::start_zone_bench(bool road) {
     if (!zone_mode_ || blind_mode_) {
         zone_mode_ = true;
         blind_mode_ = false;
@@ -1071,6 +1119,7 @@ void DriveDemo::start_zone_bench() {
         reset();
     }
     zone_bench_ = true;
+    zone_bench_road_ = road;
     zone_bench_ns_ = 0;
     zone_bench_measuring_ = false;
     zone_bench_ground_ms_.reserve(static_cast<std::size_t>(kZoneBenchMeasureNs / 1'000'000));
@@ -1105,21 +1154,24 @@ void DriveDemo::advance_zone_bench(std::int64_t frame_ns) {
 
 void DriveDemo::write_zone_bench_report() const {
     int number = 1;
-    while (
-        FileExists(TextFormat("%s/rendimiento_zona_%03d.txt", GetApplicationDirectory(), number))) {
+    const char* name = zone_bench_road_ ? "carretera" : "zona";
+    while (FileExists(
+        TextFormat("%s/rendimiento_%s_%03d.txt", GetApplicationDirectory(), name, number))) {
         ++number;
     }
     std::FILE* file = nullptr;
     if (fopen_s(&file,
-                TextFormat("%s/rendimiento_zona_%03d.txt", GetApplicationDirectory(), number),
+                TextFormat("%s/rendimiento_%s_%03d.txt", GetApplicationDirectory(), name, number),
                 "w") != 0 ||
         file == nullptr) {
         TraceLog(LOG_WARNING, "no se pudo escribir el informe de la zona");
         return;
     }
     const double frames = static_cast<double>(std::max<std::int64_t>(zone_bench_frames_, 1));
-    std::fprintf(file, "Medida del dibujo del suelo de la zona de pruebas (--bench-zone)\n");
-    std::fprintf(file, "Cámara por el eje de la pista ciega a 100 km/h, ojo a %.1f m\n",
+    std::fprintf(file, "Medida del dibujo del suelo de la zona de pruebas (%s)\n",
+                 zone_bench_road_ ? "--bench-road" : "--bench-zone");
+    std::fprintf(file, "Cámara por el eje de %s a 100 km/h, ojo a %.1f m\n",
+                 zone_bench_road_ ? "la carretera de prueba (con sus árboles)" : "la pista ciega",
                  kZoneBenchEyeHeight);
     std::fprintf(file, "Render: %d x %d, pantalla: %s\n", render_width(), render_height(),
                  IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes" : "ventana");

@@ -40,7 +40,8 @@ std::span<const TelemetryColumn> telemetry_columns();
 // Cabecera del CSV: líneas "# clave=valor" (formato, versión de la simulación, nombre de la
 // grabación sin ruta y superficie de la pista ciega, "none" sin zona) y la fila de nombres.
 std::string telemetry_csv_header(std::string_view recording_name, bool zone,
-                                 sim::Surface blind_surface);
+                                 sim::Surface blind_surface,
+                                 sim::Surface road_surface = sim::Surface::Gravel);
 
 // Añade la fila de un paso a `out` (terminada en '\n'). Números con std::to_chars (punto
 // decimal, sin depender del idioma) y precisión fija por columna; un valor que redondea a 0 se

@@ -48,6 +48,7 @@ add_library(rally_platform STATIC
     screenshot.cpp
     telemetry_graphs.cpp
     window.cpp
+    tree_instances.cpp
     zone_draw.cpp
 )
 target_include_directories(rally_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)

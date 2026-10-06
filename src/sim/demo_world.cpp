@@ -26,11 +26,13 @@ WorldDesc demo_arena(double offset, const CarData& car) {
     return desc;
 }
 
-WorldDesc zone_world(Surface blind_surface, const CarData& car, ZoneStart start_at) {
-    const TestZone zone(blind_surface);
+WorldDesc zone_world(Surface blind_surface, const CarData& car, ZoneStart start_at,
+                     Surface road_surface) {
+    const TestZone zone(blind_surface, road_surface);
     WorldDesc desc;
-    const RespawnPoint& start =
-        start_at == ZoneStart::BlindTrack ? zone.blind_start() : zone.start();
+    const RespawnPoint& start = start_at == ZoneStart::BlindTrack ? zone.blind_start()
+                                : start_at == ZoneStart::Road     ? zone.road_start()
+                                                                  : zone.start();
     desc.car = true;
     desc.car_spawn.x = start.x;
     desc.car_spawn.y = zone.ground_height(start.x, start.z);
@@ -39,6 +41,7 @@ WorldDesc zone_world(Surface blind_surface, const CarData& car, ZoneStart start_
     desc.car_data = car;
     desc.test_zone = true;
     desc.blind_surface = blind_surface;
+    desc.road_surface = road_surface;
     return desc;
 }
 

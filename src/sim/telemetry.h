@@ -98,6 +98,11 @@ struct CarTelemetry {
     // hay vuelta en curso o no hay zona).
     std::int32_t laps = 0;
     std::int64_t lap_steps = -1;
+    // Carretera de prueba (RoadTimer): pasos de la pasada en curso (-1 si no hay),
+    // recolocaciones en ella y pasadas completas.
+    std::int64_t road_steps = -1;
+    std::int32_t road_resets = 0;
+    std::int32_t road_runs = 0;
 
     float impact = 0.0f; // m/s (SimWorld::last_impact)
 

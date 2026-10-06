@@ -26,6 +26,7 @@ add_executable(rally_tests
     test_sim_world.cpp
     test_steer_assist.cpp
     test_telemetry.cpp
+    test_test_road.cpp
     test_test_zone.cpp
     test_tire.cpp
     test_ui_text.cpp
@@ -122,6 +123,19 @@ set_tests_properties(replay.zone_changed PROPERTIES
     PASS_REGULAR_EXPRESSION "aviso: la zona ha cambiado"
     FAIL_REGULAR_EXPRESSION "FALLO|hash OK")
 
+# Carretera de prueba (tarea 2.6b): la pasada del conductor automático y la que se sale en la
+# horquilla (las genera el test de la carretera con RALLY_WRITE_TEST_RECORDINGS=1). rally_replay
+# las repite con la misma pasada y el mismo hash, y escribe su telemetría para road_check.py.
+foreach(_road road_run road_off)
+    add_test(NAME replay.${_road}
+        COMMAND rally_replay run ${CMAKE_CURRENT_SOURCE_DIR}/data/recordings/${_road}.rrec
+                --telemetry ${CMAKE_CURRENT_BINARY_DIR}/${_road}.csv)
+    set_tests_properties(replay.${_road} PROPERTIES
+        FIXTURES_SETUP road_csv
+        PASS_REGULAR_EXPRESSION "carretera: [0-9]+ pasos .*1 pasadas.*hash OK"
+        FAIL_REGULAR_EXPRESSION "FALLO|aviso")
+endforeach()
+
 # Grabación sintética del coche (tarea 2.4): 120 s en la zona con el coche congelado
 # (rally_replay synth). La repetición da el mismo hash; --bench mide con ella (a mano).
 add_test(NAME replay.bench_lap
@@ -163,7 +177,7 @@ foreach(_run first second)
                 ${CMAKE_CURRENT_BINARY_DIR}/telemetry_${_run}.csv)
     set_tests_properties(replay.telemetry_${_run} PROPERTIES
         FIXTURES_SETUP telemetry_csv
-        PASS_REGULAR_EXPRESSION "telemetría: .*125 columnas.*hash OK"
+        PASS_REGULAR_EXPRESSION "telemetría: .*128 columnas.*hash OK"
         FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 endforeach()
 # Curvas del neumático (tarea 2.5) del coche congelado, para tools/telemetry/tire_curves.py.
@@ -190,6 +204,14 @@ if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.12)
                 ${CMAKE_CURRENT_BINARY_DIR}/telemetry_first.csv ${_zone_json})
     set_tests_properties(telemetry_py.recording PROPERTIES
         FIXTURES_REQUIRED "telemetry_csv;zone_json")
+    add_test(NAME telemetry_py.road_check_synthetic
+        COMMAND ${Python3_EXECUTABLE} ${_telemetry_dir}/test_road_check.py synthetic)
+    add_test(NAME telemetry_py.road_check_recordings
+        COMMAND ${Python3_EXECUTABLE} ${_telemetry_dir}/test_road_check.py recordings
+                ${CMAKE_CURRENT_BINARY_DIR}/road_run.csv ${CMAKE_CURRENT_BINARY_DIR}/road_off.csv
+                ${_zone_json})
+    set_tests_properties(telemetry_py.road_check_recordings PROPERTIES
+        FIXTURES_REQUIRED "road_csv;zone_json")
     execute_process(COMMAND ${Python3_EXECUTABLE} -c "import matplotlib"
         RESULT_VARIABLE _matplotlib_missing OUTPUT_QUIET ERROR_QUIET)
     if(_matplotlib_missing EQUAL 0)

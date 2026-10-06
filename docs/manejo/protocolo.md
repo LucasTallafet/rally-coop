@@ -104,6 +104,20 @@ Cada conductor, con la configuración elegida:
 - **Baches sin golpes falsos:** ¿algún golpe que no venga de algo que se ve? Apuntad dónde.
 - **Turbo:** ¿hay que anticipar el acelerador al salir de la horquilla? (sí / no / exagerado).
 
+### G. Carretera
+
+La carretera de prueba de la zona (tarea 2.6b): 992 m de punto a punto, con una calzada de 6 m, arcén de arena, cuneta y árboles. **Y** lleva a su salida y **U** cambia la calzada entre grava y asfalto.
+
+Cada conductor, con cada configuración que se esté probando: **3 pasadas** seguidas, desde la salida parado hasta la meta, en grava (y en asfalto, si la sesión lo pide). En cada pasada se apunta:
+- **Tiempo:** el del indicador al cruzar la meta.
+- **Salidas** de la calzada: dónde (curva o punto kilométrico) y qué pasó (arena, cuneta, árbol).
+- **Recolocaciones**, si las hubo: la pasada sigue y queda marcada como «con recolocación».
+- **«¿Se recoge el coche con poco sitio?»:** de 1 (nunca, me salgo) a 5 (siempre, con margen).
+
+`check_session.py` pasa `road_check.py` a las grabaciones de la carretera. Por pasada, da el tiempo, las salidas (centro de masas a más de 4,6 m del eje, es decir, fuera del arcén), las recolocaciones, la velocidad mínima en la horquilla y el |β| máximo en cada curva. Si el tiempo o las salidas no cuadran con lo apuntado, manda la telemetría.
+
+Criterio de la fase 2: con la configuración elegida, cada jugador hace 3 pasadas seguidas sin recolocar, y los dos dicen que el coche se recoge con poco sitio.
+
 ---
 
 ## 4. Hoja de puntuación por configuración (bloque C)
@@ -170,7 +184,7 @@ Datos de telemetría que mira Claude Code en cada maniobra: β y velocidad de gu
 
 `sesion,bloque,conductor,config,intento,grabacion,maniobra,limpio,respuesta,seguridad,criterio,puntuacion,tiempo_s,notas`
 
-- `maniobra`: `sostenido_h`, `sostenido_a` (horario y antihorario), `progresivo`, `recogida`, `horquilla`, `ciega`, `ajuste:<nombre>=<valor>`, `entrada:<qué>`, `config`.
-- `respuesta`: la superficie dicha (bloque B), "no/poco/claro" (D), "lenta/bien/rápida" (E), "sí/quizá/no" (elegir configuración).
+- `maniobra`: `sostenido_h`, `sostenido_a` (horario y antihorario), `progresivo`, `recogida`, `horquilla`, `ciega`, `carretera` (bloque G), `ajuste:<nombre>=<valor>`, `entrada:<qué>`, `config`.
+- `respuesta`: la superficie dicha (bloque B), "no/poco/claro" (D), "lenta/bien/rápida" (E), "sí/quizá/no" (elegir configuración), 1–5 a «¿Se recoge el coche con poco sitio?» (G; las salidas, en `notas`).
 - `criterio` y `puntuacion`: una fila por criterio de §4 (1–10).
 - `limpio`: `s` o `n`.

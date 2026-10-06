@@ -17,6 +17,8 @@ bool build_world(const Recording& recording, sim::SimWorld& world, std::string& 
 
 // Tiempo cronometrado del pie de la grabación: la mejor vuelta completa en pasos, o -1.
 std::int64_t timed_steps(const sim::SimWorld& world);
+// Pasada por la carretera del pie: la última completa, sus recolocaciones y cuántas hay.
+RoadResult road_result(const sim::SimWorld& world);
 
 struct ReplayResult {
     bool ran = false;    // se pudo repetir (si no, `problem` dice por qué)
@@ -24,6 +26,7 @@ struct ReplayResult {
     std::uint64_t steps = 0;
     std::uint64_t hash = 0;        // SimWorld::state_hash tras el último paso
     std::int64_t timed_steps = -1; // mejor vuelta repetida, en pasos (-1 si ninguna)
+    RoadResult road;               // pasada por la carretera repetida
     // La grabación es de otra kSimVersion: se repite, pero no se compara el hash.
     bool version_mismatch = false;
     // La zona de pruebas de la grabación no es la de este build (otro hash de la zona): se

@@ -46,6 +46,7 @@ DISPLAY = {
     "a_right": (1.0, "m/s²"),
     "time": (1.0, "s"),
     "lap_time": (1.0, "s"),
+    "road_time": (1.0, "s"),
     "impact": (1.0, "m/s"),
 }
 

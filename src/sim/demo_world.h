@@ -16,13 +16,14 @@ namespace rally::sim {
 // desplazado `offset` en x y z.
 WorldDesc demo_arena(double offset, const CarData& car);
 
-// Dónde sale el coche en la zona: al principio de la recta (lo normal) o en el punto de
-// recolocación de la pista ciega (pruebas a ciegas), con la orientación del punto.
-enum class ZoneStart : std::uint8_t { Straight, BlindTrack };
+// Dónde sale el coche en la zona: al principio de la recta (lo normal), en el punto de
+// recolocación de la pista ciega (pruebas a ciegas) o en la salida de la carretera de prueba
+// (10 m antes de la línea), con la orientación del punto.
+enum class ZoneStart : std::uint8_t { Straight, BlindTrack, Road };
 
-// Zona de pruebas (sim/test_zone.h) con el coche parado en la salida elegida y la pista ciega
-// de `blind_surface`.
+// Zona de pruebas (sim/test_zone.h) con el coche parado en la salida elegida, la pista ciega
+// de `blind_surface` y la calzada de la carretera de `road_surface`.
 WorldDesc zone_world(Surface blind_surface, const CarData& car,
-                     ZoneStart start = ZoneStart::Straight);
+                     ZoneStart start = ZoneStart::Straight, Surface road_surface = Surface::Gravel);
 
 } // namespace rally::sim

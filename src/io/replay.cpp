@@ -12,6 +12,17 @@ std::int64_t timed_steps(const sim::SimWorld& world) {
     return lap != nullptr ? lap->best_lap : -1;
 }
 
+RoadResult road_result(const sim::SimWorld& world) {
+    RoadResult road;
+    const sim::RoadRunState* run = world.road_run();
+    if (run != nullptr) {
+        road.last_run = run->last_run;
+        road.last_resets = static_cast<std::uint32_t>(run->last_resets);
+        road.runs = static_cast<std::uint32_t>(run->runs);
+    }
+    return road;
+}
+
 bool build_world(const Recording& recording, sim::SimWorld& world, std::string& error) {
     sim::WorldDesc desc;
     if (!parse_world(recording.header.world, desc, error, recording.header.format_version)) {
@@ -57,6 +68,7 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
     result.ran = true;
     result.hash = world.state_hash();
     result.timed_steps = timed_steps(world);
+    result.road = road_result(world);
     result.version_mismatch = recording.header.sim_version != sim::kSimVersion;
     result.zone_mismatch = recording.header.zone_hash != world.zone_hash();
     result.incomplete = !recording.footer.complete;
@@ -95,6 +107,14 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
                       "tiempo cronometrado distinto: grabado %" PRId64 " pasos, repetido %" PRId64,
                       recording.footer.timed_steps, result.timed_steps);
         result.problem = buffer;
+    } else if (result.road != recording.footer.road) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "pasada por la carretera distinta: grabada %" PRId64 " pasos (%u "
+                      "recolocaciones, %u pasadas), repetida %" PRId64 " pasos (%u, %u)",
+                      recording.footer.road.last_run, recording.footer.road.last_resets,
+                      recording.footer.road.runs, result.road.last_run, result.road.last_resets,
+                      result.road.runs);
+        result.problem = buffer;
     } else {
         result.hash_ok = true;
     }
@@ -127,6 +147,7 @@ ReplayResult rewrite_footer(Recording& recording) {
     recording.footer.total_steps = result.steps;
     recording.footer.final_hash = result.hash;
     recording.footer.timed_steps = result.timed_steps;
+    recording.footer.road = result.road;
     return replay(recording);
 }
 
