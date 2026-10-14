@@ -220,6 +220,8 @@ TEST_CASE("telemetry: the same inputs give the same CSV twice and the stored has
                   static_cast<unsigned long long>(kExpectedTelemetryHash), first.size());
     INFO(message);
     CHECK(hash == kExpectedTelemetryHash);
+    // Para la línea de resumen de tools/ci/comprobar.ps1: el valor medido, no el guardado.
+    std::printf("RALLY_SUMMARY telemetria=0x%016llx\n", static_cast<unsigned long long>(hash));
 }
 
 TEST_CASE("telemetry: appending a row allocates nothing with a reserved buffer") {

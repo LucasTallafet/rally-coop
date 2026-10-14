@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Descarga una sola vez las fuentes de las dependencias (Jolt, SDL, raylib y doctest) para todas
 las copias de trabajo.

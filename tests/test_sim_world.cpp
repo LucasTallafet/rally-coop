@@ -6,6 +6,7 @@
 #include "sim/jolt_runtime.h"
 #include "sim/pcg32.h"
 #include "sim/sim_input.h"
+#include "sim/sim_version.h"
 #include "sim/sim_world.h"
 
 #include <doctest/doctest.h>
@@ -342,6 +343,10 @@ TEST_CASE("sim_world: state fingerprint after 60 s of random inputs matches the 
                   static_cast<unsigned long long>(kExpectedFingerprint));
     INFO(message);
     CHECK(fingerprint == kExpectedFingerprint);
+    // Para la línea de resumen de tools/ci/comprobar.ps1: el valor medido, no el guardado.
+    std::printf("RALLY_SUMMARY huella=0x%016llx\nRALLY_SUMMARY sim_version=%u\n",
+                static_cast<unsigned long long>(fingerprint),
+                static_cast<unsigned>(rally::sim::kSimVersion));
 }
 
 TEST_CASE("sim_world: capturing telemetry leaves the fingerprint unchanged") {
@@ -403,6 +408,7 @@ TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blo
     // reservas, el contador de Jolt no estaría probando nada.
     CHECK(steps_with_blocks > kCountedSteps / 2);
     CHECK(jolt.count() == kExpectedJoltAllocations);
+    std::printf("RALLY_SUMMARY reservas_jolt=%d\n", jolt.count());
 }
 
 namespace {
