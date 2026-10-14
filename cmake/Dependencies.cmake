@@ -78,6 +78,50 @@ FetchContent_Declare(doctest
     SYSTEM
 )
 
+# --- Fuentes compartidas entre copias de trabajo (tools/ci/deps.ps1) --------------------------
+# Con RALLY_DEPS_SRC en el entorno, cada dependencia sale de <RALLY_DEPS_SRC>/<nombre>-<8 del
+# hash> si su sello .rally-sha256 es el hash de arriba; si no, se descarga como siempre. Los
+# hashes se leen de los FetchContent_Declare de este archivo (como hace deps.ps1): una sola copia.
+# Solo se comparten las fuentes: cada copia compila en su build/ (nunca FETCHCONTENT_BASE_DIR).
+# Se decide en cada configuración: FetchContent copia a la caché la variable normal, así que la
+# de caché se borra antes. Sin eso, al quitar RALLY_DEPS_SRC o al cambiar de versión se quedaría
+# pegada en CMakeCache.txt (medido en la P1a). Un -DFETCHCONTENT_SOURCE_DIR_* a mano no se respeta.
+file(READ "${CMAKE_CURRENT_LIST_FILE}" _rally_deps_text)
+string(REGEX MATCHALL
+    "FetchContent_Declare\\([ \t\r\n]*[A-Za-z0-9_]+[ \t\r\n]+URL[ \t\r\n]+[^ \t\r\n]+[ \t\r\n]+URL_HASH[ \t\r\n]+SHA256=[0-9a-f]+"
+    _rally_deps_declares "${_rally_deps_text}")
+foreach(_rally_declare IN LISTS _rally_deps_declares)
+    string(REGEX REPLACE "^FetchContent_Declare\\([ \t\r\n]*([A-Za-z0-9_]+).*SHA256=([0-9a-f]+)$"
+        "\\1;\\2" _rally_pair "${_rally_declare}")
+    list(GET _rally_pair 0 _rally_name)
+    list(GET _rally_pair 1 _rally_sha)
+    string(TOUPPER "${_rally_name}" _rally_upper)
+    unset(FETCHCONTENT_SOURCE_DIR_${_rally_upper})
+    unset(FETCHCONTENT_SOURCE_DIR_${_rally_upper} CACHE)
+    if(DEFINED ENV{RALLY_DEPS_SRC} AND NOT "$ENV{RALLY_DEPS_SRC}" STREQUAL "")
+        file(TO_CMAKE_PATH "$ENV{RALLY_DEPS_SRC}" _rally_root)
+        string(SUBSTRING "${_rally_sha}" 0 8 _rally_short)
+        set(_rally_dir "${_rally_root}/${_rally_name}-${_rally_short}")
+        set(_rally_stamp "")
+        if(EXISTS "${_rally_dir}/.rally-sha256")
+            file(READ "${_rally_dir}/.rally-sha256" _rally_stamp)
+            string(STRIP "${_rally_stamp}" _rally_stamp)
+        endif()
+        if(_rally_stamp STREQUAL _rally_sha)
+            set(FETCHCONTENT_SOURCE_DIR_${_rally_upper} "${_rally_dir}")
+            message(STATUS "${_rally_name}: fuentes compartidas de ${_rally_dir}")
+        else()
+            message(WARNING "${_rally_name}: RALLY_DEPS_SRC no tiene ${_rally_name}-${_rally_short} "
+                "con su sello; se descarga. Para compartirla: tools/ci/deps.ps1")
+        endif()
+    endif()
+endforeach()
+list(LENGTH _rally_deps_declares _rally_deps_count)
+if(NOT _rally_deps_count EQUAL 4)
+    message(FATAL_ERROR "Dependencies.cmake: esperaba 4 FetchContent_Declare con URL y SHA256 "
+        "y hay ${_rally_deps_count} (tools/ci/deps.ps1 los lee igual)")
+endif()
+
 FetchContent_MakeAvailable(JoltPhysics SDL3 raylib doctest)
 
 if(NOT TARGET SDL3::SDL3)
