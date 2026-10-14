@@ -102,6 +102,11 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 | Prompts largos cortados al pegarlos en la terminal | Consola de Windows | Pegar en dos partes |
 | Se borraron las capturas del diagnóstico del tearing | Un `Remove-Item captura_*.png` sin mirar la carpeta | Regla en la memoria de Claude Code: *pendiente de pasar a `CLAUDE.md`* |
 | Toda la fase 1 estaba solo en el disco local | No había remoto configurado | Repositorio privado en GitHub y push al cerrar cada tarea |
+| Dos compilaciones a la vez comparten `mspdbsrv` y los nodos de MSBuild aunque sean de copias distintas (P1a) | El primer `cl.exe` arranca el servidor de PDB y los demás del usuario se enganchan; MSBuild deja nodos para reutilizar | `comprobar.ps1`: `_MSPDBSRV_ENDPOINT_` propio por llamada y `MSBUILDDISABLENODEREUSE=1` / `/nodeReuse:false`; así el Job Object de una copia no mata nada de otra (medido: la otra acaba en verde, sin errores de PDB) |
+| `FETCHCONTENT_SOURCE_DIR_*` se quedaba pegado en la caché al quitar `RALLY_DEPS_SRC` (P1a) | FetchContent copia a la caché la variable normal | `unset(... CACHE)` en cada configuración antes de decidir |
+| `ctest --output-log` no guarda la salida de los tests que pasan (P1a) | ctest | La línea de resumen sale del JUnit (`--output-junit`), que sí la guarda |
+| Un mutex de un proceso muerto no siempre se ve como abandonado (P1a) | Si nadie más lo tenía abierto, Windows lo destruye con su último handle | Da igual: la plaza queda libre y la siguiente llamada entra; si otra esperaba, lo recibe como abandonado (`WaitForMultipleObjects`) y entra también |
+| La CPU de render de `--bench-forest` varía ± 25 % entre pasadas del mismo exe (P1a) | La primera pasada de cada tanda sale más baja | Comparar antes y después con pasadas intercaladas, no una contra una |
 
 ---
 

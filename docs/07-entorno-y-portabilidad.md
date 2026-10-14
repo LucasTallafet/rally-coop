@@ -110,6 +110,23 @@ ctest --preset windows-release
 - El primer configure descarga las dependencias (~90 s). El de Debug es igual con `windows-debug`.
 - El ejecutable queda en `build\windows-release\src\Release\rally.exe`. Es un solo `.exe` sin DLL.
 
+**Comprobación de una copia de trabajo (desde la tarea P1a):** `tools\ci\comprobar.ps1 [-Debug] [-SinFormato]` hace todo en un solo comando y vale en cualquier copia (`.claude\worktrees\...` incluidas):
+
+- clang-format 23.1.2 sin cambios en el C++ de `src/`, `tests/` y `tools/` (el del PATH o el del paquete de pip);
+- `cmake --preset`, `cmake --build --preset` y `ctest --preset` del preset;
+- una línea final con los tests, la huella, las reservas de Jolt, el hash de la telemetría y `kSimVersion`. Sale con un código distinto de 0 en el primer paso que falla.
+
+Como mucho **dos compilaciones a la vez en el PC**, con dos mutex con nombre de Windows (`Local\RallyBuild0` y `Local\RallyBuild1`): la tercera espera («esperando plaza…»).
+- La plaza de un proceso que murió pasa al siguiente (mutex abandonado).
+- Cada orden corre en un Job Object que la mata si muere el PowerShell, con su propio `mspdbsrv` y sin nodos de MSBuild que sobrevivan, para que el final de una compilación no tumbe la de otra copia.
+- Con la otra plaza ocupada, compila con 2 procesos.
+
+**Fuentes de las dependencias, una sola vez para todas las copias:** `tools\ci\deps.ps1` las descarga en `RALLY_DEPS_SRC` (por defecto `D:\Proyectos\RallyCoop\deps-src`) comprobando su SHA256, que lee de `cmake/Dependencies.cmake`.
+- Con la variable de entorno puesta (`setx RALLY_DEPS_SRC D:\Proyectos\RallyCoop\deps-src`, en una ventana nueva), el configure usa esas fuentes si su sello coincide con el hash; si no, descarga como siempre y lo avisa.
+- Cada copia compila igualmente sus dependencias en su propio `build/`.
+
+**Capturas de referencia:** `tools\ci\golden.ps1 [-Regenerar]` saca con `rally.exe --golden` las capturas de `tests/platform/golden/comandos.txt` y las compara byte a byte. Solo valen en el mismo PC y sirven para reestructurar sin cambiar el dibujo (detalle en la cabecera de `comandos.txt`); no van en `comprobar.ps1`.
+
 **Comprobación de que el PC nuevo es equivalente:**
 
 1. **Todos los tests en verde**, en Release y en Debug (92 al cierre de la fase 1).
@@ -187,9 +204,9 @@ Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cier
 
 Válido desde la tarea 2.4b de la fase 2: el coche (`data/cars/mid_awd_turbo.car`) en la zona de pruebas; K cambia al recinto de la fase 1. Los botones del mando van por posición, sin teclas de depuración. En pantalla, siempre, el indicador mínimo (velocidad, marcha, rpm, presión del turbo, modo de la caja y la configuración del coche, salvo a ciegas o con `--hide-config`; en la zona, la vuelta en curso y la mejor; a ciegas, «Prueba k/15») y «H: ayuda»; H enseña la ayuda de teclas, F3 el panel de depuración, F1 el rendimiento y T las gráficas, cada uno en su sitio fijo; mientras la ayuda está abierta, F3, F1 y T no se dibujan (desde la 2.5b la ayuda ocupa su sitio). La ayuda de dirección (F6, activada por defecto), la caja automática o secuencial (F2, automática por defecto; desde la 2.6) y la dirección con teclado o ratón (F7; con ratón, X o el botón central recentran y el indicador mínimo enseña el volante) se guardan en `ajustes.txt`, igual que el asiento (Re Pág / Av Pág, Inicio / Fin, Insert / Supr), que se guarda junto al exe; si ese archivo tiene una línea mal escrita, se avisa en pantalla con su número y se usa el valor por defecto. Desde la 2.7, en la vista del ojo se ven el interior provisional, la cabeza que se mueve con el coche (F9, activada por defecto) y suena el coche (F4: volumen 100, 70, 40 y 0 %); los dos se guardan también en `ajustes.txt`. La ayuda (H) va por páginas: H pasa a la siguiente y, tras la última, la oculta. F1 enseña además la CPU del hilo de audio, su llamada más larga y los cortes.
 
-Las tablas de teclas salen de `src/platform/keys.cpp` (la misma tabla que usa el juego y la ayuda en pantalla); el test `keys: docs/07 section 8 matches the generated table` comprueba que coinciden. Para cambiarlas, se cambia `keys.cpp` y se copia aquí lo que imprime ese test al fallar.
+Las tablas de teclas salen de las tablas de cada componente (`src/platform/drive_keys.cpp`, `window_keys.cpp` y las de las partes de la demo, `demo_*_keys.cpp`), que `src/platform/key_tables.cpp` junta por bloques y por su `order`: es la misma tabla que usa el juego y la ayuda en pantalla. El test `keys: docs/07 section 8 matches the generated table` comprueba que coinciden, y `keys: no key is repeated within a context` que ninguna tecla se repite entre tablas. Para cambiarlas, se cambia la tabla del componente y se copia aquí lo que imprime ese test al fallar.
 
-<!-- teclas: generado desde src/platform/keys.cpp (keys_markdown); no editar a mano -->
+<!-- teclas: generado desde las tablas de src/platform/key_tables.cpp (keys_markdown); no editar a mano -->
 
 **Conducir**
 
