@@ -34,12 +34,18 @@ $raiz = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $preset = if ($Debug) { 'windows-debug' } else { 'windows-release' }
 $build = Join-Path $raiz "build\$preset"
 $inicio = [Diagnostics.Stopwatch]::StartNew()
+# La salida de este script, en UTF-8 (también redirigida a un archivo o a otro programa); la de
+# cmake, MSBuild y ctest se lee en la página de códigos de la consola, que es la que usan.
+$codificacionHijos = [Text.Encoding]::GetEncoding([Console]::OutputEncoding.CodePage)
+$codificacionAntes = [Console]::OutputEncoding
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 
 function Terminar([int]$codigo, [string]$texto) {
     $t = $inicio.Elapsed
     Write-Host ''
     Write-Host ('{0} · {1} · {2} min {3} s' -f $(if ($codigo -eq 0) { 'OK' } else { 'FALLO' }), $texto,
         [int][Math]::Floor($t.TotalMinutes), $t.Seconds)
+    [Console]::OutputEncoding = $codificacionAntes
     exit $codigo
 }
 
@@ -156,6 +162,23 @@ public static class RallyJob {
     // true si el proceso ha terminado (espera como mucho ms).
     public static bool Wait(IntPtr process, uint ms) { return WaitForSingleObject(process, ms) == 0; }
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint WaitForMultipleObjects(uint count, IntPtr[] handles, bool waitAll, uint ms);
+
+    // Espera a la primera de las plazas (mutex) libre, como mucho ms. Devuelve su índice o -1 si
+    // vence el tiempo; `abandoned`: su dueño murió sin soltarla (WAIT_ABANDONED), y la plaza es
+    // nuestra igualmente. Win32 da la plaza y el abandono en una sola llamada, sin excepciones.
+    // Si nadie más tenía abierta la plaza del muerto, Windows destruye el mutex con su último
+    // handle y aquí llega uno nuevo, libre y sin abandono: entra igual.
+    public static int WaitSlot(IntPtr[] mutexes, uint ms, out bool abandoned) {
+        uint r = WaitForMultipleObjects((uint)mutexes.Length, mutexes, false, ms);
+        abandoned = false;
+        if (r < (uint)mutexes.Length) return (int)r;
+        if (r >= 0x80 && r < 0x80 + (uint)mutexes.Length) { abandoned = true; return (int)(r - 0x80); }
+        if (r == 0x102) return -1; // WAIT_TIMEOUT
+        throw new System.ComponentModel.Win32Exception();
+    }
+
     public static int ExitCode(IntPtr process) {
         uint code;
         GetExitCodeProcess(process, out code);
@@ -171,7 +194,7 @@ function Ejecutar([IntPtr]$job, [string]$orden, [string]$log) {
     $lector = $null
     try {
         $flujo = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite')
-        $lector = New-Object IO.StreamReader($flujo, [Text.Encoding]::GetEncoding([Console]::OutputEncoding.CodePage))
+        $lector = New-Object IO.StreamReader($flujo, $codificacionHijos)
         while ($true) {
             # Esperas cortas: entre una y otra, PowerShell atiende Ctrl+C y corre los finally.
             $fin = [RallyJob]::Wait($proceso, 200)
@@ -240,25 +263,22 @@ $entornoAntes = @{
     'MSBUILDDISABLENODEREUSE' = $env:MSBUILDDISABLENODEREUSE
 }
 try {
+    # Una plaza abandonada (su dueño murió sin soltarla) cuenta como conseguida: es nuestra.
+    $handles = [IntPtr[]]@($plazas | ForEach-Object { $_.SafeWaitHandle.DangerousGetHandle() })
     $espera = [Diagnostics.Stopwatch]::StartNew()
+    $aviso = 30
     while ($plaza -lt 0) {
-        try {
-            $i = [Threading.WaitHandle]::WaitAny([Threading.WaitHandle[]]$plazas, 30000)
-            if ($i -ne [Threading.WaitHandle]::WaitTimeout) { $plaza = $i }
-        } catch [Threading.AbandonedMutexException] {
-            # Su dueño murió sin soltarla: es nuestra.
-            $plaza = $_.Exception.MutexIndex
-            $abandonada = $true
-        }
-        if ($plaza -lt 0) {
+        # Esperas de 1 s: entre una y otra, PowerShell atiende Ctrl+C.
+        $plaza = [RallyJob]::WaitSlot($handles, 1000, [ref]$abandonada)
+        if ($plaza -lt 0 -and $espera.Elapsed.TotalSeconds -ge $aviso) {
             Write-Host ('esperando plaza de compilación ({0:F0} s)...' -f $espera.Elapsed.TotalSeconds)
+            $aviso += 30
         }
     }
     # La otra plaza, ocupada: se compila con 2 procesos. Libre (o abandonada): con todos.
-    $otra = $plazas[1 - $plaza]
-    $otraLibre = $false
-    try { $otraLibre = $otra.WaitOne(0) } catch [Threading.AbandonedMutexException] { $otraLibre = $true }
-    if ($otraLibre) { $otra.ReleaseMutex() }
+    $otraAbandonada = $false
+    $otraLibre = [RallyJob]::WaitSlot([IntPtr[]]@($handles[1 - $plaza]), 0, [ref]$otraAbandonada) -eq 0
+    if ($otraLibre) { $plazas[1 - $plaza].ReleaseMutex() }
     $paralelo = if ($otraLibre) { '--parallel' } else { '--parallel 2' }
     Write-Host ('plaza {0}{1}; la otra {2}: {3}' -f $plaza, $(if ($abandonada) { ' (abandonada por un proceso muerto)' } else { '' }),
         $(if ($otraLibre) { 'libre' } else { 'ocupada' }), $paralelo)
