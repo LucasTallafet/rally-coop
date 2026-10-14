@@ -338,7 +338,7 @@ TEST_CASE("sim_world: state fingerprint after 60 s of random inputs matches the 
     std::snprintf(message, sizeof(message),
                   "huella actual 0x%016llxull, guardada 0x%016llxull. Si el cambio de la "
                   "simulación es intencionado, copia la actual en kExpectedFingerprint "
-                  "(tests/test_sim_world.cpp) y dilo en el mensaje del commit.",
+                  "(tests/sim/test_sim_world.cpp) y dilo en el mensaje del commit.",
                   static_cast<unsigned long long>(fingerprint),
                   static_cast<unsigned long long>(kExpectedFingerprint));
     INFO(message);
@@ -399,7 +399,7 @@ TEST_CASE("sim_world: step allocates nothing of ours and only the known Jolt blo
     // global: si lo hiciera, sus reservas aparecerían aquí también.
     CHECK(ours == 0);
     INFO("Si un cambio intencionado altera las reservas de Jolt, actualiza "
-         "kJoltAllocationsPerStep o kExpectedJoltAllocations (tests/test_sim_world.cpp) y "
+         "kJoltAllocationsPerStep o kExpectedJoltAllocations (tests/sim/test_sim_world.cpp) y "
          "dilo en el mensaje del commit.");
     MESSAGE("pasos con ", kJoltAllocationsPerStep, " reservas de Jolt: ", steps_with_blocks,
             "; sin reservas: ", steps_without);

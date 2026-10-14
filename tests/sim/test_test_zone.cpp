@@ -47,7 +47,7 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr std::uint64_t kExpectedGroundHash = 0x2c688c9b1672ee18ull;
 
 // Reservas de Jolt 5.6.0 por paso sobre el suelo de la zona: la misma reconstrucción de la
-// broad phase que en el recinto (tests/test_sim_world.cpp), pero con un solo cuerpo en la
+// broad phase que en el recinto (tests/sim/test_sim_world.cpp), pero con un solo cuerpo en la
 // capa móvil QuadTree::UpdatePrepare hace su new[] de 4 B y BuildTree no reserva nada. 0 si
 // la caja no cambia de caja envolvente. Con la caja acelerando, una por paso.
 constexpr int kZoneJoltAllocationsPerStep = 1;
@@ -130,7 +130,7 @@ TEST_CASE("test_zone: the same description gives the same ground hash twice") {
     std::snprintf(message, sizeof(message),
                   "hash del suelo 0x%016llx, esperado 0x%016llx. Si el cambio de la zona es "
                   "intencionado, copia el actual en kExpectedGroundHash "
-                  "(tests/test_test_zone.cpp).",
+                  "(tests/sim/test_test_zone.cpp).",
                   static_cast<unsigned long long>(a.ground_hash()),
                   static_cast<unsigned long long>(kExpectedGroundHash));
     INFO(message);
@@ -821,7 +821,7 @@ TEST_CASE("test_zone: step allocates nothing of ours on the zone ground") {
             " pasos sobre el suelo de la zona: ", jolt.count());
     CHECK(ours == 0);
     INFO("Si un cambio intencionado altera las reservas de Jolt, actualiza "
-         "kExpectedZoneJoltAllocations (tests/test_test_zone.cpp) y dilo en el commit.");
+         "kExpectedZoneJoltAllocations (tests/sim/test_test_zone.cpp) y dilo en el commit.");
     CHECK(steps_other == 0);
     CHECK(jolt.count() == kExpectedZoneJoltAllocations);
 }

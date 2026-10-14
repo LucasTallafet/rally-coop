@@ -215,7 +215,7 @@ TEST_CASE("telemetry: the same inputs give the same CSV twice and the stored has
     std::snprintf(message, sizeof(message),
                   "hash del CSV 0x%016llxull, guardado 0x%016llxull (%zu bytes). Si cambian las "
                   "columnas o la simulación a propósito, copia el actual en "
-                  "kExpectedTelemetryHash (tests/test_telemetry.cpp) y dilo en el commit.",
+                  "kExpectedTelemetryHash (tests/sim/test_telemetry.cpp) y dilo en el commit.",
                   static_cast<unsigned long long>(hash),
                   static_cast<unsigned long long>(kExpectedTelemetryHash), first.size());
     INFO(message);

@@ -4,13 +4,16 @@
 #      tests y Jolt) usa /fp:fast ni /fp:contract.
 #   3. Ningún target ni carpeta, dependencias incluidas, usa /arch:AVX, AVX2 o AVX512
 #      (objetivo SSE4.2).
-#   4. rally_sim, rally_loop, rally_io, rally_replay, rally_tests, rally_check_abort y
-#      rally_abort_recording no enlazan raylib ni SDL, ni directa ni indirectamente.
+#   4. rally_sim, rally_loop, rally_io, rally_replay, los tests (rally_tests_* y
+#      rally_test_common), rally_check_abort y rally_abort_recording no enlazan raylib ni SDL,
+#      ni directa ni indirectamente.
 # Complementa a src/sim/fp_guard.h, que hace lo mismo con las macros del compilador.
 
-set(_our_targets rally_sim rally_loop rally_io rally_platform rally rally_replay rally_tests
+# Los ejecutables de tests, uno por carril (tests/<carril>/CMakeLists.txt).
+set(_test_targets rally_test_common rally_tests_sim rally_tests_platform rally_tests_io)
+set(_our_targets rally_sim rally_loop rally_io rally_platform rally rally_replay ${_test_targets}
     rally_check_abort rally_abort_recording rally_fp_strict rally_warnings)
-set(_sim_targets rally_sim rally_io rally_replay rally_tests rally_check_abort
+set(_sim_targets rally_sim rally_io rally_replay ${_test_targets} rally_check_abort
     rally_abort_recording Jolt)
 set(_flag_vars
     CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
@@ -127,7 +130,7 @@ foreach(_dir IN LISTS _all_dirs)
 endforeach()
 
 # 4. La simulación y los tests no tocan raylib ni SDL.
-foreach(_t rally_sim rally_loop rally_io rally_replay rally_tests rally_check_abort
+foreach(_t rally_sim rally_loop rally_io rally_replay ${_test_targets} rally_check_abort
         rally_abort_recording)
     _rally_link_closure(${_t} _closure)
     foreach(_lib IN LISTS _closure)

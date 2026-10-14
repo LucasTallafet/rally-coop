@@ -20,7 +20,8 @@ std::int64_t now_ns() {
 }
 constexpr Color kMessageError{255, 110, 90, 255};
 
-// Las capas de una línea suelta no llevan fondo ni relleno (como en tests/test_screen_layout).
+// Las capas de una línea suelta no llevan fondo ni relleno (como en
+// tests/platform/test_screen_layout).
 bool padded(Layer layer) {
     return layer != Layer::Indicator && layer != Layer::HelpHint && layer != Layer::Messages;
 }

@@ -12,8 +12,8 @@
 namespace rally::platform {
 
 // Sitio fijo de cada capa del texto en pantalla, calculado sin raylib para probar que no se
-// pisan (tests/test_screen_layout.cpp). Cada capa tiene su rectángulo aunque esté oculta, así
-// que nada se mueve al enseñar u ocultar otra.
+// pisan (tests/platform/test_screen_layout.cpp). Cada capa tiene su rectángulo aunque esté oculta,
+// así que nada se mueve al enseñar u ocultar otra.
 //
 // Texto: la fuente por defecto de raylib solo se ve limpia en múltiplos de 10 px. base = 10 ×
 // max(1, alto / 540), en división entera (10 hasta 1079 de alto, 20 a 1080 y 1440, 40 a 2160);
