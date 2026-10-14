@@ -339,6 +339,90 @@ DriveDemo::DriveDemo(std::string car_path) : car_path_(std::move(car_path)) {
     reset();
 }
 
+bool read_golden_recording(const std::string& path, io::Recording& recording, std::string& error) {
+    std::string bytes;
+    if (!io::read_file(path, bytes, error)) {
+        return false;
+    }
+    io::ParseResult parsed = io::parse(bytes);
+    if (!parsed.ok) {
+        error = parsed.error;
+        return false;
+    }
+    sim::WorldDesc desc;
+    if (!io::parse_world(parsed.recording.header.world, desc, error,
+                         parsed.recording.header.format_version)) {
+        return false;
+    }
+    if (!desc.car) {
+        error = "la grabación no tiene coche";
+        return false;
+    }
+    const sim::CarParseResult car =
+        sim::parse_car(parsed.recording.header.car_text, sim::CarKeys::Sim);
+    if (!car.ok) {
+        error = "coche de la grabación: " + car.error;
+        return false;
+    }
+    recording = std::move(parsed.recording);
+    return true;
+}
+
+DriveDemo::DriveDemo(const GoldenFrame& golden, const io::Recording& recording)
+    : car_path_(golden.recording), golden_(&golden), golden_recording_(&recording) {
+    rlSetClipPlanes(kNearPlane, kFarPlane);
+    // Comprobados en read_golden_recording.
+    std::string error;
+    io::parse_world(recording.header.world, desc_, error, recording.header.format_version);
+    car_text_ = recording.header.car_text;
+    car_ = sim::parse_car(car_text_, sim::CarKeys::Sim).car;
+    desc_.car_data = car_;
+    zone_mode_ = desc_.test_zone;
+    blind_surface_ = desc_.blind_surface;
+    road_surface_ = desc_.road_surface;
+    // Lo que se ve de los ajustes que van en la descripción (la caja en el indicador).
+    settings_.steer_assist = desc_.aids.steer_assist;
+    settings_.sequential = desc_.aids.gearbox == sim::GearboxMode::Sequential;
+    reset();
+}
+
+bool DriveDemo::draw_golden(const FramePacer& pacer, const FixedStepClock& clock,
+                            const DriverInput& driver, PerfCounter& perf, std::string& error) {
+    std::uint64_t done = 0;
+    sim::SimInput input;
+    for (const io::InputRun& run : golden_recording_->runs) {
+        for (std::uint32_t i = 0; i < run.count && done < golden_->step; ++i, ++done) {
+            input = run.input;
+            step(input);
+        }
+    }
+    if (done < golden_->step) {
+        error = "la grabación tiene " + std::to_string(done) + " pasos";
+        return false;
+    }
+    view_ = golden_->view;
+    help_page_ = golden_->help_page;
+    debug_visible_ = golden_->debug;
+    for (int i = 0; i < golden_->graphs; ++i) {
+        graphs_.press(blind_mode_, default_graph_pages());
+    }
+    // Tres fotogramas iguales (sin pasos entre ellos) y se guarda el último: lo que se crea al
+    // dibujar por primera vez ya está creado.
+    FrameSteps steps;
+    steps.count = 1;
+    steps.alpha = 1.0;
+    for (int frame = 0; frame < 3; ++frame) {
+        capture_requested_ = frame == 2;
+        draw(steps, 0, pacer, clock, driver, input, 0.0f, perf);
+    }
+    std::error_code missing;
+    if (!std::filesystem::exists(utf8_path(golden_->output), missing)) {
+        error = "no se ha podido guardar " + golden_->output;
+        return false;
+    }
+    return true;
+}
+
 void DriveDemo::load_settings() {
     settings_path_ = std::string(GetApplicationDirectory()) + std::string(kSettingsFileName);
     std::error_code missing;
@@ -505,7 +589,9 @@ void DriveDemo::reset() {
     if (world_->zone() != nullptr) {
         zone_draw_.build(*world_->zone(), blind_mode_);
     }
-    recording_.start(desc_, *world_, car_text_, recording_settings_text(settings_));
+    if (golden_ == nullptr) {
+        recording_.start(desc_, *world_, car_text_, recording_settings_text(settings_));
+    }
     shift_up_presses_ = 0;
     shift_down_presses_ = 0;
     reset_presses_ = 0;
@@ -746,7 +832,9 @@ float DriveDemo::step(const sim::SimInput& input) {
         return 0.0f;
     }
     world_->step(input);
-    recording_.record(input);
+    if (golden_ == nullptr) {
+        recording_.record(input);
+    }
     telemetry_history_.push(world_->telemetry());
     const std::uint16_t pressed = world_->controls().pressed;
     shift_up_presses_ += (pressed & sim::kButtonShiftUp) != 0 ? 1 : 0;
@@ -955,7 +1043,9 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
         if (graphs_.visible(blind_mode_) >= 0) {
             draw_telemetry_graphs(telemetry_history_, graphs_.visible(blind_mode_), overlay_);
         }
-        perf.set_audio(audio_->stats());
+        if (audio_) {
+            perf.set_audio(audio_->stats());
+        }
         perf.draw(pacer, clock, snap_, render_width(), render_height(), overlay_);
     }
     if (!recording_.error().empty()) {
@@ -964,7 +1054,11 @@ void DriveDemo::draw(const FrameSteps& steps, std::int64_t frame_ns, const Frame
     }
     overlay_.draw_messages();
     if (capture_requested_) {
-        save_screenshot();
+        if (golden_ != nullptr) {
+            save_screenshot_to(golden_->output);
+        } else {
+            save_screenshot();
+        }
         capture_requested_ = false;
     }
     perf.end_render();
@@ -1083,7 +1177,10 @@ void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
 
     line("DEPURACIÓN (F3)", kTitle);
     const Gamepads& pads = driver.gamepads();
-    if (pads.active_name() != nullptr) {
+    if (golden_ != nullptr) {
+        line("mando: (fijo en --golden)");
+        line("gatillos: (fijo en --golden)");
+    } else if (pads.active_name() != nullptr) {
         line_fit(TextFormat("mando: %s (%s)", pads.active_name(), pads.active_type()));
         line(TextFormat("gatillos: RT %s, LT %s   conectados: %d",
                         pads.active_throttle_digital() ? "digital" : "analógico",
@@ -1168,9 +1265,13 @@ void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
         line(TextFormat("carretera: %d pasadas   última: %s (%d recol.)   mejor sin recolocar: %s",
                         run.runs, lap_text(run.last_run).text, run.last_resets,
                         lap_text(run.best_clean).text));
-        line(TextFormat("suelo (CPU): %.2f ms   media %.2f ms   máx. %.2f ms",
-                        zone_draw_.last_cpu_ms(), zone_draw_.mean_cpu_ms(),
-                        zone_draw_.max_cpu_ms()));
+        if (golden_ != nullptr) {
+            line("suelo (CPU): (fijo en --golden)");
+        } else {
+            line(TextFormat("suelo (CPU): %.2f ms   media %.2f ms   máx. %.2f ms",
+                            zone_draw_.last_cpu_ms(), zone_draw_.mean_cpu_ms(),
+                            zone_draw_.max_cpu_ms()));
+        }
     }
 
     const char* view_name = zone_bench_   ? "medida del suelo"
@@ -1195,14 +1296,19 @@ void DriveDemo::draw_debug(const FrameSteps& steps, const FramePacer& pacer,
         pacer.target() == FrameTarget::MonitorRate ? "frecuencia del monitor" : "30 fps";
     line(
         TextFormat("ritmo: %s   sincronización vertical: %s", target, pacer.vsync() ? "sí" : "no"));
-    int actual_interval = 0;
-    const bool interval_known = SDL_GL_GetSwapInterval(&actual_interval);
-    line(TextFormat("monitor: %.2f Hz   intervalo pedido %d, real (SDL) %s", pacer.refresh_rate(),
-                    pacer.swap_interval(),
-                    interval_known ? TextFormat("%d", actual_interval) : "desconocido"));
-    line(!pacer.uses_timer()             ? "temporizador: no"
-         : pacer.high_resolution_timer() ? "temporizador: de alta resolución"
-                                         : "temporizador: de 1 ms");
+    if (golden_ != nullptr) {
+        line("monitor: (fijo en --golden)");
+        line("temporizador: (fijo en --golden)");
+    } else {
+        int actual_interval = 0;
+        const bool interval_known = SDL_GL_GetSwapInterval(&actual_interval);
+        line(TextFormat("monitor: %.2f Hz   intervalo pedido %d, real (SDL) %s",
+                        pacer.refresh_rate(), pacer.swap_interval(),
+                        interval_known ? TextFormat("%d", actual_interval) : "desconocido"));
+        line(!pacer.uses_timer()             ? "temporizador: no"
+             : pacer.high_resolution_timer() ? "temporizador: de alta resolución"
+                                             : "temporizador: de 1 ms");
+    }
     line(TextFormat("interpolación: %s   pantalla: %s", interpolate_ ? "sí" : "no",
                     IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes"
                                                                  : "ventana"));

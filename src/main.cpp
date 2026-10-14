@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
@@ -28,6 +29,58 @@ extern "C" {
 __declspec(dllexport) unsigned long AmdPowerXpressRequestHighPerformance = 1;
 __declspec(dllexport) unsigned long NvOptimusEnablement = 1;
 }
+
+namespace {
+
+bool parse_number(const char* text, std::uint64_t& value) {
+    const std::from_chars_result parsed = std::from_chars(text, text + std::strlen(text), value);
+    return parsed.ec == std::errc{} && *parsed.ptr == '\0';
+}
+
+// --golden <grabación> <paso> <salida.png> [--view eye|chase|fixed] [--help-page N] [--debug]
+// [--graphs N]. Vacío si no está; false en `ok` si está mal escrito.
+std::optional<rally::platform::GoldenFrame> parse_golden(int argc, char** argv, bool& ok) {
+    ok = true;
+    std::optional<rally::platform::GoldenFrame> golden;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--golden") == 0) {
+            if (i + 3 >= argc) {
+                ok = false;
+                return golden;
+            }
+            golden.emplace();
+            golden->recording = argv[i + 1];
+            ok = ok && parse_number(argv[i + 2], golden->step);
+            golden->output = argv[i + 3];
+            i += 3;
+        }
+    }
+    if (!golden) {
+        return golden;
+    }
+    for (int i = 1; i < argc; ++i) {
+        const bool has_value = i + 1 < argc;
+        std::uint64_t n = 0;
+        if (std::strcmp(argv[i], "--view") == 0 && has_value) {
+            const char* view = argv[++i];
+            golden->view = std::strcmp(view, "chase") == 0   ? 1
+                           : std::strcmp(view, "fixed") == 0 ? 2
+                                                             : 0;
+            ok = ok && (golden->view != 0 || std::strcmp(view, "eye") == 0);
+        } else if (std::strcmp(argv[i], "--help-page") == 0 && has_value) {
+            ok = ok && parse_number(argv[++i], n) && n >= 1;
+            golden->help_page = static_cast<int>(n) - 1;
+        } else if (std::strcmp(argv[i], "--graphs") == 0 && has_value) {
+            ok = ok && parse_number(argv[++i], n);
+            golden->graphs = static_cast<int>(n);
+        } else if (std::strcmp(argv[i], "--debug") == 0) {
+            golden->debug = true;
+        }
+    }
+    return golden;
+}
+
+} // namespace
 
 int main(int argc, char** argv) {
     if (!rally::sim::jolt_abi_matches()) {
@@ -47,6 +100,26 @@ int main(int argc, char** argv) {
     rally::platform::FramePacer pacer;
     rally::platform::FixedStepClock clock;
     rally::platform::PerfCounter perf;
+    // --golden: un fotograma de referencia de una grabación y fuera (tools/ci/golden.ps1).
+    // Errores por stderr y código 2: sin ventana de error que pare la comprobación.
+    bool golden_ok = true;
+    if (const std::optional<rally::platform::GoldenFrame> golden =
+            parse_golden(argc, argv, golden_ok);
+        golden || !golden_ok) {
+        std::string error = "uso: --golden <grabación> <paso> <salida.png> [--view "
+                            "eye|chase|fixed] [--help-page N] [--debug] [--graphs N]";
+        rally::io::Recording recording;
+        if (golden_ok &&
+            rally::platform::read_golden_recording(golden->recording, recording, error)) {
+            rally::platform::DriveDemo demo(*golden, recording);
+            const rally::platform::DriverInput driver;
+            if (demo.draw_golden(pacer, clock, driver, perf, error)) {
+                return 0;
+            }
+        }
+        std::fprintf(stderr, "--golden: %s\n", error.c_str());
+        return 2;
+    }
     // --car <archivo> antes de crear la demo; por defecto, el coche del repositorio.
     std::string car_path;
     for (int i = 1; i + 1 < argc; ++i) {

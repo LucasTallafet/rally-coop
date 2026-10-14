@@ -1,0 +1,16 @@
+# Capturas de referencia de rally.exe --golden (tarea P1a).
+#
+# Son una herramienta para reestructurar la plataforma sin cambiar lo que se ve, no una referencia
+# permanente: no entran en tools/ci/comprobar.ps1. Una tarea que cambie el dibujo, o la simulación
+# (kSimVersion), las cambia sin que eso sea un fallo. Para la próxima reestructuración: antes,
+# tools/ci/golden.ps1 -Regenerar sobre el código de partida; después, tools/ci/golden.ps1, que las
+# compara byte a byte. Solo valen en el mismo PC (gráfica y controlador).
+#
+# Formato: <archivo.png> | <argumentos de rally.exe>, con rutas relativas a la raíz del
+# repositorio. Las grabaciones de tests/data/recordings/ llevan tests/data/cars/reference.car, sin
+# [cockpit]: en ellas no hay interior. Las del interior usan una grabación de Lucas de la 2.7.
+ojo_zona.png | --golden tests/data/recordings/bench_lap.rrec 6000 {salida}
+persecucion_zona.png | --golden tests/data/recordings/bench_lap.rrec 6000 {salida} --view chase
+carretera.png | --golden tests/data/recordings/road_run.rrec 9300 {salida}
+interior_ayuda.png | --golden docs/manejo/sesiones/2026-10-14/20261014-165348.rrec 12000 {salida} --help-page 1
+interior_f3_t.png | --golden docs/manejo/sesiones/2026-10-14/20261014-165348.rrec 12000 {salida} --debug --graphs 1

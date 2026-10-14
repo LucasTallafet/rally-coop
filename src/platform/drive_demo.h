@@ -1,5 +1,6 @@
 #pragma once
 
+#include "io/recording.h"
 #include "platform/audio_output.h"
 #include "platform/car_feedback.h"
 #include "platform/cockpit.h"
@@ -59,12 +60,30 @@ struct FrameSteps;
 // Asiento: Re Pág / Av Pág, Inicio / Fin e Insert / Supr mueven el ojo del conductor 1 cm
 // (platform/seat); se guarda en ajustes.txt junto al exe (platform/player_settings) tras 0,5 s sin
 // cambios y al salir. Solo mueve la cámara del ojo.
+// --golden (tarea P1a): un fotograma de referencia sacado de una grabación, para comprobar que
+// una reestructuración no cambia el dibujo (tools/ci/golden.ps1, tests/platform/golden/).
+struct GoldenFrame {
+    std::string recording;  // .rrec (UTF-8)
+    std::uint64_t step = 0; // pasos simulados antes del fotograma
+    std::string output;     // .png (UTF-8)
+    int view = 0;           // Tab: 0 ojo del conductor, 1 persecución, 2 fija o toda la zona
+    int help_page = -1;     // H: página de la ayuda (-1 oculta)
+    bool debug = false;     // F3
+    int graphs = 0;         // T: veces pulsada (0: ocultas)
+};
+
+// Lee y comprueba la grabación de --golden; false con el motivo si no vale.
+bool read_golden_recording(const std::string& path, io::Recording& recording, std::string& error);
+
 class DriveDemo {
 public:
     // Necesita la ventana abierta (fija los planos de recorte de raylib). `car_path`: el archivo
     // del coche (--car o default_car_path()); si no se puede leer o tiene un error, aborta con
     // el motivo (RALLY_CHECK).
     explicit DriveDemo(std::string car_path);
+    // --golden: el mundo y el coche de la grabación, los ajustes por defecto (sin leer ni escribir
+    // ajustes.txt), sin audio y sin grabar la partida.
+    DriveDemo(const GoldenFrame& golden, const io::Recording& recording);
     ~DriveDemo();
     DriveDemo(const DriveDemo&) = delete;
     DriveDemo& operator=(const DriveDemo&) = delete;
@@ -127,6 +146,11 @@ public:
     void draw(const FrameSteps& steps, std::int64_t frame_ns, const FramePacer& pacer,
               const FixedStepClock& clock, const DriverInput& driver, const sim::SimInput& input,
               float frame_impact, PerfCounter& perf);
+
+    // --golden: simula la grabación hasta su paso, dibuja el fotograma con alpha 1 y lo guarda.
+    // false con el motivo si la grabación es más corta o no se puede guardar.
+    bool draw_golden(const FramePacer& pacer, const FixedStepClock& clock,
+                     const DriverInput& driver, PerfCounter& perf, std::string& error);
 
 private:
     // Termina la grabación del mundo actual y construye uno nuevo con su grabación.
@@ -239,6 +263,10 @@ private:
     int shift_up_presses_ = 0;
     int shift_down_presses_ = 0;
     int reset_presses_ = 0;
+    // --golden: la petición y su grabación (null en el juego). Las líneas del panel de depuración
+    // que miden la máquina (mando, monitor, temporizador, CPU del suelo) salen fijas.
+    const GoldenFrame* golden_ = nullptr;
+    const io::Recording* golden_recording_ = nullptr;
 };
 
 // Archivo del coche por defecto: data/cars/mid_awd_turbo.car, buscado desde la carpeta del exe
