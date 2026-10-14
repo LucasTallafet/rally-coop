@@ -1,5 +1,6 @@
 #include "platform/gamepad.h"
 
+#include "platform/drive_keys.h"
 #include "platform/keys.h"
 
 #include <SDL3/SDL_gamepad.h>
@@ -42,14 +43,14 @@ SDL_GamepadButton to_button(PadControl control) {
 }
 
 struct PadBindings {
-    SDL_GamepadAxis steer = to_axis(pad_for(Action::SteerLeft));
+    SDL_GamepadAxis steer = to_axis(pad_for(action(DriveAction::SteerLeft)));
     SDL_GamepadAxis vertical = SDL_GAMEPAD_AXIS_LEFTY; // solo para no tomarlo por dirección
-    SDL_GamepadAxis accelerate = to_axis(pad_for(Action::Throttle));
-    SDL_GamepadAxis brake = to_axis(pad_for(Action::Brake));
-    SDL_GamepadButton handbrake = to_button(pad_for(Action::Handbrake));
-    SDL_GamepadButton reset = to_button(pad_for(Action::Reset));
-    SDL_GamepadButton shift_down = to_button(pad_for(Action::ShiftDown));
-    SDL_GamepadButton shift_up = to_button(pad_for(Action::ShiftUp));
+    SDL_GamepadAxis accelerate = to_axis(pad_for(action(DriveAction::Throttle)));
+    SDL_GamepadAxis brake = to_axis(pad_for(action(DriveAction::Brake)));
+    SDL_GamepadButton handbrake = to_button(pad_for(action(DriveAction::Handbrake)));
+    SDL_GamepadButton reset = to_button(pad_for(action(DriveAction::Reset)));
+    SDL_GamepadButton shift_down = to_button(pad_for(action(DriveAction::ShiftDown)));
+    SDL_GamepadButton shift_up = to_button(pad_for(action(DriveAction::ShiftUp)));
 };
 const PadBindings kDriverPad{};
 

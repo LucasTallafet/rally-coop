@@ -30,58 +30,6 @@ __declspec(dllexport) unsigned long AmdPowerXpressRequestHighPerformance = 1;
 __declspec(dllexport) unsigned long NvOptimusEnablement = 1;
 }
 
-namespace {
-
-bool parse_number(const char* text, std::uint64_t& value) {
-    const std::from_chars_result parsed = std::from_chars(text, text + std::strlen(text), value);
-    return parsed.ec == std::errc{} && *parsed.ptr == '\0';
-}
-
-// --golden <grabación> <paso> <salida.png> [--view eye|chase|fixed] [--help-page N] [--debug]
-// [--graphs N]. Vacío si no está; false en `ok` si está mal escrito.
-std::optional<rally::platform::GoldenFrame> parse_golden(int argc, char** argv, bool& ok) {
-    ok = true;
-    std::optional<rally::platform::GoldenFrame> golden;
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--golden") == 0) {
-            if (i + 3 >= argc) {
-                ok = false;
-                return golden;
-            }
-            golden.emplace();
-            golden->recording = argv[i + 1];
-            ok = ok && parse_number(argv[i + 2], golden->step);
-            golden->output = argv[i + 3];
-            i += 3;
-        }
-    }
-    if (!golden) {
-        return golden;
-    }
-    for (int i = 1; i < argc; ++i) {
-        const bool has_value = i + 1 < argc;
-        std::uint64_t n = 0;
-        if (std::strcmp(argv[i], "--view") == 0 && has_value) {
-            const char* view = argv[++i];
-            golden->view = std::strcmp(view, "chase") == 0   ? 1
-                           : std::strcmp(view, "fixed") == 0 ? 2
-                                                             : 0;
-            ok = ok && (golden->view != 0 || std::strcmp(view, "eye") == 0);
-        } else if (std::strcmp(argv[i], "--help-page") == 0 && has_value) {
-            ok = ok && parse_number(argv[++i], n) && n >= 1;
-            golden->help_page = static_cast<int>(n) - 1;
-        } else if (std::strcmp(argv[i], "--graphs") == 0 && has_value) {
-            ok = ok && parse_number(argv[++i], n);
-            golden->graphs = static_cast<int>(n);
-        } else if (std::strcmp(argv[i], "--debug") == 0) {
-            golden->debug = true;
-        }
-    }
-    return golden;
-}
-
-} // namespace
-
 int main(int argc, char** argv) {
     if (!rally::sim::jolt_abi_matches()) {
         rally::platform::show_fatal_error(
@@ -104,7 +52,7 @@ int main(int argc, char** argv) {
     // Errores por stderr y código 2: sin ventana de error que pare la comprobación.
     bool golden_ok = true;
     if (const std::optional<rally::platform::GoldenFrame> golden =
-            parse_golden(argc, argv, golden_ok);
+            rally::platform::parse_golden_args(argc, argv, golden_ok);
         golden || !golden_ok) {
         std::string error = "uso: --golden <grabación> <paso> <salida.png> [--view "
                             "eye|chase|fixed] [--help-page N] [--debug] [--graphs N]";
@@ -189,8 +137,7 @@ int main(int argc, char** argv) {
         perf.record_steps(frame_ns, steps);
 
         window.handle_keys();
-        perf.handle_keys();
-        demo.handle_keys(pacer);
+        demo.handle_keys(pacer, perf);
         driver.set_mouse(demo.mouse_steering(), demo.mouse_full_lock_px(),
                          demo.mouse_capture_allowed());
         // La entrada se lee una vez por fotograma y vale para todos sus pasos.

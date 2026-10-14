@@ -1,5 +1,6 @@
 #include "platform/input.h"
 
+#include "platform/drive_keys.h"
 #include "platform/input_shaping.h"
 #include "platform/keys_raylib.h"
 
@@ -22,14 +23,14 @@ sim::SimInput DriverInput::read(int step_count) {
     // Teclas de la tabla (platform/keys). Los botones que actúan al pulsar recogen también una
     // pulsación que empieza y acaba dentro del fotograma.
     KeyboardState keys;
-    keys.left = action_down(Action::SteerLeft);
-    keys.right = action_down(Action::SteerRight);
-    keys.throttle = action_down(Action::Throttle);
-    keys.brake = action_down(Action::Brake);
-    keys.handbrake = action_down(Action::Handbrake);
-    keys.shift_down = action_down_or_pressed(Action::ShiftDown);
-    keys.shift_up = action_down_or_pressed(Action::ShiftUp);
-    keys.reset = action_down_or_pressed(Action::Reset);
+    keys.left = action_down(action(DriveAction::SteerLeft));
+    keys.right = action_down(action(DriveAction::SteerRight));
+    keys.throttle = action_down(action(DriveAction::Throttle));
+    keys.brake = action_down(action(DriveAction::Brake));
+    keys.handbrake = action_down(action(DriveAction::Handbrake));
+    keys.shift_down = action_down_or_pressed(action(DriveAction::ShiftDown));
+    keys.shift_up = action_down_or_pressed(action(DriveAction::ShiftUp));
+    keys.reset = action_down_or_pressed(action(DriveAction::Reset));
 
     update_mouse();
     sim::SimInput input =
@@ -66,7 +67,7 @@ void DriverInput::update_mouse() {
     } else {
         mouse_.move(dx, mouse_full_lock_px_);
     }
-    if (action_pressed(Action::RecenterWheel, kContextAll) ||
+    if (action_pressed(action(DriveAction::RecenterWheel), kContextAll) ||
         IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
         mouse_.recenter();
     }

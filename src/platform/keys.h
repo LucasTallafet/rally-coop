@@ -5,12 +5,16 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace rally::platform {
 
-// La única tabla de teclas del juego (sin menú de reasignación hasta los menús, fase 5). De ella
-// salen el mapeo del teclado y del mando, la ayuda en pantalla (H) y la tabla de
-// docs/07-entorno-y-portabilidad.md §8 (keys_markdown; un test la compara con el documento).
+// Teclas del juego (sin menú de reasignación hasta los menús, fase 5). Cada componente tiene su
+// tabla en su propio archivo (platform/drive_keys, platform/window_keys y las partes de la demo,
+// platform/demo_*_keys) y su enum de acciones; platform/key_tables las junta en una sola: de ella
+// salen la ayuda en pantalla (H) y la tabla de docs/07-entorno-y-portabilidad.md §8
+// (keys_markdown; un test la compara con el documento). Una tecla repetida en dos tablas en
+// contextos que se cruzan hace fallar un test (count_key_conflicts).
 // Sin raylib: Key lleva los valores de KeyboardKey de raylib, y platform/keys_raylib.cpp
 // comprueba cada uno con un static_assert sobre la misma lista.
 
@@ -98,63 +102,19 @@ enum class PadControl : std::uint8_t {
     RightShoulder,
 };
 
-enum class Action : std::uint8_t {
-    None,
-    // Conducir
-    Throttle,
-    Brake,
-    SteerLeft,
-    SteerRight,
-    Handbrake,
-    ShiftDown,
-    ShiftUp,
-    Reset,
-    RecenterWheel,
-    SteerAssist,
-    SteerDevice,
-    Gearbox,
-    // Cámara y asiento
-    Camera,
-    HeadMotion,
-    SeatUp,
-    SeatDown,
-    SeatForward,
-    SeatBack,
-    SeatRight,
-    SeatLeft,
-    // Zona
-    NextSurface,
-    NextTrial,
-    BlindMode,
-    RoadSurface,
-    ZoneStart,
-    // Grabación
-    Capture,
-    FrameLog,
-    // Depuración
-    DebugPanel,
-    Perf,
-    Graphs,
-    FarOrigin,
-    Forest,
-    WorldFloat,
-    FrameRate,
-    Vsync,
-    Interpolation,
-    Snap,
-    // General
-    Help,
-    Pause,
-    Volume,
-    ReloadCar,
-    NextCar,
-    ResetWorld,
-    ToggleArena,
-    Fullscreen,
-    Exit,
-    Count,
+// Una tecla de una tabla, sin Alt o con él.
+constexpr KeyChord chord(Key key, bool alt = false) { return KeyChord{key, alt}; }
+
+struct KeyTable;
+
+// Fila sin acción (la pareja de una fila que no la tiene).
+inline constexpr std::uint8_t kNoAction = 0xFF;
+
+// Una acción: su tabla y su índice en el enum de esa tabla (action() de cada componente).
+struct ActionRef {
+    const KeyTable* table = nullptr;
+    std::uint8_t index = kNoAction;
 };
-inline constexpr int kActionCount = static_cast<int>(Action::Count);
 
 // Contextos en los que vale una tecla. Solo uno está activo a la vez: la zona sin el modo a
 // ciegas, la zona a ciegas o el recinto. Una tecla puede repetirse solo en contextos disjuntos.
@@ -169,26 +129,42 @@ enum class KeyBlock : std::uint8_t { Drive, CameraSeat, Zone, Recording, Debug, 
 inline constexpr int kKeyBlockCount = static_cast<int>(KeyBlock::Count);
 std::string_view key_block_name(KeyBlock block);
 
-// Una fila de la tabla. Las acciones en pareja (girar, asiento) van en una sola fila: `action`
-// con `keys` y `pair_action` con `pair_keys` (la tecla i de cada una forma la pareja i).
+// Una fila de una tabla. Las acciones en pareja (girar, asiento) van en una sola fila: `action`
+// con `keys` y `pair_action` con `pair_keys` (la tecla i de cada una forma la pareja i). Las
+// acciones son índices del enum de la tabla de la fila.
 struct KeyBinding {
-    Action action = Action::None;
+    std::uint8_t action = kNoAction;
     std::array<KeyChord, 2> keys{};
-    Action pair_action = Action::None;
+    std::uint8_t pair_action = kNoAction;
     std::array<KeyChord, 2> pair_keys{};
     PadControl pad = PadControl::None;
     std::uint8_t contexts = kContextAll;
     KeyBlock block = KeyBlock::General;
-    const char* text = "";   // corto: la ayuda y la columna Acción
-    const char* detail = ""; // solo en el documento, detrás de text y ": "
+    std::uint16_t order = 0;         // puesto en el bloque, en la ayuda y en el documento
+    const char* text = "";           // corto: la ayuda y la columna Acción
+    const char* detail = "";         // solo en el documento, detrás de text y ": "
+    const KeyTable* table = nullptr; // la de la fila; la pone join_key_tables
 };
 
+// La tabla de un componente: sus filas y cuántas acciones tiene su enum (cada una, en una fila).
+struct KeyTable {
+    const char* name = "";
+    std::span<const KeyBinding> rows;
+    std::uint8_t action_count = 0;
+};
+
+// Junta tablas en una: cada fila con su tabla, ordenadas por bloque y por `order` (las de igual
+// bloque y orden, en el orden de las tablas).
+std::vector<KeyBinding> join_key_tables(std::span<const KeyTable* const> tables);
+
+// La tabla de todo el juego: las de platform/key_tables, juntas (se construye la primera vez).
 std::span<const KeyBinding> key_table();
 
 // Teclas, mando y contextos de una acción (en la fila de su pareja, si la tiene).
-std::array<KeyChord, 2> chords_for(Action action, std::span<const KeyBinding> table = key_table());
-PadControl pad_for(Action action, std::span<const KeyBinding> table = key_table());
-std::uint8_t contexts_for(Action action, std::span<const KeyBinding> table = key_table());
+std::array<KeyChord, 2> chords_for(ActionRef action,
+                                   std::span<const KeyBinding> table = key_table());
+PadControl pad_for(ActionRef action, std::span<const KeyBinding> table = key_table());
+std::uint8_t contexts_for(ActionRef action, std::span<const KeyBinding> table = key_table());
 
 // Pares de (tecla con Alt o sin él) repetidos en contextos que se cruzan.
 int count_key_conflicts(std::span<const KeyBinding> table);

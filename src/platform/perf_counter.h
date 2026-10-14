@@ -30,7 +30,6 @@ public:
     // Necesita la ventana abierta (instala el contador de draw calls y crea las consultas).
     PerfCounter();
 
-    void handle_keys(); // F1 lo enseña u oculta
     bool visible() const { return visible_; }
     void set_visible(bool visible) { visible_ = visible; }
 

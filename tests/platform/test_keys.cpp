@@ -1,5 +1,10 @@
+#include "platform/demo_camera_keys.h"
+#include "platform/demo_zone_modes_keys.h"
+#include "platform/drive_keys.h"
+#include "platform/key_tables.h"
 #include "platform/keys.h"
 #include "platform/ui_text.h"
+#include "platform/window_keys.h"
 
 #include <doctest/doctest.h>
 
@@ -8,7 +13,7 @@
 #include <sstream>
 #include <string>
 
-using rally::platform::Action;
+using rally::platform::ActionRef;
 using rally::platform::count_key_conflicts;
 using rally::platform::Key;
 using rally::platform::KeyBinding;
@@ -18,7 +23,7 @@ using rally::platform::PadControl;
 
 namespace {
 
-KeyBinding row(Action action, KeyChord a, KeyChord b, std::uint8_t contexts) {
+KeyBinding row(std::uint8_t action, KeyChord a, KeyChord b, std::uint8_t contexts) {
     KeyBinding binding;
     binding.action = action;
     binding.keys = {a, b};
@@ -60,54 +65,88 @@ TEST_CASE("keys: no key is repeated within a context") {
 
 TEST_CASE("keys: G is shared only by contexts that are never active together") {
     // G: superficie en la zona y siguiente prueba a ciegas.
-    CHECK(rally::platform::chords_for(Action::NextSurface)[0].key == Key::G);
-    CHECK(rally::platform::chords_for(Action::NextTrial)[0].key == Key::G);
-    CHECK((rally::platform::contexts_for(Action::NextSurface) &
-           rally::platform::contexts_for(Action::NextTrial)) == 0);
+    using rally::platform::action;
+    using rally::platform::ZoneModeAction;
+    CHECK(rally::platform::chords_for(action(ZoneModeAction::NextSurface))[0].key == Key::G);
+    CHECK(rally::platform::chords_for(action(ZoneModeAction::NextTrial))[0].key == Key::G);
+    CHECK((rally::platform::contexts_for(action(ZoneModeAction::NextSurface)) &
+           rally::platform::contexts_for(action(ZoneModeAction::NextTrial))) == 0);
 }
 
 TEST_CASE("keys: a repeated key in overlapping contexts is a conflict") {
     using namespace rally::platform;
-    const std::array clash = {row(Action::Pause, plain(Key::P), {}, kContextAll),
-                              row(Action::Capture, plain(Key::P), {}, kContextArena)};
+    const std::array clash = {row(0, plain(Key::P), {}, kContextAll),
+                              row(1, plain(Key::P), {}, kContextArena)};
     CHECK(count_key_conflicts(clash) == 1);
-    const std::array apart = {row(Action::NextSurface, plain(Key::G), {}, kContextZone),
-                              row(Action::NextTrial, plain(Key::G), {}, kContextBlind)};
+    const std::array apart = {row(0, plain(Key::G), {}, kContextZone),
+                              row(1, plain(Key::G), {}, kContextBlind)};
     CHECK(count_key_conflicts(apart) == 0);
 }
 
 TEST_CASE("keys: Enter and Alt+Enter are different keys") {
     using namespace rally::platform;
-    const std::array both = {
-        row(Action::Fullscreen, plain(Key::F11), with_alt(Key::Enter), kContextAll),
-        row(Action::Pause, plain(Key::Enter), {}, kContextAll)};
+    const std::array both = {row(0, plain(Key::F11), with_alt(Key::Enter), kContextAll),
+                             row(1, plain(Key::Enter), {}, kContextAll)};
     CHECK(count_key_conflicts(both) == 0);
-    const std::array twice = {
-        row(Action::Fullscreen, plain(Key::F11), with_alt(Key::Enter), kContextAll),
-        row(Action::Pause, with_alt(Key::Enter), {}, kContextZone)};
+    const std::array twice = {row(0, plain(Key::F11), with_alt(Key::Enter), kContextAll),
+                              row(1, with_alt(Key::Enter), {}, kContextZone)};
     CHECK(count_key_conflicts(twice) == 1);
 }
 
 TEST_CASE("keys: every action has exactly one row") {
-    std::array<int, rally::platform::kActionCount> seen{};
-    for (const KeyBinding& b : rally::platform::key_table()) {
-        ++seen[static_cast<std::size_t>(b.action)];
-        if (b.pair_action != Action::None) {
-            ++seen[static_cast<std::size_t>(b.pair_action)];
+    // En cada tabla, cada acción de su enum en una fila (como acción o como pareja) y con tecla.
+    using namespace rally::platform;
+    for (const KeyTable* t : key_tables()) {
+        INFO("tabla ", t->name);
+        std::array<int, 256> seen{};
+        for (const KeyBinding& b : key_table()) {
+            if (b.table != t) {
+                continue;
+            }
+            REQUIRE(b.action != kNoAction);
+            ++seen[b.action];
+            if (b.pair_action != kNoAction) {
+                ++seen[b.pair_action];
+            }
+        }
+        for (int a = 0; a < 256; ++a) {
+            INFO("acción ", a);
+            CHECK(seen[static_cast<std::size_t>(a)] == (a < t->action_count ? 1 : 0));
+            if (a < t->action_count) {
+                CHECK(chords_for(ActionRef{t, static_cast<std::uint8_t>(a)})[0].key != Key::None);
+            }
         }
     }
-    CHECK(seen[static_cast<std::size_t>(Action::None)] == 0);
-    for (int a = 1; a < rally::platform::kActionCount; ++a) {
-        INFO("acción ", a);
-        CHECK(seen[static_cast<std::size_t>(a)] == 1);
-        CHECK(rally::platform::chords_for(static_cast<Action>(a))[0].key != Key::None);
+    // Todas las filas de todas las tablas están en la junta.
+    std::size_t rows = 0;
+    for (const KeyTable* t : key_tables()) {
+        rows += t->rows.size();
     }
+    CHECK(key_table().size() == rows);
+}
+
+TEST_CASE("keys: a key repeated in two component tables is a conflict") {
+    // Las tablas de los componentes se escriben por separado: la junta es la que ve el choque.
+    using namespace rally::platform;
+    const std::array<KeyBinding, 1> a_rows = {row(0, plain(Key::P), {}, kContextAll)};
+    const std::array<KeyBinding, 1> b_rows = {row(0, plain(Key::P), {}, kContextZone)};
+    const std::array<KeyBinding, 1> c_rows = {row(0, plain(Key::K), {}, kContextAll)};
+    const KeyTable a{"a", a_rows, 1};
+    const KeyTable b{"b", b_rows, 1};
+    const KeyTable c{"c", c_rows, 1};
+    const std::array<const KeyTable*, 2> clash = {&a, &b};
+    CHECK(count_key_conflicts(join_key_tables(clash)) == 1);
+    const std::array<const KeyTable*, 2> apart = {&a, &c};
+    CHECK(count_key_conflicts(join_key_tables(apart)) == 0);
 }
 
 TEST_CASE("keys: the seat has no gamepad control") {
-    for (const Action a : {Action::SeatUp, Action::SeatDown, Action::SeatForward, Action::SeatBack,
-                           Action::SeatRight, Action::SeatLeft}) {
-        CHECK(rally::platform::pad_for(a) == PadControl::None);
+    using rally::platform::action;
+    using rally::platform::CameraAction;
+    for (const CameraAction a :
+         {CameraAction::SeatUp, CameraAction::SeatDown, CameraAction::SeatForward,
+          CameraAction::SeatBack, CameraAction::SeatRight, CameraAction::SeatLeft}) {
+        CHECK(rally::platform::pad_for(action(a)) == PadControl::None);
     }
 }
 
@@ -128,13 +167,14 @@ TEST_CASE("keys: every label and text is drawable with the default font") {
 TEST_CASE("keys: pair rows join their keys") {
     using namespace rally::platform;
     for (const KeyBinding& b : key_table()) {
-        if (b.action == Action::SteerLeft) {
+        const ActionRef ref{b.table, b.action};
+        const ActionRef steer = action(DriveAction::SteerLeft);
+        const ActionRef fullscreen = action(WindowAction::Fullscreen);
+        if (ref.table == steer.table && ref.index == steer.index) {
             CHECK(binding_label_doc(b) == "A/D o Izquierda/Derecha · stick izquierdo");
-        }
-        if (b.action == Action::SteerLeft) {
             CHECK(binding_label_short(b) == "A/D o Izq./Der. · stick izq.");
         }
-        if (b.action == Action::Fullscreen) {
+        if (ref.table == fullscreen.table && ref.index == fullscreen.index) {
             CHECK(keys_text(b) == "F11 o Alt+Intro");
         }
     }

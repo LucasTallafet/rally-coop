@@ -3,7 +3,6 @@
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_graph.h"
 #include "platform/frame_pacer.h"
-#include "platform/keys_raylib.h"
 #include "platform/overlay.h"
 
 #include <raylib.h>
@@ -48,12 +47,6 @@ void draw_ms_row(Overlay& overlay, const char* label, const PerfChannel& channel
 } // namespace
 
 PerfCounter::PerfCounter() : renderer_(gl_renderer()) { refresh_memory(); }
-
-void PerfCounter::handle_keys() {
-    if (action_pressed(Action::Perf)) {
-        visible_ = !visible_;
-    }
-}
 
 void PerfCounter::refresh_memory() { memory_ = query_process_memory(); }
 

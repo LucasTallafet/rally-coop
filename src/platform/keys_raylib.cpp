@@ -16,7 +16,7 @@ RALLY_KEYS(RALLY_KEY_CHECK)
 bool alt_down() { return IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT); }
 
 template <typename Test>
-bool any_chord(Action action, std::uint8_t context, Test test) {
+bool any_chord(ActionRef action, std::uint8_t context, Test test) {
     if ((contexts_for(action) & context) == 0) {
         return false;
     }
@@ -32,14 +32,14 @@ bool any_chord(Action action, std::uint8_t context, Test test) {
 
 int raylib_key(Key key) { return static_cast<int>(key); }
 
-bool action_pressed(Action action, std::uint8_t context) {
+bool action_pressed(ActionRef action, std::uint8_t context) {
     const bool alt = alt_down();
     return any_chord(action, context, [alt](const KeyChord& chord) {
         return chord.alt == alt && IsKeyPressed(raylib_key(chord.key));
     });
 }
 
-bool action_pressed_repeat(Action action, std::uint8_t context) {
+bool action_pressed_repeat(ActionRef action, std::uint8_t context) {
     const bool alt = alt_down();
     return any_chord(action, context, [alt](const KeyChord& chord) {
         const int key = raylib_key(chord.key);
@@ -47,12 +47,12 @@ bool action_pressed_repeat(Action action, std::uint8_t context) {
     });
 }
 
-bool action_down(Action action) {
+bool action_down(ActionRef action) {
     return any_chord(action, kContextAll,
                      [](const KeyChord& chord) { return IsKeyDown(raylib_key(chord.key)); });
 }
 
-bool action_down_or_pressed(Action action) {
+bool action_down_or_pressed(ActionRef action) {
     return any_chord(action, kContextAll, [](const KeyChord& chord) {
         const int key = raylib_key(chord.key);
         return IsKeyDown(key) || IsKeyPressed(key);

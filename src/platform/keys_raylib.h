@@ -13,12 +13,12 @@ namespace rally::platform {
 int raylib_key(Key key);
 
 // Pulsada en este fotograma (sin Alt, si la tecla de la tabla no lo lleva).
-bool action_pressed(Action action, std::uint8_t context = kContextAll);
+bool action_pressed(ActionRef action, std::uint8_t context = kContextAll);
 // Pulsada o repetida por el teclado al mantenerla (asiento).
-bool action_pressed_repeat(Action action, std::uint8_t context = kContextAll);
+bool action_pressed_repeat(ActionRef action, std::uint8_t context = kContextAll);
 // Mantenida (conducir), sin mirar Alt.
-bool action_down(Action action);
+bool action_down(ActionRef action);
 // Mantenida o pulsada y soltada dentro del fotograma (botones que actúan al pulsar).
-bool action_down_or_pressed(Action action);
+bool action_down_or_pressed(ActionRef action);
 
 } // namespace rally::platform
