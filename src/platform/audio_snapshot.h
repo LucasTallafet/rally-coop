@@ -34,6 +34,7 @@ struct AudioSnapshot {
     // Del último paso.
     float rpm = 0.0f;
     float engine_throttle = 0.0f; // acelerador efectivo (ralentí y corte del cambio incluidos)
+    float torque_load = 0.0f;     // par del motor / par pleno a esas rpm (engine_torque_load)
     float throttle = 0.0f;        // pedal aplicado (el rebote del limitador)
     float boost_bar = 0.0f;
     float speed = 0.0f; // m/s

@@ -1,8 +1,11 @@
 // Sonido sintético y su instantánea entre hilos (tarea 2.7).
 
+#include "car_worlds.h"
 #include "new_counter.h"
 #include "platform/audio_snapshot.h"
+#include "platform/car_feedback.h"
 #include "platform/car_synth.h"
+#include "sim/drivetrain.h"
 #include "sim/surface.h"
 
 #include <doctest/doctest.h>
@@ -14,6 +17,7 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using rally::platform::AudioSnapshot;
@@ -37,6 +41,7 @@ AudioSnapshot driving(Surface surface, bool blind, float speed) {
     s.boost_max_bar = 1.2f;
     s.rpm = 5000.0f;
     s.engine_throttle = 0.8f;
+    s.torque_load = 0.6f;
     s.throttle = 0.8f;
     s.boost_bar = 0.9f;
     s.speed = speed;
@@ -178,14 +183,44 @@ TEST_CASE("car_synth: in blind mode rolling, skid and stones sound the same on e
     CHECK(g != a);
 }
 
+TEST_CASE("car_synth: at full throttle the engine sounds fuller with boost") {
+    // Parada de la 2.7: sin silbido, la presión se oye en la carga del motor (0,3·acelerador
+    // efectivo + 0,7·par / par pleno). A 4500 rpm y a fondo, con el par de la simulación (coche de
+    // referencia) sin presión y con la presión máxima: el RMS del motor sube al menos 1,4 veces
+    // (+3 dB). Misma semilla: un sintetizador nuevo para cada medida.
+    const rally::sim::CarData& car = rally::tests::reference_car();
+    const float omega = 4500.0f * 3.14159265f / 30.0f;
+    const auto engine_rms = [&](float boost_pa) {
+        AudioSnapshot s = driving(Surface::Asphalt, false, 0.0f);
+        s.rpm = 4500.0f;
+        s.engine_throttle = 1.0f;
+        s.throttle = 1.0f;
+        s.boost_bar = boost_pa * 1.0e-5f;
+        s.torque_load = rally::platform::engine_torque_load(
+            rally::sim::engine_torque(car, omega, 1.0f, boost_pa), omega, car);
+        auto synth = std::make_unique<CarSynth>();
+        std::vector<float> out(kRate);
+        synth->render(out.data(), static_cast<int>(out.size()), s, rally::platform::kBusEngine);
+        return std::pair{rms(out), s.torque_load};
+    };
+    const auto [without, load_without] = engine_rms(0.0f);
+    const auto [with, load_with] = engine_rms(car.boost_max);
+    MESSAGE("motor a 4500 rpm a fondo: carga del par ", load_without, " → ", load_with, "; RMS ",
+            without, " → ", with, " (×", with / without, ")");
+    CHECK(load_with == doctest::Approx(1.0).epsilon(1e-4));
+    CHECK(with >= 1.4 * without);
+}
+
 TEST_CASE("car_synth: the engine follows the load and silences when paused") {
     auto synth = std::make_unique<CarSynth>();
     std::vector<float> out(kRate / 2);
     AudioSnapshot s = driving(Surface::Asphalt, false, 0.0f);
     s.engine_throttle = 1.0f;
+    s.torque_load = 1.0f;
     synth->render(out.data(), static_cast<int>(out.size()), s, rally::platform::kBusEngine);
     const double loud = rms(out);
     s.engine_throttle = 0.0f;
+    s.torque_load = 0.0f;
     synth->render(out.data(), static_cast<int>(out.size()), s, rally::platform::kBusEngine);
     const double quiet = rms(out);
     MESSAGE("motor a 5000 rpm: RMS con carga ", loud, ", sin carga ", quiet);

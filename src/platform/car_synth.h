@@ -18,10 +18,13 @@ namespace rally::platform {
 // Capas:
 // - Motor: parciales en órdenes de 0,5 del giro del cigüeñal hasta 3 × el de encendido
 //   (cylinders / 2); los de encendido pesan 1; 0,5; 0,25 y los de media en media, menos (sin
-//   ellos el 5 cilindros sonaría como un 4 más agudo). Amplitud y brillo según la carga
-//   (acelerador efectivo), más ruido filtrado. Rebote del limitador: dentro de su rampa y con el
-//   pedal pisado, corte periódico a kLimiterBounceHz.
-// - Turbo: silbido según la presión; soplido de la válvula (contador `blowoffs`).
+//   ellos el 5 cilindros sonaría como un 4 más agudo). Amplitud y brillo según la carga, más
+//   ruido filtrado. Carga = 0,3·acelerador efectivo + 0,7·par / par pleno (kLoadThrottleShare):
+//   a fondo sin presión queda en ~0,6 y con la presión plena llega a ~1, así que la presión se
+//   oye en el motor; el corte del cambio también, porque caen los dos términos. Rebote del
+//   limitador: dentro de su rampa y con el pedal pisado, corte periódico a kLimiterBounceHz.
+// - Turbo: soplido de la válvula (contador `blowoffs`). Sin silbido hasta la fase 6 (sonido
+//   grabado): el sintético «no está muy conseguido» (parada de la 2.7).
 // - Rodadura: ruido filtrado por superficie y velocidad, por ruedas en el suelo.
 // - Deslizamiento: chirrido tonal en asfalto y arrastre de ruido en las sueltas.
 // - Piedras: chasquidos aleatorios en las ruedas sobre grava, más con la velocidad.
@@ -36,6 +39,8 @@ inline constexpr float kSynthSampleRate = 48000.0f;
 inline constexpr float kSynthSmoothSeconds = 0.015f; // suavizado de los parámetros
 inline constexpr float kSynthFadeSeconds = 0.010f;   // pausa: fundido a silencio
 inline constexpr float kLimiterBounceHz = 15.0f;
+// Parte del acelerador efectivo en la carga del motor; el resto es par / par pleno.
+inline constexpr float kLoadThrottleShare = 0.3f;
 
 // Capas, para los tests (CarSynth::render con una máscara).
 enum SynthBus : unsigned {
@@ -107,7 +112,7 @@ private:
 
     float smooth_a_ = 0.0f;
     float fade_a_ = 0.0f;
-    Smoothed rpm_, load_, pedal_, boost_, speed_, gate_;
+    Smoothed rpm_, load_, pedal_, speed_, gate_;
     std::array<Smoothed, kProfiles> rolling_{}; // fracción de ruedas en el suelo por perfil
     Smoothed skid_tonal_, skid_noise_, gravel_;
     float pause_gain_ = 0.0f;
@@ -120,8 +125,7 @@ private:
     double limiter_phase_ = 0.0;
     OnePole engine_noise_filter_;
     sim::Pcg32 engine_rng_{0x2a7e, 1};
-    // Turbo y soplido.
-    double whistle_phase_ = 0.0;
+    // Soplido de la válvula.
     Svf blowoff_filter_;
     float blowoff_env_ = 0.0f;
     sim::Pcg32 turbo_rng_{0x2a7e, 2};

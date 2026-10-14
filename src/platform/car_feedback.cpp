@@ -20,6 +20,31 @@ double dot(const Vec3d& a, const Vec3d& b) { return a.x * b.x + a.y * b.y + a.z 
 
 } // namespace
 
+float engine_torque_load(float engine_torque, float engine_omega, const sim::CarData& car) {
+    const int n = car.torque_points;
+    if (n <= 0) {
+        return 0.0f;
+    }
+    // Curva sin presión a estas rpm (lineal entre puntos, plana fuera).
+    float atm = car.torque_atm[0];
+    if (engine_omega >= car.torque_speed[static_cast<std::size_t>(n - 1)]) {
+        atm = car.torque_atm[static_cast<std::size_t>(n - 1)];
+    } else {
+        for (int i = 1; i < n; ++i) {
+            const auto k = static_cast<std::size_t>(i);
+            if (engine_omega <= car.torque_speed[k]) {
+                const float t = std::clamp((engine_omega - car.torque_speed[k - 1]) /
+                                               (car.torque_speed[k] - car.torque_speed[k - 1]),
+                                           0.0f, 1.0f);
+                atm = car.torque_atm[k - 1] + (car.torque_atm[k] - car.torque_atm[k - 1]) * t;
+                break;
+            }
+        }
+    }
+    const float full = atm * (1.0f + car.boost_gain * car.boost_max) * car.torque_scale;
+    return full > 0.0f ? std::clamp(std::max(0.0f, engine_torque) / full, 0.0f, 1.0f) : 0.0f;
+}
+
 void CarFeedback::rebuild(const sim::CarData& car) {
     car_ = &car;
     head_.reset();
@@ -143,6 +168,8 @@ void CarFeedback::fill(AudioSnapshot& s) const {
     s.active = car_ != nullptr && !first_step_;
     s.rpm = last_.engine_omega * kRadPerSecToRpm;
     s.engine_throttle = last_.engine_throttle;
+    s.torque_load =
+        car_ != nullptr ? engine_torque_load(last_.engine_torque, last_.engine_omega, *car_) : 0.0f;
     s.throttle = last_.throttle;
     s.boost_bar = last_.boost / kPaPerBar;
     s.speed = last_.speed;

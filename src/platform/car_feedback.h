@@ -25,6 +25,11 @@ namespace rally::platform {
 //   baja de kBlowoffBelow con más de kBlowoffBoostBar de presión; se vuelve a armar cuando el pedal
 //   pasa de kBlowoffRearm) e impacto (sim::SimWorld::last_impact pasa de kImpactThreshold).
 
+// Carga del par para el sonido: clamp(max(0, par neto) / par pleno; 0; 1), con el par pleno de
+// la curva [engine.torque] a esas rpm × (1 + boost_gain × boost_max) × torque_scale. Con la
+// presión plena y el acelerador a fondo se acerca a 1; sin presión, a 1 / (1 + g·p_max).
+float engine_torque_load(float engine_torque, float engine_omega, const sim::CarData& car);
+
 inline constexpr float kBlowoffBelow = 0.2f;
 inline constexpr float kBlowoffRearm = 0.5f;
 inline constexpr float kBlowoffBoostBar = 0.3f;

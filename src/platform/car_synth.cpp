@@ -76,7 +76,7 @@ void CarSynth::reset() {
     started_ = false;
     generation_ = 0;
     shifts_ = blowoffs_ = impacts_ = 0;
-    rpm_ = load_ = pedal_ = boost_ = speed_ = Smoothed{};
+    rpm_ = load_ = pedal_ = speed_ = Smoothed{};
     gate_ = Smoothed{1.0f, 1.0f};
     rolling_ = {};
     skid_tonal_ = skid_noise_ = gravel_ = Smoothed{};
@@ -88,7 +88,6 @@ void CarSynth::reset() {
     limiter_phase_ = 0.0;
     engine_noise_filter_ = {};
     engine_rng_.seed(kSeed, 1);
-    whistle_phase_ = 0.0;
     blowoff_filter_ = {};
     blowoff_filter_.tune(1800.0f, 0.7f);
     blowoff_env_ = 0.0f;
@@ -131,10 +130,9 @@ float CarSynth::sine(double phase) const {
 
 void CarSynth::set_targets(const AudioSnapshot& s) {
     rpm_.target = s.rpm;
-    load_.target = std::clamp(s.engine_throttle, 0.0f, 1.0f);
+    load_.target = kLoadThrottleShare * std::clamp(s.engine_throttle, 0.0f, 1.0f) +
+                   (1.0f - kLoadThrottleShare) * std::clamp(s.torque_load, 0.0f, 1.0f);
     pedal_.target = std::clamp(s.throttle, 0.0f, 1.0f);
-    boost_.target =
-        s.boost_max_bar > 0.0f ? std::clamp(s.boost_bar / s.boost_max_bar, 0.0f, 1.2f) : 0.0f;
     speed_.target = s.speed;
     std::array<float, kProfiles> rolling{};
     float tonal = 0.0f;
@@ -192,8 +190,7 @@ void CarSynth::set_targets(const AudioSnapshot& s) {
 }
 
 void CarSynth::jump_to_targets() {
-    for (Smoothed* p :
-         {&rpm_, &load_, &pedal_, &boost_, &speed_, &skid_tonal_, &skid_noise_, &gravel_}) {
+    for (Smoothed* p : {&rpm_, &load_, &pedal_, &speed_, &skid_tonal_, &skid_noise_, &gravel_}) {
         p->value = p->target;
     }
     for (Smoothed& r : rolling_) {
@@ -264,7 +261,6 @@ void CarSynth::render(float* out, int frames, const AudioSnapshot& s, unsigned b
         approach(rpm_.value, rpm_.target, a);
         approach(load_.value, load_.target, a);
         approach(pedal_.value, pedal_.target, a);
-        approach(boost_.value, boost_.target, a);
         approach(speed_.value, speed_.target, a);
         approach(skid_tonal_.value, skid_tonal_.target, a);
         approach(skid_noise_.value, skid_noise_.target, a);
@@ -304,14 +300,6 @@ void CarSynth::render(float* out, int frames, const AudioSnapshot& s, unsigned b
                       (0.28f * (0.35f + 0.65f * load) * tone + 0.08f * (0.2f + load) * hiss);
         }
         if ((buses & kBusTurbo) != 0) {
-            const float b = boost_.value;
-            if (s.boost_max_bar > 0.0f) {
-                whistle_phase_ += (2500.0 + 5500.0 * b) / kSynthSampleRate;
-                if (whistle_phase_ >= 1.0) {
-                    whistle_phase_ -= std::floor(whistle_phase_);
-                }
-                sample += 0.035f * b * b * (0.4f + 0.6f * load) * sine(whistle_phase_);
-            }
             if (blowoff_env_ > 1e-4f) {
                 sample += blowoff_env_ * blowoff_filter_.step(noise(turbo_rng_));
                 blowoff_env_ *= blowoff_decay_;
