@@ -1,0 +1,84 @@
+{
+  "_leeme": "Dueños de las rutas del repositorio (docs/09-agentes.md §4). Lo usan el hook de rutas (.claude/hooks/rutas.py) y tools/ci/propiedad.ps1. Rutas relativas a la raíz de la copia, con / y sin distinguir mayúsculas. 'carpeta/**' es todo lo que hay debajo; '*' no cruza '/'. Solo lo cambia el consultor.",
+  "duenos": {
+    "sim": [
+      "src/sim/**",
+      "src/gen/**",
+      "data/cars/**",
+      "tests/sim/**",
+      "tests/data/cars/**",
+      "tests/data/recordings/**",
+      ".claude/rules/simulacion.md"
+    ],
+    "plataforma": [
+      "src/platform/**",
+      "src/main.cpp",
+      "data/**",
+      "tests/platform/**",
+      "tests/data/frames_rx580_60hz.txt"
+    ],
+    "juego": [
+      "src/game/**",
+      "src/net/**",
+      "src/io/**",
+      "tests/io/**",
+      "tests/game/**",
+      "tests/data/recordings/**"
+    ],
+    "herramientas": [
+      "tools/**",
+      "tests/tools/**"
+    ],
+    "integrador": [
+      "CMakeLists.txt",
+      "src/CMakeLists.txt",
+      "tests/CMakeLists.txt",
+      "tests/common/**",
+      "cmake/**",
+      "CMakePresets.json",
+      "docs/progreso.md",
+      "docs/02-arquitectura.md",
+      "docs/07-entorno-y-portabilidad.md",
+      "docs/08-bitacora-de-desarrollo.md",
+      ".clang-format",
+      ".gitignore",
+      "README.md",
+      "docs/manejo/**"
+    ],
+    "consultor": [
+      "docs/01-diseno-de-juego.md",
+      "docs/03-requisitos.md",
+      "docs/04-plan-de-fases.md",
+      "docs/05-decisiones.md",
+      "docs/06-guia-claude-code.md",
+      "docs/09-agentes.md",
+      "docs/agentes/**",
+      "docs/prompts/**",
+      "docs/progreso/README.md",
+      "CLAUDE.md",
+      "proyecto-claude/**",
+      ".claude/**",
+      "tools/ci/**",
+      "tests/ci/**"
+    ]
+  },
+  "excepto": {
+    "plataforma": ["data/cars/**"],
+    "herramientas": ["tools/ci/**"],
+    "consultor": [".claude/rules/simulacion.md"]
+  },
+  "compartidas": ["tests/data/recordings/**"],
+  "barreras": [".claude/**", "tools/ci/**", "tests/ci/**"],
+  "fragmentos": "docs/progreso/*.md",
+  "carriles": ["sim", "plataforma", "juego", "herramientas"],
+  "agentes": {
+    "carril-sim": "sim",
+    "carril-plataforma": "plataforma",
+    "carril-juego": "juego",
+    "carril-herramientas": "herramientas",
+    "integrador": "integrador",
+    "verificador": "verificador",
+    "revisor-diseno": "solo-lectura",
+    "revisor-determinismo": "solo-lectura"
+  }
+}

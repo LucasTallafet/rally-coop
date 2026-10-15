@@ -1,0 +1,111 @@
+{
+  "worktree": {
+    "baseRef": "head"
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cmake *)",
+      "Bash(ctest *)",
+      "Bash(clang-format *)",
+      "Bash(python tools/*)",
+      "Bash(python tests/*)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git switch *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git merge-base *)",
+      "Bash(git reset *)",
+      "Bash(git restore *)",
+      "Bash(git rm *)",
+      "Bash(git mv *)",
+      "Bash(git stash *)",
+      "Bash(git worktree *)",
+      "Bash(git rev-parse *)",
+      "Bash(git ls-files *)",
+      "Bash(git fetch *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git tag *)",
+      "Bash(powershell -ExecutionPolicy Bypass -File tools/ci/*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File tools/ci/*)",
+      "PowerShell(cmake *)",
+      "PowerShell(ctest *)",
+      "PowerShell(clang-format *)",
+      "PowerShell(python tools/*)",
+      "PowerShell(python tests/*)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)",
+      "PowerShell(git add *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git branch *)",
+      "PowerShell(git switch *)",
+      "PowerShell(git checkout *)",
+      "PowerShell(git merge *)",
+      "PowerShell(git merge-base *)",
+      "PowerShell(git reset *)",
+      "PowerShell(git restore *)",
+      "PowerShell(git rm *)",
+      "PowerShell(git mv *)",
+      "PowerShell(git stash *)",
+      "PowerShell(git worktree *)",
+      "PowerShell(git rev-parse *)",
+      "PowerShell(git ls-files *)",
+      "PowerShell(git fetch *)",
+      "PowerShell(git cherry-pick *)",
+      "PowerShell(git tag *)",
+      "PowerShell(tools/ci/*)",
+      "PowerShell(./tools/ci/*)",
+      "PowerShell(.\\tools\\ci\\*)",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File tools/ci/*)",
+      "PowerShell(powershell -NoProfile -ExecutionPolicy Bypass -File tools/ci/*)"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git -C * push *)",
+      "Bash(git config *)",
+      "Bash(git -C * config *)",
+      "Bash(git remote *)",
+      "Bash(git -C * remote *)",
+      "Bash(* --no-verify*)",
+      "Bash(*RALLY_PROMOVER*)",
+      "Bash(*RALLY_SESION*)",
+      "Bash(*promover.ps1*)",
+      "PowerShell(git push *)",
+      "PowerShell(git -C * push *)",
+      "PowerShell(git config *)",
+      "PowerShell(git -C * config *)",
+      "PowerShell(git remote *)",
+      "PowerShell(git -C * remote *)",
+      "PowerShell(* --no-verify*)",
+      "PowerShell(*RALLY_PROMOVER*)",
+      "PowerShell(*RALLY_SESION*)",
+      "PowerShell(*promover.ps1*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/rutas.py"],
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}

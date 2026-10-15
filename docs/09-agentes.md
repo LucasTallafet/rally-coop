@@ -184,7 +184,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
   - las ramas `lote-*` del lote.
 - **Permisos** (`.claude/settings.json`):
   - **permitido sin preguntar:** compilar, probar, git local (sin `push`, `config` ni `remote`) y los scripts de `tools/` salvo `promover.ps1`;
-  - **prohibido:** `git push`, `git config`, `git remote`, `--no-verify`, `RALLY_PROMOVER`, `RALLY_SESION` y `promover.ps1`.
+  - **prohibido:** `git push`, `git config`, `git remote` (también con `git -C <ruta>`), `--no-verify`, `RALLY_PROMOVER`, `RALLY_SESION` y `promover.ps1`, en Bash y en PowerShell. Son reglas sobre el texto de la orden: la barrera que manda es `pushurl` más el `pre-push`.
 - **GitHub (opcional; lo hace Lucas una vez):** si el repositorio es público o tiene GitHub Pro, una regla de la rama `master` que bloquee el push forzado y el borrado. Se aplica en el servidor, aunque las credenciales sean las de Lucas.
 - **Límite honesto.**
   - Un agente que use a propósito la URL explícita y se salte varias barreras podría empujar con las credenciales de Lucas. Quedaría en su transcripción. Si alguna vez `master` se mueve sin Lucas, se recupera con el reflog.

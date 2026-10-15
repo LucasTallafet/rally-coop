@@ -1,0 +1,36 @@
+#!/bin/sh
+# pre-push de Rally Coop (docs/09-agentes.md §6). Lo instala tools/ci/instalar-hooks.ps1 en la
+# carpeta de hooks común a todas las copias. Nadie empuja salvo Lucas con tools/ci/promover.ps1:
+# - un push a refs/heads/master solo entra con RALLY_PROMOVER=1;
+# - un push que no es avance rápido (forzado) no entra nunca;
+# - borrar una rama del remoto tampoco: si hace falta, Lucas lo hace a mano en GitHub.
+# Si no puede comprobar algo (el commit del remoto no está en local), rechaza.
+
+rechazos=0
+while read -r ref_local sha_local ref_remota sha_remota; do
+    case "$sha_local" in
+        *[!0]*) ;;
+        *)
+            echo "pre-push: rechazado, borra $ref_remota en el remoto (solo Lucas, a mano)" >&2
+            rechazos=1
+            continue
+            ;;
+    esac
+    if [ "$ref_remota" = "refs/heads/master" ] && [ "$RALLY_PROMOVER" != "1" ]; then
+        echo "pre-push: rechazado, master solo se mueve con tools/ci/promover.ps1" >&2
+        rechazos=1
+        continue
+    fi
+    case "$sha_remota" in
+        *[!0]*)
+            if ! git cat-file -e "$sha_remota^{commit}" 2>/dev/null; then
+                echo "pre-push: rechazado, $ref_remota está en $sha_remota en el remoto y ese commit no está en local (haz git fetch): no se puede comprobar que sea un avance rápido" >&2
+                rechazos=1
+            elif ! git merge-base --is-ancestor "$sha_remota" "$sha_local"; then
+                echo "pre-push: rechazado, $ref_local -> $ref_remota no es un avance rápido (push forzado)" >&2
+                rechazos=1
+            fi
+            ;;
+    esac
+done
+exit $rechazos
