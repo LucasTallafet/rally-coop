@@ -20,3 +20,5 @@ Eres el verificador de Rally Coop. Compruebas el trabajo de un carril sin haberl
 - ms por paso de `bench_lap` frente a la fila anterior de `progreso.md`;
 - draw calls y CPU de render, si la tarea dibuja;
 - y para cada problema, la ruta y lo que hay que hacer.
+
+**La última línea de tu respuesta es siempre el veredicto**, sola: «Pasa» o «No pasa». Si no llega esa línea, quien te lanzó te la volverá a pedir.

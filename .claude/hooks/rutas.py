@@ -10,7 +10,9 @@ Quién escribe:
   "integrador" o "libre"); sin ella, solo mensajes/ de la copia principal.
 
 Raíz de la copia en la que se escribe: git rev-parse --show-toplevel del campo cwd. Copia
-principal: CLAUDE_PROJECT_DIR (la carpeta del proyecto de la sesión).
+principal: CLAUDE_PROJECT_DIR (la carpeta del proyecto de la sesión). Carpetas de copias de
+trabajo: .claude/worktrees/ de CLAUDE_PROJECT_DIR y de la carpeta padre de su --git-common-dir,
+que es donde las crea Claude Code; si la sesión está en la copia principal, son la misma.
 
 Para tools/ci/propiedad.ps1 y los tests, con la misma regla:
 - rutas.py --rama <carril> [--tarea <tarea>]: lee rutas del repositorio (una por línea) y
@@ -182,7 +184,8 @@ def comprobar(entrada, prop):
         bloquear("nada (los revisores solo leen y devuelven texto)")
 
     if rol in prop["carriles"] or rol == "verificador":
-        en_principal = raiz in (principal, principal_comun(cwd))
+        principales = {principal, principal_comun(proyecto)}
+        en_principal = raiz in principales | {principal_comun(cwd)}
         if en_principal:
             raise Bloqueo(
                 f"{quien} está trabajando en la copia principal ({raiz}), no en su copia de "
@@ -191,12 +194,19 @@ def comprobar(entrada, prop):
             )
 
     if rol == "verificador":
-        copias = normalizar(os.path.join(principal, ".claude", "worktrees"))
-        dentro = relativa(raiz, copias)
-        zona = raiz if dentro is not None else copias
-        rel = relativa(ruta, zona)
-        if rel is None or relativa(ruta, principal) is None:
-            bloquear(f"solo su copia de trabajo ({zona})")
+        # Claude Code crea las copias en .claude/worktrees/ de la copia principal de git, que
+        # no es CLAUDE_PROJECT_DIR si la sesión se abrió en otra copia: valen las dos carpetas.
+        copias = sorted({normalizar(os.path.join(p, ".claude", "worktrees")) for p in principales})
+        zonas = [raiz] if any(relativa(raiz, c) is not None for c in copias) else copias
+        # Nunca en una copia principal, aunque esté dentro de .claude/worktrees/ de la otra.
+        en_una_principal = any(
+            ruta == p
+            or (relativa(ruta, p) is not None
+                and relativa(ruta, os.path.join(p, ".claude", "worktrees")) is None)
+            for p in principales
+        )
+        if en_una_principal or not any(relativa(ruta, z) is not None for z in zonas):
+            bloquear(f"solo su copia de trabajo ({' o '.join(zonas)})")
         return
 
     rel = relativa(ruta, raiz)

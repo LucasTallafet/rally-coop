@@ -21,3 +21,5 @@ Sigue §4 punto por punto.
 - **Lo que la tarea dice que no cambia** (por ejemplo, «la huella no cambia»): compruébalo con los tests, no te fíes del informe.
 
 **Devuelve:** **Pasa** o **No pasa**, con la ruta y la línea de cada problema y lo que hay que hacer. Nada más.
+
+**La última línea de tu respuesta es siempre el veredicto**, sola: «Pasa» o «No pasa». Si no llega esa línea, quien te lanzó te la volverá a pedir.

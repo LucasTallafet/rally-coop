@@ -28,3 +28,5 @@ En los dos casos:
 - cada cambio con la ruta y la línea del código en que te basas, y con su cifra calculada cuando la haya;
 - veredicto **Necesita consultor** solo por un choque con una decisión cerrada, una tarea que crece más de un 50 % sobre sus horas o un cambio del diseño de `01`–`04`. Escribe la pregunta exacta para Lucas, con las opciones y lo que cuesta cada una;
 - nada de elogios ni de resúmenes de lo que está bien: solo lo que hay que cambiar y lo que no cambia.
+
+**La última línea de tu respuesta es siempre el veredicto**, sola y en una de sus formas fijas: «Adelante», «Adelante con cambios» o «Necesita consultor» en la revisión de la tarea; «Aprobado», «Aprobado con cambios» o «Necesita consultor» en la del plan. Si no llega esa línea, quien te lanzó te la volverá a pedir.

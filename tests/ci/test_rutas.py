@@ -183,6 +183,25 @@ def tests_hook():
                 lanzar([], entrada(fuera, "src/sim/car.cpp", "verificador"), env))
         esperar("verificador en otro repositorio", 2,
                 lanzar([], entrada(otra, os.path.join(w2, "src/sim/car.cpp"), "verificador"), env), "copia principal")
+        # Sesión abierta en una copia (w2): Claude Code crea las copias de los agentes en
+        # .claude/worktrees/ de la principal de git, que no está en w2/.claude/worktrees/.
+        sesion = {"CLAUDE_PROJECT_DIR": w2}
+        esperar("sesión en otra copia: verificador en su copia", 0,
+                lanzar([], entrada(w1, "src/sim/car.cpp", "verificador"), sesion))
+        esperar("sesión en otra copia: verificador en su copia, ruta absoluta", 0,
+                lanzar([], entrada(w1, os.path.join(w1, "src/sim/car.cpp"), "verificador"), sesion))
+        esperar("sesión en otra copia: verificador en la copia de la sesión", 2,
+                lanzar([], entrada(w1, os.path.join(w2, "src/sim/car.cpp"), "verificador"), sesion))
+        esperar("sesión en otra copia: verificador en la principal de git", 2,
+                lanzar([], entrada(w1, os.path.join(principal, "src/sim/car.cpp"), "verificador"), sesion))
+        esperar("sesión en otra copia: verificador fuera de todo", 2,
+                lanzar([], entrada(w1, os.path.join(base, "x.txt"), "verificador"), sesion))
+        esperar("sesión en otra copia: verificador fuera de .claude/worktrees, en una copia", 0,
+                lanzar([], entrada(fuera, os.path.join(w1, "src/sim/car.cpp"), "verificador"), sesion))
+        esperar("sesión en otra copia: verificador fuera de .claude/worktrees, en la de la sesión", 2,
+                lanzar([], entrada(fuera, os.path.join(w2, "src/sim/car.cpp"), "verificador"), sesion))
+        esperar("sesión en otra copia: verificador con la raíz en la copia de la sesión", 2,
+                lanzar([], entrada(w2, "src/sim/car.cpp", "verificador"), sesion), "copia principal")
 
         # Revisores: solo leen.
         for agente in ("revisor-diseno", "revisor-determinismo"):

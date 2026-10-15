@@ -97,7 +97,8 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
 
    - **Copia principal:** la carpeta del proyecto de la sesión (`CLAUDE_PROJECT_DIR`). **Raíz de la copia en la que se escribe:** `git rev-parse --show-toplevel` del `cwd` de la entrada.
    - **Un carril o el verificador con la raíz en la copia principal** (comparada con `CLAUDE_PROJECT_DIR` y con la carpeta padre de `git rev-parse --git-common-dir`) no escribe nada: si su copia de trabajo no se hubiera creado, escribiría en `integracion` sin que nadie lo notara.
-   - **El verificador:** si su raíz es una copia de `.claude/worktrees/`, solo escribe en esa copia; si no, en cualquiera de `.claude/worktrees/`. Nunca en la principal.
+   - **Dónde se crean las copias:** Claude Code las crea en `.claude/worktrees/` de la copia principal de git (la carpeta padre de `git rev-parse --git-common-dir`), no en la carpeta en la que se abrió la sesión. Con el director en la copia principal, las dos son la misma; en una sesión abierta en otra copia (el ensayo de la P1b), no. Por eso el hook acepta como carpeta de copias `.claude/worktrees/` de `CLAUDE_PROJECT_DIR` y la de esa carpeta padre.
+   - **El verificador:** si su raíz es una copia de una de esas dos carpetas, solo escribe en esa copia; si no, en cualquiera de ellas. Nunca en la principal.
 
    `RALLY_SESION` solo la pone Lucas al lanzar Claude Code (por ejemplo, `$env:RALLY_SESION = "juego"; claude`, para una sesión manual en la copia de un carril). El hook hereda el entorno de Claude Code; un agente no puede cambiarlo desde su consola.
 2. **Comprobación de propiedad en la integración** (`tools/ci/propiedad.ps1`). Es la que decide: antes de cada fusión, cruza `git diff --name-only integracion...<rama>` con `propiedad.json` y rechaza la fusión si la rama toca rutas que no son de su carril, haya escrito con la herramienta que haya escrito (Bash, `clang-format -i` o un generador incluidos).
@@ -109,7 +110,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    - las tareas, cada una con su prompt, su carril, sus dependencias y su orden de fusión;
    - los **contratos**: interfaces y números de versión de formato fijados de antemano. Por ejemplo, si dos tareas tocan `.rrec`, cada una lleva su número;
    - lo que Lucas probará, con **un A/B en el mismo ejecutable** para cada cambio que se juzga conduciendo. Si no se puede, el lote dice que esa tarea se juega antes que el resto.
-2. **Lucas**, en la sesión del director: `/lote mensajes/lote-N.md`. El director crea `mensajes/lote-N/estado.md` y lo pone al día tras cada paso.
+2. **Lucas**, en la sesión del director: `/lote mensajes/lote-N.md`. El director comprueba al empezar que los 8 tipos (`revisor-diseno`, `carril-sim`, `carril-plataforma`, `carril-juego`, `carril-herramientas`, `verificador`, `revisor-determinismo` e `integrador`) están en su lista de tipos de agente. Si falta alguno, para y avisa a Lucas: hace falta una sesión nueva o la definición no carga. Después crea `mensajes/lote-N/estado.md` y lo pone al día tras cada paso.
 3. **Revisión de cada tarea.** `revisor-diseno` las revisa todas, y cada revisión se guarda en `mensajes/lote-N/<tarea>-revision.md`.
    - **Necesita consultor** solo por: un choque con una decisión cerrada, una tarea que crece más del 50 %, o un cambio del diseño de `01`–`05`.
    - Con ese veredicto, la tarea para y Lucas lo lleva al proyecto de claude.ai. Las demás siguen.
@@ -185,6 +186,8 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
 - **Permisos** (`.claude/settings.json`):
   - **permitido sin preguntar:** compilar, probar, git local (sin `push`, `config` ni `remote`) y los scripts de `tools/` salvo `promover.ps1`;
   - **prohibido:** `git push`, `git config`, `git remote` (también con `git -C <ruta>`), `--no-verify`, `RALLY_PROMOVER`, `RALLY_SESION` y `promover.ps1`, en Bash y en PowerShell. Son reglas sobre el texto de la orden: la barrera que manda es `pushurl` más el `pre-push`.
+  - los scripts se lanzan siempre en la forma permitida: `powershell -ExecutionPolicy Bypass -File tools/ci/<script>.ps1 …`, con la ruta relativa y `/`.
+- **El modo automático de Claude Code no es una barrera del diseño:** su clasificador no es determinista y no se puede probar. Si el modo automático (o un permiso) rechaza un script de `tools/ci/`, una compilación o un commit, el director para y avisa a Lucas. No busca otra vía ni otra forma de la orden. Las garantías son las de §6, no las de ese clasificador.
 - **GitHub (opcional; lo hace Lucas una vez):** si el repositorio es público o tiene GitHub Pro, una regla de la rama `master` que bloquee el push forzado y el borrado. Se aplica en el servidor, aunque las credenciales sean las de Lucas.
 - **Límite honesto.**
   - Un agente que use a propósito la URL explícita y se salte varias barreras podría empujar con las credenciales de Lucas. Quedaría en su transcripción. Si alguna vez `master` se mueve sin Lucas, se recupera con el reflog.

@@ -11,14 +11,15 @@ Eres el **director**: la sesión principal, en la copia principal (rama `integra
 
 ## 0. Arranque
 
-1. **Comprueba el punto de partida.** La copia principal tiene que estar en `integracion`, limpia e igual a `origin/integracion`. Si no, para y dilo.
-2. **¿Hay un lote sin promover?** Si `git log origin/master..integracion` tiene algún commit que no empieza por `cierre lote-` ni por `consultor:`, el lote anterior no se ha promovido.
+1. **Comprueba los agentes.** Al empezar, comprueba que los 8 tipos (`revisor-diseno`, `carril-sim`, `carril-plataforma`, `carril-juego`, `carril-herramientas`, `verificador`, `revisor-determinismo` e `integrador`) están en tu lista de tipos de agente. Si falta alguno, para y avisa a Lucas: hace falta una sesión nueva o la definición no carga.
+2. **Comprueba el punto de partida.** La copia principal tiene que estar en `integracion`, limpia e igual a `origin/integracion`. Si no, para y dilo.
+3. **¿Hay un lote sin promover?** Si `git log origin/master..integracion` tiene algún commit que no empieza por `cierre lote-` ni por `consultor:`, el lote anterior no se ha promovido.
    - Díselo a Lucas: los carriles de este lote pueden empezar y adelantar trabajo en sus ramas, pero **la integración (§4) espera** a que él juegue y promueva el anterior.
    - No empieces carriles que dependan de algo de ese lote sin promover.
-3. **Lee el lote entero,** contratos incluidos.
-4. **Crea `mensajes/lote-<N>/estado.md`.** Lleva una fila por tarea: carril, fase del ciclo, rama, copia de trabajo y archivos. **Actualízalo después de cada paso**: si la sesión se cierra, es lo único que permite seguir.
-5. **Uso.** Pídele a Lucas el porcentaje que da `/status` y apúntalo en `estado.md`. Haz lo mismo al terminar cada paso grande (revisiones, cada carril, verificación, integración): con esas cifras se decide si el sistema cabe en el plan Pro.
-6. **Dile a Lucas** en 3 líneas qué vas a hacer.
+4. **Lee el lote entero,** contratos incluidos.
+5. **Crea `mensajes/lote-<N>/estado.md`.** Lleva una fila por tarea: carril, fase del ciclo, rama, copia de trabajo y archivos. **Actualízalo después de cada paso**: si la sesión se cierra, es lo único que permite seguir.
+6. **Uso.** Pídele a Lucas el porcentaje que da `/status` y apúntalo en `estado.md`. Haz lo mismo al terminar cada paso grande (revisiones, cada carril, verificación, integración): con esas cifras se decide si el sistema cabe en el plan Pro.
+7. **Dile a Lucas** en 3 líneas qué vas a hacer.
 
 ## 1. Revisión de cada tarea
 
@@ -61,7 +62,7 @@ Si alguna dice **No pasa**, retoma el mismo carril (el que escribió esa rama) c
 
 ## 4. Integración y prueba
 
-1. Con todas las tareas verificadas (o las que el lote permita fusionar por separado), y **sin ningún lote anterior sin promover** (§0.2), lanza `integrador` con el lote.
+1. Con todas las tareas verificadas (o las que el lote permita fusionar por separado), y **sin ningún lote anterior sin promover** (§0.3), lanza `integrador` con el lote.
    - **Base cambiada.** Si el integrador dice que `integracion` cambió archivos de una rama desde que salió, vuelve a lanzar `verificador` sobre la copia principal ya fusionada, y `revisor-determinismo` si toca su terreno, antes de que siga con la rama siguiente. Si no pasan, el integrador deshace esa fusión y la rama vuelve a su carril.
 2. Cuando termine, dile a Lucas:
    - que el lote está listo para jugar;
@@ -81,4 +82,7 @@ Si alguna dice **No pasa**, retoma el mismo carril (el que escribió esa rama) c
 - No relajas umbrales ni cambias criterios de un prompt: eso lo decide el consultor.
 - **Los mensajes del consultor** que cambian `docs/01`–`05`, `09`, `docs/agentes/`, `docs/prompts/` o `CLAUDE.md` se los pasas al integrador. Ningún carril los aplica.
 - **Lo que cambia `.claude/**`, `tools/ci/**` y `tests/ci/**`** no lo aplica ningún agente, tampoco el integrador: dile a Lucas que lo aplique en una sesión manual con `RALLY_SESION=libre` (`docs/09-agentes.md` §4).
+- **Veredicto en la última línea.** La respuesta de `revisor-diseno`, `verificador` y `revisor-determinismo` acaba siempre con su veredicto, en una de sus formas fijas. Si un agente vuelve sin esa línea, retómalo una vez con `SendMessage` y pídesela; si vuelve a faltar, para y avisa a Lucas.
+- **Los scripts de `tools/ci/`** se lanzan siempre en la forma permitida en `.claude/settings.json`: `powershell -ExecutionPolicy Bypass -File tools/ci/<script>.ps1 …`, con la ruta relativa y `/`.
+- **Si el modo automático de Claude Code (o un permiso) rechaza** un script de `tools/ci/`, una compilación o un commit, para y avisa a Lucas. No busques otra vía ni otra forma de la orden. Las garantías son las de `docs/09-agentes.md` §6, no las de ese clasificador.
 - Mensajes a Lucas cortos y en español: estado, pregunta y ruta. Los detalles van en los archivos.
