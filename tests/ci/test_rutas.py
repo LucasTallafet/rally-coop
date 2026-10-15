@@ -138,6 +138,17 @@ def tests_hook():
                 lanzar([], entrada(w1, "data/a.ipynb", "carril-plataforma", "NotebookEdit"), env))
         esperar("carril-plataforma NotebookEdit ajeno", 2,
                 lanzar([], entrada(w1, "src/sim/a.ipynb", "carril-plataforma", "NotebookEdit"), env))
+        # Generados (del dueño de su fuente) y datos del juego.
+        for agente, ruta, codigo in [
+            ("carril-plataforma", "docs/teclas.md", 0),
+            ("carril-plataforma", "data/game/actions.txt", 2),
+            ("carril-juego", "data/game/actions.txt", 0),
+            ("carril-juego", "tools/telemetry/columns.md", 0),
+            ("carril-juego", "tools/telemetry/plot.py", 2),
+            ("carril-herramientas", "tools/telemetry/columns.md", 2),
+            ("carril-herramientas", "tools/telemetry/plot.py", 0),
+        ]:
+            esperar(f"{agente} {ruta}", codigo, lanzar([], entrada(w1, ruta, agente), env))
         esperar("carril-sim fuera de todo repositorio", 2,
                 lanzar([], entrada(w1, os.path.join(otra, "src/sim/a.cpp"), "carril-sim"), env))
         # Una unión de Windows (o un enlace) dentro de la copia que apunta a otra copia.
@@ -156,7 +167,7 @@ def tests_hook():
             ("docs/manejo/protocolo.md", 0), ("README.md", 0),
             (".claude/hooks/rutas.py", 2), (".claude/settings.json", 2), (".claude/agents/integrador.md", 2),
             ("tools/ci/promover.ps1", 2), ("tests/ci/test_rutas.py", 2), ("src/sim/car.cpp", 2),
-            ("tools/replay/main.cpp", 2),
+            ("tools/replay/main.cpp", 2), ("docs/teclas.md", 2),
         ]:
             esperar(f"integrador {ruta}", codigo, lanzar([], entrada(principal, ruta, "integrador"), env))
         esperar("integrador ruta absoluta con unidad en minúscula", 0,

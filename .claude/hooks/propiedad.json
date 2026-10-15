@@ -15,7 +15,8 @@
       "src/main.cpp",
       "data/**",
       "tests/platform/**",
-      "tests/data/frames_rx580_60hz.txt"
+      "tests/data/frames_rx580_60hz.txt",
+      "docs/teclas.md"
     ],
     "juego": [
       "src/game/**",
@@ -23,7 +24,9 @@
       "src/io/**",
       "tests/io/**",
       "tests/game/**",
-      "tests/data/recordings/**"
+      "tests/data/recordings/**",
+      "data/game/**",
+      "tools/telemetry/columns.md"
     ],
     "herramientas": [
       "tools/**",
@@ -63,8 +66,8 @@
     ]
   },
   "excepto": {
-    "plataforma": ["data/cars/**"],
-    "herramientas": ["tools/ci/**"],
+    "plataforma": ["data/cars/**", "data/game/**"],
+    "herramientas": ["tools/ci/**", "tools/telemetry/columns.md"],
     "consultor": [".claude/rules/simulacion.md"]
   },
   "compartidas": ["tests/data/recordings/**"],

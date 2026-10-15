@@ -13,7 +13,7 @@ Eres el **director**: la sesión principal, en la copia principal (rama `integra
 
 1. **Comprueba los agentes.** Al empezar, comprueba que los 8 tipos (`revisor-diseno`, `carril-sim`, `carril-plataforma`, `carril-juego`, `carril-herramientas`, `verificador`, `revisor-determinismo` e `integrador`) están en tu lista de tipos de agente. Si falta alguno, para y avisa a Lucas: hace falta una sesión nueva o la definición no carga.
 2. **Comprueba el punto de partida.** La copia principal tiene que estar en `integracion`, limpia e igual a `origin/integracion`. Si no, para y dilo.
-3. **¿Hay un lote sin promover?** Si `git log origin/master..integracion` tiene algún commit que no empieza por `cierre lote-` ni por `consultor:`, el lote anterior no se ha promovido.
+3. **¿Hay un lote sin promover?** Si `git log --first-parent origin/master..integracion` tiene algún commit que no empieza por `cierre lote-` ni por `consultor:` y que no es del lote en curso (`Merge branch 'lote-<N>/` o `lote-<N>:`), el lote anterior no se ha promovido.
    - Díselo a Lucas: los carriles de este lote pueden empezar y adelantar trabajo en sus ramas, pero **la integración (§4) espera** a que él juegue y promueva el anterior.
    - No empieces carriles que dependan de algo de ese lote sin promover.
 4. **Lee el lote entero,** contratos incluidos.
@@ -50,7 +50,7 @@ Cuando un carril vuelve:
 
 Para cada rama lista, lanza en paralelo:
 - `verificador`, con la ruta de su copia de trabajo;
-- `revisor-determinismo`, con la rama, **si toca `src/sim`, `src/gen` o `src/net`**.
+- `revisor-determinismo`, con la rama, **si toca `src/sim`, `src/gen`, `src/net`, `src/game` o `src/io`, o si cambia la huella, el hash de la telemetría o `tests/data/recordings`** (`docs/09-agentes.md` §5, paso 7).
 
 Guarda las respuestas en `mensajes/lote-<N>/<tarea>-verificacion.md` y `<tarea>-determinismo.md`.
 
@@ -64,6 +64,7 @@ Si alguna dice **No pasa**, retoma el mismo carril (el que escribió esa rama) c
 
 1. Con todas las tareas verificadas (o las que el lote permita fusionar por separado), y **sin ningún lote anterior sin promover** (§0.3), lanza `integrador` con el lote.
    - **Base cambiada.** Si el integrador dice que `integracion` cambió archivos de una rama desde que salió, vuelve a lanzar `verificador` sobre la copia principal ya fusionada, y `revisor-determinismo` si toca su terreno, antes de que siga con la rama siguiente. Si no pasan, el integrador deshace esa fusión y la rama vuelve a su carril.
+   - **Oleadas.** Si el lote reparte las tareas en oleadas, cada oleada se integra en cuanto sus ramas pasan la verificación, y los carriles de la siguiente se lanzan después, desde `integracion` ya fusionada. `prueba.md` se escribe solo tras la última oleada. Apunta en `estado.md` qué oleada va.
 2. Cuando termine, dile a Lucas:
    - que el lote está listo para jugar;
    - la ruta de `mensajes/lote-<N>/prueba.md`;
@@ -73,7 +74,7 @@ Si alguna dice **No pasa**, retoma el mismo carril (el que escribió esa rama) c
 
 - **Respuestas cortas de Lucas** (sí, no, un valor): apúntalas en `mensajes/lote-<N>/respuestas.md`. Si piden un cambio pequeño y claro, lanza una tarea de arreglo en el mismo carril, sobre `integracion`, y vuelve al §3.
 - **Si lo que dice Lucas cambia el diseño o necesita diagnóstico** (algo «se siente mal»): no lo arregles. Dile que lo lleve al consultor con `prueba.md` y sus grabaciones.
-- **Cuando Lucas confirme que ha promovido con `tools/ci/promover.ps1`:** lanza `integrador` para cerrar el lote y dale a Lucas la lista de documentos que tiene que subir al proyecto de claude.ai.
+- **Cuando Lucas confirme que ha promovido con `tools/ci/promover.ps1`:** lanza `integrador` para cerrar el lote. Antes de quitar las copias, guarda los `mensajes/` de cada una en `mensajes/lote-<N>/<tarea>/`. Después, dale a Lucas la lista de documentos que tiene que subir al proyecto de claude.ai.
 
 ## Reglas
 

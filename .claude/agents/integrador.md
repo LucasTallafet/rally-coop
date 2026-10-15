@@ -10,7 +10,7 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
 
 1. **Comprueba el punto de partida:**
    - la copia principal está en `integracion` y limpia;
-   - **no hay ningún lote sin promover:** todos los commits de `git log origin/master..integracion` tienen un mensaje que empieza por `cierre lote-` o por `consultor:` (el cierre del lote anterior y los cambios del consultor, que se promueven con el siguiente lote). Si hay otro, para y dilo: no fusionas nada hasta que Lucas juegue y promueva el lote anterior.
+   - **no hay ningún lote sin promover:** todos los commits de `git log --first-parent origin/master..integracion` tienen un mensaje que empieza por `cierre lote-`, por `consultor:`, o son del lote en curso (N): `Merge branch 'lote-<N>/` o `lote-<N>:`. Es decir: el cierre del lote anterior, los cambios del consultor y las oleadas ya fusionadas de este lote. Si hay otro, para y dilo: no fusionas nada hasta que Lucas juegue y promueva el lote anterior.
 2. **Para cada rama, en el orden de `mensajes/lote-<N>.md`, solo si su verificación dice Pasa** (y su determinismo, si toca sim, gen o net):
    1. `tools/ci/propiedad.ps1 <rama>`. Si da rutas ajenas, no la fusionas: dilo, con la lista.
    2. `git merge --no-ff <rama>`.
@@ -25,6 +25,8 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
       - lo que pide de lo compartido.
 
       Después, repite `comprobar.ps1`. Lo que toque `docs/01`, `03`, `04`, `05` o `09`, `docs/agentes/`, `docs/prompts/`, `CLAUDE.md`, `.claude/` o `tools/ci/` no lo aplicas: es del consultor.
+
+   **Oleadas:** si el lote reparte sus tareas en oleadas, fusionas solo las ramas de la oleada que te pasa el director; la siguiente sale de `integracion` después. **Tus commits dentro del lote** (ediciones de documentos de los fragmentos, regenerados) llevan el prefijo `lote-<N>: `.
 3. `tools/ci/comprobar.ps1 -Debug` una vez al final.
 4. No empujas: `git push` está bloqueado. Lucas empuja `integracion`, `master` y las ramas del lote con `promover.ps1` después de jugar.
 5. **Escribe `mensajes/lote-<N>/prueba.md` para Lucas:**
@@ -38,7 +40,7 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
 2. Pasa los fragmentos de `docs/progreso/` a `docs/progreso.md`: las filas del registro arriba, en orden, y los hallazgos arriba. Luego borra los fragmentos.
 3. Pon al día la estimación de `progreso.md` si el lote lo dice.
 4. Commit en `integracion` con el mensaje `cierre lote-<N>: ...` (sin push). Ese prefijo es el que deja pasar la comprobación del punto de partida.
-5. Quita las copias de trabajo y las ramas fusionadas del lote, con los comandos de `docs/07` §7.
+5. **Antes de quitar cada copia**, copia su carpeta `mensajes/` entera a `mensajes/lote-<N>/<tarea>/` de la copia principal y comprueba que el número de archivos coincide. Los `mensajes/` de las copias no tienen seguimiento: al quitar la copia se pierden (se perdió así la revisión de la 2.8 del ensayo de la P1b). Si no puedes copiarla, no la quites: dilo. Después, quita las copias de trabajo y las ramas fusionadas del lote con los comandos de `docs/07` §7.
 6. Devuelve la lista de documentos de `docs/` que han cambiado en el lote, para el consultor.
 
 **Mensajes del consultor** que te pase el director (cambios de `docs/01`–`05`, `09`, `docs/agentes/`, `docs/prompts/`, `CLAUDE.md`): aplícalos tal cual, haz commit en `integracion` con un mensaje que empiece por `consultor:` y repite `comprobar.ps1`.
