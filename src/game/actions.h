@@ -21,18 +21,18 @@ namespace rally::game {
 // SimWorld::state_hash, lee la simulación (CarState) y nunca la escribe. Cuenta pasos, nunca
 // lee el reloj.
 //
-// El tiempo de la máquina, time(), es el número de paso «al principio del paso»: el siguiente
+// El tiempo de la máquina, now(), es el número de paso «al principio del paso»: el siguiente
 // que se va a simular. En cada paso s:
 //   1. se aplican los eventos con step == s, en el orden en que llegaron (apply);
 //   2. se simula el paso s (SimWorld::step);
-//   3. advance(CarState) con el estado del coche ya observado: time() pasa a s + 1.
-// Origen: time() = 0 al construir la máquina, que es el paso 0 de la grabación. El paso de un
-// evento sale de time(), no de FrameSteps::first (que cuenta desde que arranca el programa y no
+//   3. advance(CarState) con el estado del coche ya observado: now() pasa a s + 1.
+// Origen: now() = 0 al construir la máquina, que es el paso 0 de la grabación. El paso de un
+// evento sale de now(), no de FrameSteps::first (que cuenta desde que arranca el programa y no
 // vuelve a 0 al reconstruir el mundo). Reconstruir el mundo (teclas 1/2/3) empieza una grabación
 // nueva y, con ella, una máquina nueva. apply() comprueba los requisitos con el último CarState
 // recibido en advance (el del principio del paso); antes del primero, con el de MachineSetup.
 // Todos los pasos de la línea de tiempo (inicio, cambios de fase, fin, cancelaciones) son
-// valores de time(): «cancelada en N» es que, al llegar time() a N, ya no se cumplía.
+// valores de now(): «cancelada en N» es que, al llegar now() a N, ya no se cumplía.
 
 inline constexpr int kStepsPerSecond = 240;
 inline constexpr int kMaxActions = 16; // acciones de una tabla
@@ -247,14 +247,14 @@ public:
     // La tabla tiene que sobrevivir a la máquina.
     explicit ActionMachine(const ActionTable& table, const MachineSetup& setup = {});
 
-    // Aplica un evento en el paso actual (event.step == time(), si no, RALLY_CHECK). No reserva.
+    // Aplica un evento en el paso actual (event.step == now(), si no, RALLY_CHECK). No reserva.
     ApplyResult apply(const ActionEvent& event);
 
     // Avanza un paso, con el estado del coche en el paso al que se llega. Comprueba los
     // requisitos de las acciones activas. No reserva.
     void advance(const CarState& car);
 
-    std::int64_t time() const { return state_.time; }
+    std::int64_t now() const { return state_.time; }
     bool tablet_stowed() const { return state_.tablet_stowed != 0; }
     std::uint8_t hands_free(Player player) const;
     int active_count() const;

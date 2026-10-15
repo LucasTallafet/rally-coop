@@ -124,7 +124,7 @@ ActionEvent cancel(std::int64_t step, Player p, std::uint8_t action) {
 }
 
 void run_to(ActionMachine& m, std::int64_t step, const CarState& car = kStopped) {
-    while (m.time() < step) {
+    while (m.now() < step) {
         m.advance(car);
     }
 }
@@ -414,7 +414,7 @@ TEST_CASE("actions: a lost requirement cancels the action in that step") {
         run_to(m, 79);
         CHECK(m.active_count() == 1);
         m.advance(kMoving); // time pasa a 80 con el coche en marcha
-        REQUIRE(m.time() == 80);
+        REQUIRE(m.now() == 80);
         const Transition* cancelled = log.find(TransitionKind::Cancelled);
         REQUIRE(cancelled != nullptr);
         CHECK(cancelled->step == 80);
@@ -534,7 +534,7 @@ std::vector<Transition> play(int fps, std::uint64_t& hash) {
             if (i == 0 && step == 400) {
                 m.apply(request(step, Player::Driver, kCoop));
             }
-            REQUIRE(m.time() == step);
+            REQUIRE(m.now() == step);
             m.advance(kStopped);
         }
     }
@@ -589,22 +589,22 @@ struct Outcome {
 };
 
 Outcome continue_a(ActionMachine& m) {
-    const std::int64_t t0 = m.time();
+    const std::int64_t t0 = m.now();
     // Pide cosas cuyo resultado depende de cada campo.
     m.apply(request(t0, Player::Copilot, kPark));      // coche en marcha / parado
     m.apply(request(t0, Player::Copilot, kSacar));     // tablet, manos
     m.apply(request(t0, Player::Driver, kDriverHand)); // posición, manos
     run_to(m, t0 + 1500, kStopped);
-    m.apply(request(m.time(), Player::Copilot, kSacar)); // serie
-    run_to(m, m.time() + 300);
+    m.apply(request(m.now(), Player::Copilot, kSacar)); // serie
+    run_to(m, m.now() + 300);
     return {m.timeline_hash(), m.save()};
 }
 
 Outcome continue_b(ActionMachine& m) {
-    const std::int64_t t0 = m.time();
+    const std::int64_t t0 = m.now();
     run_to(m, t0 + 40, kMoving);
-    m.apply(cancel(m.time(), Player::Driver, kCoop)); // pasos perdidos desde el inicio
-    run_to(m, m.time() + 300);
+    m.apply(cancel(m.now(), Player::Driver, kCoop)); // pasos perdidos desde el inicio
+    run_to(m, m.now() + 300);
     return {m.timeline_hash(), m.save()};
 }
 
@@ -732,7 +732,7 @@ collect_ms = 0
     CHECK(n.save().table_hash == other.table.text_hash);
     CHECK(m.save().table_hash != n.save().table_hash);
     CHECK_FALSE(m.restore(n.save()));
-    CHECK(m.time() == 0);
+    CHECK(m.now() == 0);
     // Una acción sin fases termina en el mismo paso y deja las manos libres.
     const ApplyResult a = n.apply(request(0, Player::Driver, 0));
     CHECK(a.ok());
@@ -745,7 +745,7 @@ TEST_CASE("actions: stepping the machine does not allocate") {
     std::int64_t accepted = 0;
     const std::uint64_t before = rally::tests::global_new_count();
     for (int i = 0; i < 10000; ++i) {
-        const std::int64_t t = m.time();
+        const std::int64_t t = m.now();
         if (i % 50 == 0) {
             accepted +=
                 m.apply(request(t, Player::Copilot, static_cast<std::uint8_t>(i / 50 % 3))).ok();
