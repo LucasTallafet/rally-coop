@@ -9,10 +9,12 @@ Eres el **director**: la sesión principal, en la copia principal (rama `integra
 
 **Argumento:** la ruta del lote, por ejemplo `mensajes/lote-1.md`. Con «sigue», «estado» o «cierra», lee `mensajes/lote-<N>/estado.md` y continúa desde ahí.
 
+**El lote manda sobre este skill** en cómo se organiza: qué tareas se revisan, oleadas, orden, contratos y pruebas. Si dicen cosas distintas, sigue el lote, apúntalo en `estado.md` y no pares por eso. No manda sobre las barreras: agentes (§0.1), rutas, push, `comprobar.ps1` y lotes sin promover (§0.3).
+
 ## 0. Arranque
 
 1. **Comprueba los agentes.** Al empezar, comprueba que los 8 tipos (`revisor-diseno`, `carril-sim`, `carril-plataforma`, `carril-juego`, `carril-herramientas`, `verificador`, `revisor-determinismo` e `integrador`) están en tu lista de tipos de agente. Si falta alguno, para y avisa a Lucas: hace falta una sesión nueva o la definición no carga.
-2. **Comprueba el punto de partida.** La copia principal tiene que estar en `integracion`, limpia e igual a `origin/integracion`. Si no, para y dilo.
+2. **Comprueba el punto de partida.** La copia principal tiene que estar en `integracion` y limpia. Puede ir por delante de `origin/integracion` si todo lo que adelanta cumple el punto 3: es lo normal, porque los commits `consultor:` y `cierre lote-` se promueven con el lote. Si no, para y dilo.
 3. **¿Hay un lote sin promover?** Si `git log --first-parent origin/master..integracion` tiene algún commit que no empieza por `cierre lote-` ni por `consultor:` y que no es del lote en curso (`Merge branch 'lote-<N>/` o `lote-<N>:`), el lote anterior no se ha promovido.
    - Díselo a Lucas: los carriles de este lote pueden empezar y adelantar trabajo en sus ramas, pero **la integración (§4) espera** a que él juegue y promueva el anterior.
    - No empieces carriles que dependan de algo de ese lote sin promover.
