@@ -150,6 +150,10 @@ TEST_CASE("actions: durations are converted to steps with integers") {
     static_assert(ms_to_steps(400) == 96);
     static_assert(ms_to_steps(200) == 48);
     static_assert(ms_to_steps(1) == 0);
+    // Redondea, no trunca: con 800/400/200 ms dan lo mismo, con estos no.
+    static_assert(ms_to_steps(2) == 0);
+    static_assert(ms_to_steps(3) == 1);
+    static_assert(ms_to_steps(7) == 2);
     const ActionDef& def = table().actions[kGuardar];
     CHECK(def.branches[0].steps[0] == 48);
     CHECK(def.branches[0].steps[1] == 96);
@@ -769,7 +773,6 @@ TEST_CASE("actions: car_state_from reads the simulation and never writes it") {
     rally::sim::SimWorld world;
     world.build(rally::tests::flat_world(rally::sim::Surface::Asphalt));
     world.seal();
-    const std::uint64_t hash = world.state_hash();
     const auto stopped_at = [&](float vx, float vy, float vz) {
         rally::sim::BodyVelocity v;
         v.vx = vx / 3.6f;
@@ -793,19 +796,25 @@ TEST_CASE("actions: car_state_from reads the simulation and never writes it") {
     empty.seal();
     CHECK(car_state_from(empty).stopped);
 
-    // La máquina no toca la simulación.
-    rally::sim::SimWorld w2;
-    w2.build(rally::tests::flat_world(rally::sim::Surface::Asphalt));
-    w2.seal();
-    const std::uint64_t h2 = w2.state_hash();
+    // La máquina no toca la simulación: un mundo con la máquina y otro idéntico sin ella,
+    // con las mismas entradas, acaban con el mismo state_hash.
+    rally::sim::SimWorld with_machine;
+    rally::sim::SimWorld without_machine;
+    with_machine.build(rally::tests::flat_world(rally::sim::Surface::Asphalt));
+    without_machine.build(rally::tests::flat_world(rally::sim::Surface::Asphalt));
+    with_machine.seal();
+    without_machine.seal();
     ActionMachine m(table());
-    m.apply(request(0, Player::Copilot, kGuardar));
+    REQUIRE(m.apply(request(0, Player::Copilot, kGuardar)).ok());
+    rally::sim::SimInput input;
+    input.throttle = rally::sim::kAxisMax / 2;
     for (int i = 0; i < 300; ++i) {
-        w2.step(rally::sim::SimInput{});
-        m.advance(car_state_from(w2));
+        with_machine.step(input);
+        without_machine.step(input);
+        m.advance(car_state_from(with_machine));
     }
-    CHECK(h2 != 0);
-    (void)hash;
+    CHECK(m.now() == 300);
+    CHECK(with_machine.state_hash() == without_machine.state_hash());
 }
 
 TEST_CASE("actions: the timeline hash of a fixed scenario is frozen") {

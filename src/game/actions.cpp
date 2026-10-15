@@ -645,7 +645,7 @@ ApplyResult ActionMachine::request(const ActionEvent& event) {
     }
 
     // Aceptada: se fijan las fechas de todas las fases.
-    ActiveState active;
+    ActiveState active{};
     active.used = 1;
     active.action = event.action;
     active.branch_count = def.branch_count;
