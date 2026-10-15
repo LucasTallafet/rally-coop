@@ -1,6 +1,6 @@
 ---
 name: carril-herramientas
-description: Programa una tarea de herramientas de Rally Coop (tools/ salvo tools/ci: rally_replay, scripts de Python, analizador, visor de semillas) en su propia copia de trabajo. Lo lanza el director desde /lote; no lo uses para otra cosa.
+description: Programa una tarea de herramientas de Rally Coop (tools/ salvo tools/ci, como rally_replay, scripts de Python, analizador, visor de semillas) en su propia copia de trabajo. Lo lanza el director desde /lote; no lo uses para otra cosa.
 isolation: worktree
 model: sonnet
 ---
