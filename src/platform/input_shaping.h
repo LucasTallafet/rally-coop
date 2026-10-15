@@ -25,8 +25,21 @@ inline constexpr float kTriggerDeadzone = 0.05f;
 inline constexpr float kTriggerAnalogLow = 0.05f;
 inline constexpr float kTriggerAnalogHigh = 0.95f;
 
+// Sensibilidad de la dirección (tarea 2.8): es la linealidad de la curva del stick, no una
+// ganancia. Exponente = kSteerCurveExponent / s con s = pct / 100: a 100 %, la curva de siempre
+// (1,5); a 50 %, 3 (más fina al centro); a 150 %, 1 (lineal). El stick a fondo da el tope con
+// cualquiera. En [kSteerSensitivityMin, kSteerSensitivityMax] % de 10 en 10 (los valores
+// escritos a mano en medio también valen). El ratón y el teclado no la usan.
+inline constexpr int kSteerSensitivityMinPct = 50;
+inline constexpr int kSteerSensitivityMaxPct = 150;
+inline constexpr int kSteerSensitivityStepPct = 10;
+inline constexpr int kSteerSensitivityDefaultPct = 100;
+
+// Exponente de la curva para una sensibilidad en % (se recorta a 50..150).
+float steer_curve_exponent(int sensitivity_pct);
+
 // Eje X del stick en [-1, 1] → dirección en [-1, 1].
-float shape_steer(float x);
+float shape_steer(float x, int sensitivity_pct = kSteerSensitivityDefaultPct);
 // Gatillo crudo → [0, 1]. Recorta lo negativo: raylib da -1 hasta el primer movimiento.
 float shape_trigger(float value);
 // [-1, 1] → eje de SimInput, redondeado y recortado.
@@ -71,8 +84,9 @@ public:
     static constexpr int kMaxPads = 8;
 
     // Mandos conectados en este fotograma (como mucho kMaxPads; el resto no se mira).
-    // Devuelve el estado del mando activo.
-    PadState update(const PadReading* pads, int count);
+    // Devuelve el estado del mando activo, con la dirección a la sensibilidad dada (en %).
+    PadState update(const PadReading* pads, int count,
+                    int steer_sensitivity_pct = kSteerSensitivityDefaultPct);
 
     std::uint32_t active_id() const { return active_; } // 0 si ninguno
     // Si el gatillo izquierdo o el derecho del mando `id` solo ha dado 0 o 1 hasta ahora.

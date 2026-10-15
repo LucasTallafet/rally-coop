@@ -7,7 +7,7 @@
 namespace rally::platform {
 
 // Ventana: pantalla completa y salir (platform/window). Su tabla entra en la de
-// platform/key_tables (ayuda y docs/07 §8).
+// platform/key_tables (ayuda y docs/teclas.md).
 enum class WindowAction : std::uint8_t {
     Fullscreen,
     Exit,

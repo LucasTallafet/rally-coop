@@ -17,7 +17,8 @@ namespace rally::platform {
 class Gamepads {
 public:
     // Lee los mandos conectados y devuelve el estado del activo (PadTracker).
-    PadState read();
+    // La dirección del stick va con la sensibilidad dada (en %; 100 = la curva de siempre).
+    PadState read(int steer_sensitivity_pct = kSteerSensitivityDefaultPct);
 
     // Vibra el mando activo (nada si no hay o si la duración es 0).
     void rumble(const Rumble& rumble);

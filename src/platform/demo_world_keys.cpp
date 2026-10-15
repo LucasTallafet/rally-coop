@@ -43,6 +43,18 @@ constexpr KeyBinding kRows[] = {
      "con ratón, el desplazamiento horizontal es el volante (cursor capturado; se suelta en "
      "pausa o al perder el foco y el volante vuelve al centro); A/D no giran; no reconstruye el "
      "mundo; se guarda en ajustes.txt"},
+    {a(WorldAction::SensitivityDown),
+     {chord(Key::Four), {}},
+     a(WorldAction::SensitivityUp),
+     {chord(Key::Five), {}},
+     PadControl::None,
+     kContextAll,
+     KeyBlock::Drive,
+     120,
+     "Sensibilidad del stick: menos / más",
+     "10 % por pulsación, de 50 a 150 % (100 % es la curva de siempre; menos, más fina al "
+     "centro; más, más lineal); solo el stick (el ratón y el teclado no la usan); no reconstruye "
+     "el mundo; se guarda en ajustes.txt"},
     {a(WorldAction::ReloadCar),
      {chord(Key::F5), {}},
      kNoAction,

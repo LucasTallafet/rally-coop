@@ -73,7 +73,7 @@ SDL_Gamepad* open_pad(std::uint32_t id) {
 
 } // namespace
 
-PadState Gamepads::read() {
+PadState Gamepads::read(int steer_sensitivity_pct) {
     PadReading readings[PadTracker::kMaxPads];
     int count = 0;
     int listed = 0;
@@ -100,7 +100,7 @@ PadState Gamepads::read() {
     }
     SDL_free(ids);
     connected_ = count;
-    return tracker_.update(readings, count);
+    return tracker_.update(readings, count, steer_sensitivity_pct);
 }
 
 void Gamepads::rumble(const Rumble& rumble) {

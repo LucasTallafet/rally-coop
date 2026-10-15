@@ -7,11 +7,13 @@
 namespace rally::platform {
 
 // Mundo y grabación de la demo (platform/demo_world): coche, reinicio y ajustes que cambian la
-// simulación o la entrada. Su tabla entra en la de platform/key_tables (ayuda y docs/07 §8).
+// simulación o la entrada. Su tabla entra en la de platform/key_tables (ayuda y docs/teclas.md).
 enum class WorldAction : std::uint8_t {
     SteerAssist,
     Gearbox,
     SteerDevice,
+    SensitivityDown,
+    SensitivityUp,
     ReloadCar,
     NextCar,
     ResetWorld,

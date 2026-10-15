@@ -1,4 +1,5 @@
 #include "platform/demo_camera_keys.h"
+#include "platform/demo_world_keys.h"
 #include "platform/demo_zone_modes_keys.h"
 #include "platform/drive_keys.h"
 #include "platform/key_tables.h"
@@ -180,8 +181,27 @@ TEST_CASE("keys: pair rows join their keys") {
     }
 }
 
-TEST_CASE("keys: docs/07 section 8 matches the generated table") {
-    const std::string doc = read_text(RALLY_SOURCE_DIR "/docs/07-entorno-y-portabilidad.md");
+TEST_CASE("keys: sensitivity keys 4 and 5 are one pair row in the drive block") {
+    using namespace rally::platform;
+    int found = 0;
+    for (const KeyBinding& b : key_table()) {
+        if (b.table == action(WorldAction::SensitivityDown).table &&
+            b.action == static_cast<std::uint8_t>(WorldAction::SensitivityDown)) {
+            ++found;
+            CHECK(b.pair_action == static_cast<std::uint8_t>(WorldAction::SensitivityUp));
+            CHECK(b.keys[0].key == Key::Four);
+            CHECK(b.pair_keys[0].key == Key::Five);
+            CHECK(b.block == KeyBlock::Drive);
+            CHECK(b.contexts == kContextAll);
+            CHECK(keys_text(b) == "4/5");
+        }
+    }
+    CHECK(found == 1);
+    CHECK(chords_for(action(WorldAction::SensitivityUp))[0].key == Key::Five);
+}
+
+TEST_CASE("keys: docs/teclas.md matches the generated table") {
+    const std::string doc = read_text(RALLY_SOURCE_DIR "/docs/teclas.md");
     REQUIRE_FALSE(doc.empty());
     const std::string begin_marker = "<!-- teclas:";
     const std::string end_marker = "<!-- fin de teclas -->";

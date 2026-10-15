@@ -454,6 +454,22 @@ void DemoWorld::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounter
                                     : "F7: dirección con teclado",
                                 kText, kShortMessageNs);
     }
+    // Sensibilidad del stick (tarea 2.8): no es de la simulación, ni reconstruye el mundo ni
+    // cambia la grabación en curso (su cabecera guarda el valor con el que empezó).
+    for (const int dir : {-1, 1}) {
+        const ActionRef key =
+            action(dir < 0 ? WorldAction::SensitivityDown : WorldAction::SensitivityUp);
+        if (!action_pressed_repeat(key, context)) {
+            continue;
+        }
+        ctx.settings.steer_sensitivity_pct =
+            next_sensitivity_pct(ctx.settings.steer_sensitivity_pct, dir);
+        ctx.settings_saver.changed(now_ns());
+        ctx.overlay.set_message(Overlay::Message::Settings,
+                                "4/5: sensibilidad del stick " +
+                                    std::to_string(ctx.settings.steer_sensitivity_pct) + " %",
+                                kText, kShortMessageNs);
+    }
     // Guardado diferido de los ajustes: no en cada repetición de una tecla mantenida.
     if (ctx.settings_saver.due(now_ns())) {
         save_settings(ctx);

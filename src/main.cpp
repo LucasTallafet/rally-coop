@@ -140,6 +140,7 @@ int main(int argc, char** argv) {
         demo.handle_keys(pacer, perf);
         driver.set_mouse(demo.mouse_steering(), demo.mouse_full_lock_px(),
                          demo.mouse_capture_allowed());
+        driver.set_steer_sensitivity(demo.steer_sensitivity_pct());
         // La entrada se lee una vez por fotograma y vale para todos sus pasos.
         const rally::sim::SimInput input = driver.read(steps.count);
         float frame_impact = 0.0f;

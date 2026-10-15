@@ -7,8 +7,8 @@
 namespace rally::platform {
 
 // Modos de la zona de la demo (platform/demo_zone_modes): superficies, modo a ciegas, salida,
-// recinto y mundo lejos del origen. Su tabla entra en la de platform/key_tables (ayuda y docs/07
-// §8).
+// recinto y mundo lejos del origen. Su tabla entra en la de platform/key_tables (ayuda y
+// docs/teclas.md).
 enum class ZoneModeAction : std::uint8_t {
     NextSurface,
     NextTrial,

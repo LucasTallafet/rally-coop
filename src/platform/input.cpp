@@ -33,8 +33,8 @@ sim::SimInput DriverInput::read(int step_count) {
     keys.reset = action_down_or_pressed(action(DriveAction::Reset));
 
     update_mouse();
-    sim::SimInput input =
-        combine_inputs(keys, gamepads_.read(), MouseState{mouse_enabled_, mouse_.steer()});
+    sim::SimInput input = combine_inputs(keys, gamepads_.read(steer_sensitivity_pct_),
+                                         MouseState{mouse_enabled_, mouse_.steer()});
     const std::uint16_t pressed = latch_.apply(input.buttons & kPressButtons, step_count);
     input.buttons = static_cast<std::uint16_t>((input.buttons & ~kPressButtons) | pressed);
     return input;

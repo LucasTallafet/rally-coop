@@ -7,7 +7,7 @@
 namespace rally::platform {
 
 // Conductor en el coche de la demo (platform/demo_driver_feel): volumen. Su tabla entra en la de
-// platform/key_tables (ayuda y docs/07 §8).
+// platform/key_tables (ayuda y docs/teclas.md).
 enum class DriverFeelAction : std::uint8_t {
     Volume,
     Count,
