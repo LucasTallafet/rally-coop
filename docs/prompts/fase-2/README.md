@@ -56,7 +56,7 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
         └─► 2.9 (en cualquier momento) ──────────────────────────────────────────────────────┘
 ```
 
-**Desde la P1b** (`docs/09-agentes.md`): la 2.8 y la 2.9 van juntas en el lote 1, cada una en su carril; el contrato del lote fija sus números de versión de la grabación y el orden de fusión. La 2.10 va en paralelo con la infraestructura de la fase 3, en los lotes que escriba el consultor, sin tocar la carretera de prueba de la 2.6b.
+**Desde la P1b** (`docs/09-agentes.md`): la 2.8 y la 2.9 van juntas en el lote 1, repartidas en partes por carril y en tres oleadas (sus prompts dicen qué parte va en cada carril; el lote, el orden y los contratos). Un solo salto del formato de grabación (6 → 7) para las dos. La 2.10 va en paralelo con la infraestructura de la fase 3, en los lotes que escriba el consultor, sin tocar la carretera de prueba de la 2.6b.
 
 ## Qué puede ir en paralelo
 

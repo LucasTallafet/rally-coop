@@ -2,11 +2,11 @@
 #
 #   cmake -DROOT=<raíz del repo> [-DEXPECTED=<n>] -P cmake/CheckSimRules.cmake
 #
-# Revisa src/sim, src/gen y src/net (las que existan):
+# Revisa src/sim, src/gen, src/net y src/game (las que existan):
 #   - matemática de std:: o de C directa (todo debe pasar por rmath), y <cmath>/<math.h>;
 #   - <random>, rand()/srand();
 #   - unordered_map/unordered_set (orden de iteración no determinista);
-#   - reloj (<chrono>, <ctime>, time(), clock(), contadores de Windows): solo en src/sim y src/gen.
+#   - reloj (<chrono>, <ctime>, time(), clock(), contadores de Windows): solo en src/sim, src/gen y src/game.
 # src/sim/rmath.h queda excluido: es el único sitio que envuelve std::.
 # Una línea se acepta si lleva "// rmath-allow: <motivo>"; sin motivo cuenta como infracción.
 # Se ignoran los comentarios; las cadenas no se analizan (un falso positivo ahí se justifica
@@ -44,7 +44,7 @@ set(_rules_all
     "(^|[^A-Za-z0-9_])unordered_(multi)?(map|set)"
     "unordered_map/unordered_set: el orden de iteración no es determinista"
 )
-# Reglas de reloj: solo src/sim y src/gen (la red sí puede medir tiempo).
+# Reglas de reloj: solo src/sim, src/gen y src/game (la red sí puede medir tiempo).
 set(_rules_clock
     "#[ \t]*include[ \t]*<(chrono|ctime|time\\.h)>"
     "incluye una cabecera de reloj: la simulación avanza solo por pasos"
@@ -135,13 +135,13 @@ function(_check_file file rel use_clock)
     set(_file_violations ${_count} PARENT_SCOPE)
 endfunction()
 
-foreach(_dir sim gen net)
+foreach(_dir sim gen net game)
     set(_abs "${ROOT}/src/${_dir}")
     if(NOT IS_DIRECTORY "${_abs}")
         continue()
     endif()
     set(_use_clock FALSE)
-    if(_dir STREQUAL "sim" OR _dir STREQUAL "gen")
+    if(_dir STREQUAL "sim" OR _dir STREQUAL "gen" OR _dir STREQUAL "game")
         set(_use_clock TRUE)
     endif()
     file(GLOB_RECURSE _files LIST_DIRECTORIES FALSE

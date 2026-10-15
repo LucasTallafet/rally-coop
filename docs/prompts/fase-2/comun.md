@@ -34,7 +34,7 @@ Espera mi visto bueno si la tarea toca más de un módulo (casi todas). No empie
 
 - El test de huella (`sim_world: state fingerprint...`) usa desde la 2.4 el coche congelado `tests/data/cars/reference.car`, nunca los de `data/cars/`. Ese archivo no se toca al ajustar el manejo (2.10). Solo lo cambian las tareas que cambian el código de la simulación (por ejemplo, al añadir claves nuevas), y entonces la huella cambia de todos modos.
 - Si tu tarea cambia el resultado de la simulación **a propósito**: actualiza `kExpectedFingerprint` y `kExpectedJoltAllocations` y sube en 1 `kSimVersion` (constante que crea la 2.1). En el commit, una línea: `Fingerprint: 0x... -> 0x...; Jolt allocations: N -> M; sim version: A -> B`.
-- **Hash de la telemetría:** `kExpectedTelemetryHash` (`tests/sim/test_telemetry.cpp`) es el FNV-1a del CSV de 10 s de entradas pseudoaleatorias en la zona. Cambia cada vez que una tarea añade columnas a la telemetría o cambia la simulación. Se actualiza como la huella, y en el commit va en la misma línea: `Fingerprint: ...; Telemetry hash: 0x... -> 0x...`.
+- **Hash de la telemetría:** `kExpectedTelemetryHash` (`tests/sim/test_telemetry.cpp`) es, desde el lote 1, el FNV-1a de los campos de `CarTelemetry` de cada paso (campo a campo, little-endian) en 10 s de entradas pseudoaleatorias en la zona. Cambia cuando una tarea cambia la simulación o añade campos a `CarTelemetry`. Se actualiza como la huella y va en la misma línea del commit: `Fingerprint: ...; Telemetry hash: 0x... -> 0x...`. El formato del CSV lo fija aparte `kExpectedCsvHash` (`tests/io`), sobre filas sintéticas fijas: cambia solo cuando cambia el CSV y es del carril de juego.
 - Si la huella o el hash de la telemetría cambian **sin querer**, no los actualices: busca la causa.
 - La huella y el hash de la telemetría tienen que ser iguales en Debug y en Release.
 
@@ -46,7 +46,7 @@ Espera mi visto bueno si la tarea toca más de un módulo (casi todas). No empie
 
 ## 6. Teclas
 
-Antes de asignar una tecla, mira la tabla de `docs/07-entorno-y-portabilidad.md` §8 y la demo actual. Si añades o cambias teclas, actualiza esa tabla en el mismo commit. Nada de teclas de depuración en el mando.
+Antes de asignar una tecla, mira `docs/teclas.md` (la tabla generada de las teclas) y la demo actual. Si añades o cambias teclas, actualiza ese archivo en el mismo commit con lo que imprime el test `keys: … matches the generated table` al fallar. Nada de teclas de depuración en el mando.
 
 La tabla de `keys.cpp` y su test no admiten teclas repetidas: si un prompt propone una tecla ya usada, elige una libre (libre en `07` §8 y no reservada en los prompts de las tareas siguientes) y dilo en el plan. Si la ayuda (H) deja de caber en 1920×1080, pasa a páginas (H: página siguiente, como T) en lugar de tapar más capas.
 

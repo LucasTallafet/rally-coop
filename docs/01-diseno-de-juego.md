@@ -196,7 +196,7 @@ El manejo es realista: física de simulación estándar, sin atajos arcade. El p
 | Ayuda de dirección | Activada / desactivada | Limita el ángulo de las ruedas delanteras al de máximo agarre (ver "Dirección") |
 | Cambio | Automático / secuencial manual | Ver 7.2 |
 | Dureza de suspensión | Blanda / media / dura | Blanda absorbe baches y saltos; dura responde mejor en asfalto |
-| Sensibilidad de dirección | Escala continua | Cuánto gira el coche por cada milímetro de stick o tecla |
+| Sensibilidad de dirección | Escala continua (50–150 %) | Con stick, cuánto gira el coche cerca del centro; el stick a fondo da siempre el giro a fondo. Con ratón, los píxeles hasta el tope. El teclado no tiene sensibilidad: su ritmo lo fija la decisión «Entrada» |
 
 - Las ayudas usadas se guardan con cada pasada y se muestran en el resumen y en la tabla de tiempos.
 - En el modo difícil [post-1.0], el ABS y el control de tracción quedan bloqueados en desactivado. La ayuda de dirección sigue a elección de cada jugador: compensa la falta de fuerza en el volante del mando, no la habilidad.

@@ -18,6 +18,7 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
 10. **Coste:** cuánto añade a ms por paso (≤ 0,5 ms), a draw calls, a CPU de render y a memoria en el equipo mínimo (`03`). Si no se sabe, que el plan lo mida.
 11. **¿Toca algo con lo que se mide el criterio de una fase abierta?** Por ejemplo, la carretera de prueba de la 2.6b hasta la 2.11. → Que no lo cambie: lo nuevo va al lado (`09-agentes.md` §2).
 12. **¿Choca con otra tarea del lote?** Un mismo formato, una misma interfaz, las mismas grabaciones de test. → Que use los números de versión y las interfaces del contrato del lote. Si el contrato no los fija, **Necesita consultor**.
+12b. **¿Cambia una fuente de un archivo generado o de un hash de referencia?** (tablas de teclas → `docs/teclas.md`; tabla del CSV → `columns.md` y `kExpectedCsvHash`; `CarTelemetry` → `kExpectedTelemetryHash`). → Que la misma rama actualice el generado o el hash; si no es suyo, **Necesita consultor** (`09` §4).
 13. **¿Se juzga conduciendo?** → Que el informe diga cómo hace Lucas el A/B en el mismo ejecutable (una tecla, el archivo del coche de `master` al lado), o por qué no se puede.
 
 **Formato de `<tarea>-revision.md`:**

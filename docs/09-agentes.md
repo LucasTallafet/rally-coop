@@ -30,9 +30,10 @@ Lo que limita el proyecto sigue siendo el tiempo de Lucas jugando: ningún agent
   - cada carril escribe en `mensajes/` de su copia de trabajo.
 - **Un lote sin promover como máximo.**
   - El integrador no fusiona nada en `integracion` mientras esta vaya por delante de `origin/master` con un lote que Lucas no ha jugado y promovido.
-  - Solo se admiten por delante los commits `cierre lote-…` del lote anterior y los `consultor: …`, que se promueven con el lote siguiente.
+  - Solo se admiten por delante (en `git log --first-parent origin/master..integracion`) los commits `cierre lote-…` del lote anterior, los `consultor: …`, que se promueven con el lote siguiente, y los del lote en curso: las fusiones `Merge branch 'lote-<N>/…'` y los commits del integrador `lote-<N>: …`.
   - Los carriles sí pueden adelantar trabajo en sus ramas, pero la integración espera.
   - Así, lo que Lucas nota en la prueba de un lote nunca se mezcla con el lote siguiente.
+  - **Oleadas.** Un lote puede repartir sus tareas en oleadas: cada oleada se integra en cuanto sus ramas pasan la verificación, y la siguiente sale de `integracion` con ella ya fusionada. Es la forma de encadenar tareas de carriles distintos que dependen unas de otras sin que una rama necesite código de otra sin fusionar.
 - **Lo que mide el criterio de una fase abierta no se toca desde otra.** Por ejemplo, la carretera de prueba de la 2.6b se queda congelada en su formato hasta el cierre de la fase 2 (2.11): el formato de tramo de la fase 3 vive a su lado, sin sustituirla.
 
 ## 3. Roles
@@ -67,12 +68,12 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
 | Dueño | Rutas |
 | --- | --- |
 | sim | `src/sim/**`, `src/gen/**`, `data/cars/**`, `tests/sim/**`, `tests/data/cars/**`, `.claude/rules/simulacion.md` |
-| plataforma | `src/platform/**`, `src/main.cpp`, `data/**` (salvo `data/cars/`), `tests/platform/**` |
-| juego | `src/game/**`, `src/net/**`, `src/io/**`, `tests/io/**`, `tests/game/**` |
-| herramientas | `tools/**` (salvo `tools/ci/**`), `tests/tools/**` |
+| plataforma | `src/platform/**`, `src/main.cpp`, `data/**` (salvo `data/cars/` y `data/game/`), `tests/platform/**`, `docs/teclas.md` (generado de las tablas de teclas) |
+| juego | `src/game/**`, `src/net/**`, `src/io/**`, `data/game/**`, `tests/io/**`, `tests/game/**`, `tools/telemetry/columns.md` (generado de la tabla del CSV) |
+| herramientas | `tools/**` (salvo `tools/ci/**` y `tools/telemetry/columns.md`), `tests/tools/**` |
 | sim y juego | `tests/data/recordings/**`. Son binarios: nunca se fusionan. Si dos ramas del lote las tocan, el integrador las regenera con `rally_replay` después de fusionar el código |
 | cada carril | `docs/progreso/<su tarea>.md` y `mensajes/**` de su copia |
-| integrador | `CMakeLists.txt` de la raíz, `src/CMakeLists.txt`, `tests/CMakeLists.txt`, `tests/common/**` (`car_worlds.h` va en `tests/sim/common/`, del carril sim), `cmake/**`, `CMakePresets.json`, `docs/progreso.md`, la tabla generada de `docs/07` §8, `docs/02`, `docs/07` y `docs/08` |
+| integrador | `CMakeLists.txt` de la raíz, `src/CMakeLists.txt`, `tests/CMakeLists.txt`, `tests/common/**` (`car_worlds.h` va en `tests/sim/common/`, del carril sim), `cmake/**`, `CMakePresets.json`, `docs/progreso.md`, `docs/02`, `docs/07` y `docs/08` |
 | solo el consultor; los aplica el integrador desde un mensaje del consultor | `docs/01`, `docs/03`, `docs/04`, `docs/05`, `docs/06-guia-claude-code.md`, `docs/09-agentes.md`, `docs/agentes/**`, `docs/prompts/**`, `docs/progreso/README.md`, `CLAUDE.md` y `proyecto-claude/**` |
 | solo el consultor; se aplican en una sesión manual con `RALLY_SESION=libre` | `.claude/**`, `tools/ci/**` y `tests/ci/**` (salvo `.claude/rules/simulacion.md`, del carril sim). Son las barreras y sus tests: ningún agente las cambia, tampoco el integrador, porque un agente no edita a su propio guardián |
 | integrador (rutas que no son de ningún carril) | `.clang-format`, `.gitignore`, `README.md` y `docs/manejo/**` |
@@ -80,7 +81,8 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
 
 - **Documentos técnicos.** Un carril que tiene que cambiar `docs/02`, `07` u `08` escribe la edición exacta en su fragmento (sección y texto) y el integrador la aplica al fusionar.
 - **Documentos de diseño.** Un carril que necesita cambiar `01`, `03`, `04` o `05` para: es un «Necesita consultor».
-- **Teclas:** cada componente de la plataforma tiene su tabla de teclas en su propio archivo, y la tabla completa (ayuda y `07` §8) se monta juntándolas. Una tecla repetida falla en un test.
+- **Teclas:** cada componente de la plataforma tiene su tabla de teclas en su propio archivo, y la tabla completa (ayuda y `docs/teclas.md`) se monta juntándolas. Una tecla repetida falla en un test.
+- **Archivos generados y hashes de referencia:** son del carril dueño de su fuente, para que la rama que cambia la fuente los actualice y pase sus propios tests (`docs/teclas.md` sale de las tablas de teclas de plataforma; `tools/telemetry/columns.md`, de la tabla del CSV de `src/io`). Un hash de referencia mide una sola cosa de un solo carril: el de la telemetría, la estructura de la simulación (sim); el del CSV, el formato (juego). Si una tarea nueva crea uno que mezcla carriles, el lote lo parte antes de abrirla.
 - **Tests:** van en `tests/<carril>/`, cada carpeta con su `CMakeLists.txt`, que es del carril. Un test que mezcla carriles va con el de lo que mide.
 
 **Dos barreras:**
@@ -149,13 +151,14 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    - **Base cambiada.** Si `integracion` cambió algún archivo de la rama desde que salió (arreglos de la prueba anterior, otra rama del lote), se repite el `verificador` sobre el resultado de la fusión, y el `revisor-determinismo` si toca su terreno. Si no, basta con `comprobar.ps1`.
 
    Después, el integrador aplica las ediciones de documentos de los fragmentos. No empuja: lo hace Lucas al promover.
+   Si el lote va en oleadas, este paso se hace por oleada, y la oleada siguiente no sale hasta que la anterior está fusionada. Los commits propios del integrador dentro del lote llevan el prefijo `lote-<N>: `.
 9. **Prueba.** El integrador escribe `mensajes/lote-N/prueba.md`: el ejecutable, **una sola lista de pruebas** con los A/B, y las preguntas numeradas.
 10. **Lucas juega.**
     - Las respuestas cortas van al director, que lanza arreglos pequeños en el mismo carril sobre `integracion`.
     - Lo que cambia el diseño o necesita diagnóstico va al consultor.
 11. **Promoción y cierre.**
     - Lucas promueve con `tools/ci/promover.ps1` (§6): empuja `integracion`, `master` y las ramas del lote en una sola orden.
-    - El integrador cierra el lote: fragmentos a `progreso.md`, limpieza de las copias y lista de documentos cambiados.
+    - El integrador cierra el lote: fragmentos a `progreso.md`; antes de quitar cada copia, su `mensajes/` a `mensajes/lote-<N>/<tarea>/` de la copia principal (los `mensajes/` de las copias no tienen seguimiento: al borrar la copia se pierden); limpieza de las copias, y lista de documentos cambiados.
     - El consultor sube al proyecto los documentos cambiados, leídos de `master`.
 
 ## 6. Comprobaciones automáticas
