@@ -1,0 +1,1 @@
+Fragmentos de `progreso.md` de las tareas de un lote en curso: `<tarea>.md`, con la fila del registro y las filas de hallazgos en el formato de `progreso.md`, y al final «Pide de lo compartido:» si hace falta. Los escribe cada carril y el integrador los pasa a `progreso.md` al cerrar el lote. Esta carpeta solo queda vacía (con este README) entre lotes.

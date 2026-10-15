@@ -5,7 +5,7 @@ Versión final de trabajo · 1 de octubre de 2026
 La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo para jugar con un amigo, en un entorno, con un coche, seco de día. Sin fecha fija: el avance se mide con las horas reales de cada fase frente a las previstas (`progreso.md`).
 
 **Reglas del plan**
-- Cada fase termina con algo jugable y medido, y no se pasa a la siguiente hasta cumplir su criterio.
+- Cada fase termina con algo jugable y medido, y no se cierra hasta cumplir su criterio. La siguiente puede empezar antes en los carriles que no dependen de lo que falta (`09-agentes.md`), sin tocar nada con lo que se mide el criterio de la fase abierta; su criterio se juzga igual, con el de la anterior ya cumplido.
 - Las decisiones de diseño se validan siempre jugando con otra persona.
 - La fase 3 comprueba la idea con el juego real antes de invertir en el generador.
 - Al terminar las fases 1 y 2 se rehace la estimación con horas reales.
@@ -16,14 +16,16 @@ La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo
 | --- | --- | --- |
 | 0 · Pruebas del concepto | Omitida (ver `05-decisiones.md`) | 0 |
 | 1 · Base del motor | Bucle, render básico, entrada, Jolt configurado, tests | ~6 (real) |
-| 2 · Coche | Coche inspirado en un Grupo B 4×4, neumático Pacejka con cinco superficies, motor con turbo, transmisión, ayudas, telemetría, cuatro configuraciones de prueba | 67–114 |
+| 2 · Coche | Coche inspirado en un Grupo B 4×4, neumático Pacejka con cinco superficies, motor con turbo, transmisión, ayudas, telemetría, cuatro configuraciones de prueba | 76–128 |
 | 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 51–85 |
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 50–90 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 20–40 |
 | 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 50–90 |
-| **Total 1.0** | | **~242–425** |
+| **Total 1.0** | | **~251–439** |
 
 Revisado al cerrar la fase 1 (2026-10-02): el código de infraestructura se comprime mucho con Claude Code; las horas de ajuste jugando, pruebas con otra persona, Blender, sonido y datos reales no. Se revisa de nuevo al cerrar la fase 2.
+
+Revisado el 2026-10-14: desde la P1b, el desarrollo va por lotes en paralelo (`09-agentes.md`). La infraestructura de la fase 3 que no depende del ajuste del coche empieza durante la 2.10, sin tocar la carretera de prueba de la 2.6b, con la que se mide el criterio de la fase 2. Se vuelve a estimar al cerrar la fase 2.
 
 ## Fase 0 · Pruebas del concepto (~30 h)
 
@@ -54,7 +56,7 @@ CMake y presets; raylib con backend SDL; ventana y bucle con paso fijo de 240 Hz
 
 **Terminado cuando:** un cuerpo de Jolt se mueve a 240 Hz sin tirones a 30 y 60 fps, responde igual con mando y teclado, el mando vibra, el contador muestra ms por fotograma, draw calls y memoria, y los tests corren con un comando.
 
-## Fase 2 · Coche (~67–114 h)
+## Fase 2 · Coche (~76–128 h)
 
 Coche de la 1.0 inspirado en el Peugeot 205 T16 Evo 1 (ver `01` §7.1), con física realista y estándar: fuerzas explícitas del neumático con Pacejka simplificada, fricción combinada, relajación, sensibilidad a la carga y resistencia a la rodadura; cinco superficies (asfalto, grava, tierra, nieve y arena); subpasos de rueda y tratamiento de baja velocidad; motor con curva de par y turbo con retardo; cambio automático y secuencial; diferencial central con viscoacoplador y autoblocantes; freno de mano; ABS, control de tracción, dureza de suspensión y ayuda de dirección según la velocidad. Coche definido en datos, con cuatro configuraciones de prueba (205 T16, tipo Quattro S1, tipo Escort Mk2 y tipo Delta Integrale). Entrada con acelerador y freno separados. Telemetría y grabación de entradas. Interior provisional con medidas reales, movimiento de cabeza y sonido sintético provisional del motor y de la rodadura. Máquina de acciones con duraciones en datos y anillo de progreso.
 
@@ -72,12 +74,14 @@ Coche de la 1.0 inspirado en el Peugeot 205 T16 Evo 1 (ver `01` §7.1), con fís
 | 2.6 | Motor y transmisión: par, turbo, cambios, diferencial central y autoblocantes | 6–10 |
 | 2.6b | Carretera de prueba en la zona: ~1 km de punto a punto, calzada de 6 m con arcén de arena, cuneta y árboles; cresta con curva tapada, horquilla, peraltes; cronómetro y road_check.py | 3–5 |
 | 2.7 | Conductor en el coche: interior provisional, cabeza, vibración por superficie y deslizamiento, sonido sintético, modo a ciegas (sin color, sonido ni vibración de superficie) | 5–8 |
+| P1a | Repositorio preparado para trabajar en paralelo: comprobar.ps1 con límite de compilaciones, caché de dependencias, capturas de referencia, tests por carril, demo partida por componentes | 5–8 |
+| P1b | Agentes y barreras: 8 agentes con modelo fijo, /lote, hook de rutas único por tipo de agente que falla cerrado, comprobación de propiedad en la fusión, nadie empuja salvo Lucas (pushurl, pre-push y promover.ps1), documentos | 4–6 |
 | 2.8 | Ayudas y ajustes por jugador: ABS, control de tracción, suspensión, sensibilidad | 3–4 |
 | 2.9 | Máquina de acciones con duraciones en datos y anillo de progreso | 3–4 |
 | 2.10 | Ajuste y pruebas de manejo: prueba de derrape medida, las cinco superficies, las cuatro configuraciones con el compañero | 15–28 |
 | 2.11 | Cierre: rendimiento, reproducibilidad, criterio y nueva estimación | 2–3 |
 
-Las tareas suman **67–109 h**; el resto, hasta **114**, es margen.
+Las tareas suman **76–123 h**; el resto, hasta **128**, es margen.
 
 **Antes de empezar:** probar los mandos de Xbox, PS5 y Switch Pro (gatillos digitales).
 

@@ -42,11 +42,13 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
 | 2.6 Motor y transmisión | 2.5b | sim, data, platform | Sí | 6–10 |
 | 2.6b Carretera de prueba | 2.6 | sim (zona), platform, tools | Sí (corta) | 3–5 |
 | 2.7 Conductor en el coche | 2.6b | platform, data | Sí (larga) | 5–8 |
+| P1a Repositorio para trabajar en paralelo | 2.7 | tools/ci, cmake, tests, platform (reparto) | Sí (corta) | 5–8 |
+| P1b Agentes y barreras | P1a | .claude, tools/ci, docs | Sí (corta) | 4–6 |
 | 2.8 Ayudas y ajustes | 2.6b | sim, platform, data | Sí | 3–4 |
 | 2.9 Máquina de acciones | 2.1 | game, io, platform | Sí (corta) | 3–4 |
 | 2.10 Ajuste y pruebas de manejo | 2.1–2.8 | data, docs, tools | En cada iteración | 15–28 |
 | 2.11 Cierre | Todas | docs | Sí | 2–3 |
-| **Total** | | | | **67–109** (la fase: 67–114, con margen) |
+| **Total** | | | | **76–123** (la fase: 76–128, con margen) |
 
 ```
 2.0 ─► 2.1 ─► 2.2 ─► 2.3 ─► 2.4 ─► 2.4b ─► 2.5 ─► 2.5b ─► 2.6 ─► 2.6b ─┬─► 2.7 ─┬─► 2.10 ─► 2.11
@@ -54,8 +56,11 @@ La 2.10 tiene tres modos y su propia línea (ver `2.10.md`). Cada prompt da por 
         └─► 2.9 (en cualquier momento) ──────────────────────────────────────────────────────┘
 ```
 
+**Desde la P1b** (`docs/09-agentes.md`): la 2.8 y la 2.9 van juntas en el lote 1, cada una en su carril; el contrato del lote fija sus números de versión de la grabación y el orden de fusión. La 2.10 va en paralelo con la infraestructura de la fase 3, en los lotes que escriba el consultor, sin tocar la carretera de prueba de la 2.6b.
+
 ## Qué puede ir en paralelo
 
+- Desde la P1b, las tareas de un lote van en paralelo por carriles (`docs/09-agentes.md` §4 y §5); estas reglas siguen valiendo dentro de cada lote.
 - **2.9** no depende del coche: puede hacerse en cualquier momento después de la 2.1, en otra sesión y otra copia de trabajo. Es lo único que va bien en paralelo con el camino principal.
 - **2.7 y 2.8**, después de la 2.6. La 2.7 no cambia la simulación y la 2.8 sí; tocan los dos `main.cpp` y la demo, así que habrá algún conflicto al fusionar. Se fusiona primero la que se valide antes, y la otra se pone al día con `master` antes de su parada.
 - **Nunca en paralelo:** dos tareas que cambien `kSimVersion` (2.1, 2.4, 2.5, 2.5b, 2.6, 2.8), porque las dos tocan la huella. La 2.6b cambia el hash de la zona y regenera las grabaciones de test: no va en paralelo con otra tarea que las regenere.

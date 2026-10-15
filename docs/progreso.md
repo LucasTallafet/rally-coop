@@ -8,7 +8,7 @@ Se actualiza al cerrar cada sesión de trabajo. Sirve para ver la línea de desa
 | --- | --- | --- | --- | --- | --- |
 | 0 · Pruebas del concepto | 0 | 0 | Omitida | | |
 | 1 · Base del motor | 60 | 6 | Terminada | 2026-10-01 | 2026-10-02 |
-| 2 · Coche | 67–114 | ~4 | En curso | 2026-10-02 | |
+| 2 · Coche | 76–128 | ~4 | En curso | 2026-10-02 | |
 | 3 · Corte vertical | 51–85 | 0 | Sin empezar | | |
 | 4 · Generador | 50–90 | 0 | Sin empezar | | |
 | 5 · Entre casas | 20–40 | 0 | Sin empezar | | |

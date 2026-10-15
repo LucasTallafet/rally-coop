@@ -171,18 +171,23 @@ Revísalos en cada PC nuevo. Todos salieron de problemas reales de la fase 1 (de
 
 ## 7. Flujo de trabajo
 
-1. **Una tarea por sesión** de Claude Code: sesión nueva (o `/clear`) para cada tarea.
-2. **Plan primero**: pídele el plan sin código, revísalo en el proyecto de claude.ai y apruébalo.
-3. Claude Code suele trabajar en una copia aparte (`.claude/worktrees/<tarea>`, ignorada por git). Pruebas el exe de esa copia y, si está bien, la fusiona en `master` y hace push.
-4. **Cierre de cada tarea:** tests en verde, fila en `docs/progreso.md` con tus horas, commit y `git push`.
-5. **Sincronizar el proyecto de claude.ai** con los documentos que hayan cambiado.
-6. **Limpiar las copias de trabajo** cuando estén fusionadas:
+Desde la P1b, el desarrollo va por lotes con agentes: el detalle está en `docs/09-agentes.md`. En resumen:
+
+1. **La copia principal está siempre en la rama `integracion`.** No se programa en ella: es la del director (la sesión de Claude Code con la que hablas) y la del ejecutable de prueba de cada lote.
+2. **Lote.** El consultor escribe `mensajes/lote-N.md`. En la sesión del director: `/lote mensajes/lote-N.md`. Los carriles trabajan en `.claude/worktrees/` y el integrador fusiona en `integracion`.
+3. **Prueba.** Juegas con `mensajes/lote-N/prueba.md` y llevas los resultados al consultor (o al director, si son respuestas cortas).
+4. **Promover**, solo después de jugar: `powershell -ExecutionPolicy Bypass -File D:\Proyectos\RallyCoop\Rally\tools\ci\promover.ps1` (con `-WhatIf`, solo dice lo que haría). Empuja `integracion`, `master` y las ramas del lote. Es el único push que se hace: los agentes no empujan, `pushurl` está en `no-push` y el `pre-push` rechaza cualquier otro push a `master` y cualquier push forzado. Si el script dice que no es un avance rápido, no fuerces nada: díselo al director.
+
+   **Sesiones manuales** (cuando el director o el consultor lo pidan): lánzalas con el rol, por ejemplo `$env:RALLY_SESION = "juego"; claude` en la copia de ese carril. Sin la variable, la sesión principal solo puede escribir en `mensajes/`.
+5. **Un lote sin promover como máximo:** hasta que no promuevas un lote, el integrador no fusiona el siguiente.
+6. **Sincronizar el proyecto de claude.ai** con los documentos que el integrador diga que han cambiado.
+7. **Uso del plan Pro:** el director te pide el porcentaje de `/status` en cada paso grande del lote.
+8. **Limpiar las copias de trabajo** cuando estén fusionadas. Lo hace el integrador al cerrar el lote:
 
 ```powershell
 git worktree list
 git worktree remove .claude/worktrees/<carpeta>
 git branch -D <rama>
-git push origin --delete <rama>
 ```
 
 Si alguna está bloqueada ("locked" o "en uso por otro proceso"), cierra primero la sesión de Claude Code que la creó y los procesos que la usan, y fuerza:
@@ -196,7 +201,7 @@ git worktree prune
 
 Si al borrar una copia queda su carpeta vacía «en uso por otro proceso», cierra la sesión de Claude Code que trabajaba en ella y bórrala con `rmdir`.
 
-**Mensajes con el consultor:** los textos largos no se pegan en la consola. El consultor del proyecto de claude.ai los deja como archivos en `mensajes/` de la copia principal (local, ignorada por git), y a Claude Code se le dice «Lee y aplica mensajes/<archivo>». Claude Code escribe sus informes en `mensajes/` de su copia de trabajo (`comun.md` §12).
+**Mensajes:** los del consultor y los del lote van a `mensajes/` de la copia principal (local, ignorada por git). Cada carril escribe en `mensajes/` de su copia de trabajo. Los textos largos nunca se pegan en la consola.
 
 ---
 

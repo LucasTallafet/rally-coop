@@ -14,17 +14,19 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 - `docs/progreso.md`: fase actual, horas y hallazgos.
 - `docs/07-entorno-y-portabilidad.md`: montar el entorno en otro PC y comprobar que da los mismos resultados.
 - `docs/08-bitacora-de-desarrollo.md`: el porqué de las decisiones, problemas encontrados y esperados, ideas de futuro.
+- `docs/09-agentes.md`: desarrollo por lotes con agentes (roles, carriles, rutas y ciclo). `docs/agentes/criterios-revision.md`: lo que comprueban los revisores.
 - `docs/prompts/fase-2/`: un prompt por tarea de la fase 2 y reglas comunes (`comun.md`).
 
 ## Cómo trabajamos
 
-- Antes de escribir código en una tarea nueva, lee la fase actual en `docs/progreso.md` y su criterio en `docs/04-plan-de-fases.md`. Propón un plan corto y espera mi visto bueno si la tarea toca más de un módulo.
-- Una tarea por sesión. Termina con: tests pasando, resumen de lo hecho y la fila nueva en el registro de `docs/progreso.md` (las horas las pongo yo). Tras el commit, git push a origin.
+- Se trabaja por lotes (`docs/09-agentes.md`). La sesión principal es el director: está en la copia principal, en la rama `integracion`, y no programa; lanza los agentes de `.claude/agents/` con `/lote`. Cada tarea la programa un carril en su copia de trabajo, solo en sus rutas.
+- Antes de programar una tarea: revisión de la tarea y del plan por `revisor-diseno`. Al terminar: tests en verde en Release y en Debug (`tools/ci/comprobar.ps1`), fragmento en `docs/progreso/<tarea>.md` (las horas las pongo yo) y commit en la rama. **Ningún agente empuja: lo hago yo con `tools/ci/promover.ps1` después de jugar el lote.**
+- Documentos: los carriles solo escriben su fragmento de progreso, y en él proponen las ediciones de `docs/02`, `07` y `08`, que aplica el integrador. `docs/01`, `03`, `04`, `05`, `09`, `docs/agentes/`, `docs/prompts/`, este `CLAUDE.md`, `.claude/` y `tools/ci/` solo cambian con un mensaje del consultor.
 - Si algo choca con una decisión cerrada de `docs/05-decisiones.md`, para y avísame; no la cambies por tu cuenta.
 - Si una prueba cambia una decisión provisional, propón la edición de `docs/05-decisiones.md` con fecha y motivo.
 - Regla de alcance: implementa solo lo que pide la fase actual. Nada genérico "por si acaso". Lo marcado [post-1.0] no se toca hasta su fase.
 - Yo valoro el manejo, el aspecto y la diversión jugando. Tú compruebas todo lo que se pueda comprobar con tests.
-- Los mensajes del consultor llegan como archivos en `mensajes/` de la copia principal; tus informes van a `mensajes/` de tu copia de trabajo (detalle en `docs/prompts/fase-2/comun.md` §12).
+- Los mensajes del consultor y del lote están en `mensajes/` de la copia principal. Los informes de cada carril van a `mensajes/` de su copia de trabajo (`docs/09-agentes.md` §2).
 
 ## Idioma y estilo
 

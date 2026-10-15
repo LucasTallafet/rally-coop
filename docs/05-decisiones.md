@@ -14,6 +14,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Alcance 1.0 | Fases 1 a 6 (la 0 se omitió): cooperativo completo, montaña, un coche, seco de día, generador con validador, dos pasadas, monedas | Cerrada |
 | Regla de alcance | Solo se implementa lo que este juego usa; lo demás se aplaza a su fase | Cerrada |
 | Pruebas | Las decisiones de diseño se validan jugando con otra persona; copiloto bot de desarrollo desde la fase 3 | Cerrada |
+| Forma de desarrollo | Por lotes: un director y subagentes por carriles con dueño de rutas, revisores de diseño y de determinismo y verificador independientes, con modelo fijo; rama integracion con un lote sin promover como máximo; Lucas juega una vez por lote y promueve a master; las garantías (rutas, master, compilaciones, fusión) las imponen scripts y hooks que fallan cerrados (09-agentes.md) | Provisional hasta el cierre de la fase 3 |
 
 ## Técnicas
 
@@ -41,7 +42,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Estilo visual | 3D en primera persona, low-poly con colores planos; ruido procedural solo en el suelo | Cerrada |
 | Render | Sombras en 3 cascadas, vegetación por instancias, partículas, sin texturas fotográficas, sin cambiar el campo de visión | Cerrada |
 | Voz | Discord al principio; llamada integrada con Opus después de la 1.0 | Cerrada |
-| Implementación | Con Claude Code, guiada por `CLAUDE.md` y tests sin pantalla | Cerrada |
+| Implementación | Con Claude Code, guiada por `CLAUDE.md` y tests sin pantalla; por lotes en paralelo desde la P1b (`09-agentes.md`) | Cerrada |
 | Telemetría y grabación | Grabación de entradas por paso (RLE, con el coche y los ajustes completos en la cabecera); `rally_replay` la repite, escribe la telemetría CSV y mide; gráficas en pantalla y scripts de Python; huella con un coche congelado en `tests/data` | Cerrada |
 | Datos del coche | `data/cars/`, texto `clave = valor` con unidades en la clave, lector propio con `std::from_chars`; sin dependencias | Cerrada |
 
@@ -127,3 +128,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-06 | Cambio de marchas | Sin definir al reducir | Golpe de gas automático al reducir (punta-tacón), en automático y en secuencial | Sin él, cada reducción frena las traseras hasta C_max × G durante ~0,05 s; no es una ayuda: lo hace cualquier piloto |
 | 2026-10-06 | Cambio automático | Subida por rpm según el acelerador (desde 4000 rpm con el acelerador cerrado) | Con el acelerador cerrado sube a 6500 rpm: al levantar el pie conserva la marcha | Con 4000 rpm, al levantar en la entrada de la curva subía 1ª → 2ª → 3ª y el coche salía en una marcha larga por debajo del turbo (2.6) |
 | 2026-10-06 | Embrague automático | Muerde al llegar a las rpm de arranque | Muerde desde ~1200 rpm (bite_fraction 0,15): arranca a los ~0,1 s | Sin ello, ~0,35 s sin moverse al pisar a fondo; validado por Lucas en la parada de la 2.6 |
+| 2026-10-14 | Forma de desarrollo | Una tarea cada vez; inicio, plan, respuesta, informe y parada por tarea con el consultor | Lotes en paralelo por carriles con revisión y verificación automáticas y una parada de Lucas por lote | El código sale en 1–3 h por tarea; el tiempo se iba en idas y vueltas de archivos y en paradas por tarea (la de la 2.7 estuvo 8 días abierta). Las garantías de propiedad de rutas, de `master` y de compilaciones las imponen scripts, no instrucciones a los agentes (segunda revisión del 2026-10-14) |
+| 2026-10-14 | Plan de fases (regla) | No se pasa a la siguiente fase hasta cumplir su criterio | No se cierra una fase sin su criterio; la siguiente puede empezar en los carriles que no dependen de lo pendiente | Durante la 2.10 (15–28 h de pruebas de Lucas) el código está parado, y la infraestructura de la fase 3 (formato de tramo, seguimiento, red local, tablet) no depende del ajuste del coche; la carretera de prueba de la 2.6b queda congelada hasta la 2.11 |
+| 2026-10-14 | Estimación fase 2 | 67–114 h | 76–128 h | Tareas P1a (5–8 h) y P1b (4–6 h): puesta en marcha del desarrollo por lotes |
+| 2026-10-14 | Estimación 1.0 | ~242–425 h | ~251–439 h | Ídem |

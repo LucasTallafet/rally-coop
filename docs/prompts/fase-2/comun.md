@@ -34,7 +34,7 @@ Espera mi visto bueno si la tarea toca más de un módulo (casi todas). No empie
 
 - El test de huella (`sim_world: state fingerprint...`) usa desde la 2.4 el coche congelado `tests/data/cars/reference.car`, nunca los de `data/cars/`. Ese archivo no se toca al ajustar el manejo (2.10). Solo lo cambian las tareas que cambian el código de la simulación (por ejemplo, al añadir claves nuevas), y entonces la huella cambia de todos modos.
 - Si tu tarea cambia el resultado de la simulación **a propósito**: actualiza `kExpectedFingerprint` y `kExpectedJoltAllocations` y sube en 1 `kSimVersion` (constante que crea la 2.1). En el commit, una línea: `Fingerprint: 0x... -> 0x...; Jolt allocations: N -> M; sim version: A -> B`.
-- **Hash de la telemetría:** `kExpectedTelemetryHash` (`tests/test_telemetry.cpp`) es el FNV-1a del CSV de 10 s de entradas pseudoaleatorias en la zona. Cambia cada vez que una tarea añade columnas a la telemetría o cambia la simulación. Se actualiza como la huella, y en el commit va en la misma línea: `Fingerprint: ...; Telemetry hash: 0x... -> 0x...`.
+- **Hash de la telemetría:** `kExpectedTelemetryHash` (`tests/sim/test_telemetry.cpp`) es el FNV-1a del CSV de 10 s de entradas pseudoaleatorias en la zona. Cambia cada vez que una tarea añade columnas a la telemetría o cambia la simulación. Se actualiza como la huella, y en el commit va en la misma línea: `Fingerprint: ...; Telemetry hash: 0x... -> 0x...`.
 - Si la huella o el hash de la telemetría cambian **sin querer**, no los actualices: busca la causa.
 - La huella y el hash de la telemetría tienen que ser iguales en Debug y en Release.
 
@@ -89,3 +89,14 @@ Espera mi respuesta. Si lo que digo cambia algo, corrígelo en la misma copia y 
 ## 12. Mensajes con el consultor
 
 Lucas te pasa las respuestas del consultor como archivos de `mensajes/` en la raíz de la copia principal (`D:\Proyectos\RallyCoop\Rally\mensajes\`, carpeta local fuera de git). Léelos enteros y aplícalos. Al parar o cerrar una tarea, escribe además tu informe completo en `mensajes/<tarea>-informe-<n>.md` **de tu copia de trabajo** (por ejemplo, `.claude/worktrees/phase2-2.2-test-zone/mensajes/2.2-informe-4.md`): la sesión no puede escribir en la copia principal y el consultor lo lee ahí. Dime la ruta completa. No borres nada de esa carpeta.
+
+## 13. Dentro de un lote (desde la P1b)
+
+Si la tarea va en un lote (`docs/09-agentes.md`), esto sustituye a lo que dicen los puntos anteriores:
+
+- **§1.3:** partes de `integracion`, no de `master`. Tu copia la crea Claude Code al lanzarte como carril; renombra la rama a `lote-<N>/<tarea>`.
+- **§2:** el plan lo revisa `revisor-diseno` y no se espera a Lucas, salvo que la revisión diga «Necesita consultor».
+- **§8:** al terminar no paras para Lucas. Lo que el prompt manda comprobar a ojo y sus preguntas van a tu informe, con el A/B si se juzga conduciendo, y el integrador las junta en la prueba del lote.
+- **§10.3:** la fila del registro, los hallazgos y las ediciones que propones de `docs/02`, `07` y `08` van a `docs/progreso/<tarea>.md`, no a `docs/progreso.md` ni a esos documentos. **§10.4:** un cambio de `docs/05` (o de `01`, `03`, `04`) no lo propones: es un «Necesita consultor».
+- **§10.5:** commit en tu rama, sin push. Ni fusión, ni `master`, ni borrar copias: eso lo hace el integrador, y el push solo lo hace Lucas al promover.
+- **§12:** tu informe va a `mensajes/<tarea>-informe.md` de tu copia, y le devuelves al director un resumen corto con su ruta.
