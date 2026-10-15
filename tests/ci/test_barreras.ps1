@@ -215,6 +215,10 @@ try {
         Esperar 'tools/ci en el carril herramientas: 1' ($r.Codigo -eq 1 -and $r.Salida -match 'tools/ci/x.ps1') $r.Salida
         $r = Lanzar 'propiedad.ps1' @('lote-1/2.8', '-Base', 'no-existe', '-Repositorio', $repo)
         Esperar 'base que no existe: 2' ($r.Codigo -eq 2) $r.Salida
+        # Sin -Repositorio, el del script (este repositorio): una rama que no existe da 2 con su
+        # mensaje, no un error de PowerShell.
+        $r = Lanzar 'propiedad.ps1' @('no-existe-esta-rama', '-Carril', 'sim', '-Base', 'HEAD')
+        Esperar 'sin -Repositorio usa el del script' ($r.Codigo -eq 2 -and $r.Salida -match 'no existe la rama no-existe-esta-rama') $r.Salida
     }
 } finally {
     Remove-Item Env:RALLY_PROMOVER -ErrorAction SilentlyContinue

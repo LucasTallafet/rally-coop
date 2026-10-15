@@ -12,11 +12,14 @@ El único push que queda es el de tools/ci/promover.ps1. Con -Repositorio, sobre
 #>
 param(
     # Repositorio en el que se instala; por defecto, el de este script.
-    [string]$Repositorio = (Join-Path $PSScriptRoot '..\..')
+    [string]$Repositorio = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
+
+# $PSScriptRoot está vacío en los valores por defecto de param en PowerShell 5.1.
+if (-not $Repositorio) { $Repositorio = Join-Path $PSScriptRoot '..\..' }
 
 $Repositorio = (Resolve-Path -LiteralPath $Repositorio).Path
 $comun = (& git -C $Repositorio rev-parse --path-format=absolute --git-common-dir)

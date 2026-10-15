@@ -25,11 +25,14 @@ param(
     # Rama contra la que se compara.
     [string]$Base = 'integracion',
     # Repositorio en el que se comprueba; por defecto, el de este script (lo usan los tests).
-    [string]$Repositorio = (Join-Path $PSScriptRoot '..\..')
+    [string]$Repositorio = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
+
+# $PSScriptRoot está vacío en los valores por defecto de param en PowerShell 5.1.
+if (-not $Repositorio) { $Repositorio = Join-Path $PSScriptRoot '..\..' }
 
 function Sale([string]$texto) {
     Write-Host "propiedad: $texto"

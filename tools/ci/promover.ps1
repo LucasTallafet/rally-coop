@@ -20,11 +20,14 @@ param(
     # URL a la que se empuja; por defecto, remote.origin.url (los tests usan un remoto local).
     [string]$Remoto = '',
     # Repositorio desde el que se promueve; por defecto, el de este script.
-    [string]$Repositorio = (Join-Path $PSScriptRoot '..\..')
+    [string]$Repositorio = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
+
+# $PSScriptRoot está vacío en los valores por defecto de param en PowerShell 5.1.
+if (-not $Repositorio) { $Repositorio = Join-Path $PSScriptRoot '..\..' }
 
 function GitOk {
     & git -C $script:repo @args
