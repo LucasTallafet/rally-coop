@@ -9,6 +9,9 @@ namespace rally::sim {
 
 // Telemetría de una rueda tras un paso (sim/car_controller.h, WheelOutput). Ejes del contacto:
 // longitudinal hacia delante y lateral hacia la derecha.
+// Todo campo nuevo entra también en el hash de la telemetría (add_telemetry de
+// tests/sim/test_telemetry.cpp): un campo que cabe en el relleno no cambia el sizeof que allí
+// se comprueba.
 struct WheelTelemetry {
     std::uint8_t contact = 0;  // 1 con la rueda en el suelo
     std::int8_t surface = -1;  // superficie del material del contacto (Surface), -1 en el aire
@@ -26,6 +29,9 @@ struct WheelTelemetry {
     float omega = 0.0f;        // rad/s: giro de la rueda (> 0 rodando hacia delante)
     float brake_torque = 0.0f; // N·m pedido por el freno y el freno de mano
     float h = 0.0f;            // m: media del microrrelieve sobre la huella
+    // N·m del freno de pie que quita el ABS (tarea 2.8), media de los subpasos; 0 sin ABS. Delata
+    // el agarre (μ) de la superficie: no sale por pantalla, sonido ni vibración a ciegas.
+    float abs_torque_cut = 0.0f;
 };
 
 // Telemetría del coche tras un paso (SimWorld::telemetry). Tamaño fijo y solo
@@ -43,6 +49,9 @@ struct WheelTelemetry {
 //              paso que recoloca.
 // Las tareas que añaden estado al coche (ruedas en la 2.4, neumático en la 2.5, motor y
 // transmisión en la 2.6, ayudas en la 2.8) añaden aquí sus campos y sus columnas.
+// Todo campo nuevo entra también en el hash de la telemetría (add_telemetry de
+// tests/sim/test_telemetry.cpp): un campo que cabe en el relleno no cambia el sizeof que allí
+// se comprueba.
 struct CarTelemetry {
     std::int64_t step = 0; // pasos desde que se construyó el mundo (1 tras el primero)
 
@@ -129,6 +138,9 @@ struct CarTelemetry {
     bool drift_hold = false;
     std::uint8_t lcp_iterations = 0;
     std::uint8_t lcp_failures = 0;
+    // Par motor que quita el control de tracción (tarea 2.8; N·m, media de los subpasos); 0 sin
+    // control. Delata el agarre: no sale por pantalla, sonido ni vibración a ciegas.
+    float traction_torque_cut = 0.0f;
     // Ruedas en el orden FL, FR, RL, RR.
     std::array<WheelTelemetry, 4> wheels{};
 };

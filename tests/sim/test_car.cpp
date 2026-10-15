@@ -206,6 +206,53 @@ TEST_CASE("car_data: an unknown key, a missing key or a bad number fails with it
     }
 }
 
+// Tarea 2.8: [settings] (durezas de la suspensión).
+TEST_CASE("car_data: settings are required for the game cars and optional for recordings") {
+    const std::string& text = reference_car_text();
+    const rally::sim::CarParseResult with = rally::sim::parse_car(text, rally::sim::CarKeys::Sim);
+    REQUIRE(with.ok);
+    CHECK(with.car.has_settings);
+    CHECK(with.car.soft.frequency == doctest::Approx(0.85));
+    CHECK(with.car.soft.damping == doctest::Approx(0.9));
+    CHECK(with.car.soft.antiroll == doctest::Approx(0.8));
+    CHECK(with.car.hard.frequency == doctest::Approx(1.2));
+    CHECK(with.car.hard.damping == doctest::Approx(1.15));
+    CHECK(with.car.hard.antiroll == doctest::Approx(1.25));
+    // Sin la sección (un coche grabado antes de la 2.8): con Sim se lee; con Full, falta.
+    const std::size_t first = text.find("[settings]");
+    const std::size_t last = text.find("[brakes]");
+    REQUIRE(first != std::string::npos);
+    REQUIRE(last != std::string::npos);
+    const std::string without = text.substr(0, first) + text.substr(last);
+    const rally::sim::CarParseResult old = rally::sim::parse_car(without, rally::sim::CarKeys::Sim);
+    REQUIRE(old.ok);
+    CHECK_FALSE(old.car.has_settings);
+    const rally::sim::CarParseResult full =
+        rally::sim::parse_car(without, rally::sim::CarKeys::Full);
+    CHECK_FALSE(full.ok);
+    // Una clave mal escrita, fuera de rango o que falta dentro de la sección: error con línea.
+    const std::string misspelled = replace_line(text, "soft_damping = 0.9", "soft_dampin = 0.9");
+    const rally::sim::CarParseResult bad =
+        rally::sim::parse_car(misspelled, rally::sim::CarKeys::Sim);
+    CHECK_FALSE(bad.ok);
+    MESSAGE(bad.error);
+    CHECK(bad.error.rfind("línea " + std::to_string(line_of(misspelled, "soft_dampin")) + ":", 0) ==
+          0);
+    CHECK(bad.error.find("clave desconocida 'soft_dampin' en [settings]") != std::string::npos);
+    const std::string range = replace_line(text, "hard_frequency = 1.2", "hard_frequency = 3");
+    const rally::sim::CarParseResult out = rally::sim::parse_car(range, rally::sim::CarKeys::Sim);
+    CHECK_FALSE(out.ok);
+    CHECK(out.error.rfind("línea " + std::to_string(line_of(range, "hard_frequency = 3")) + ":",
+                          0) == 0);
+    const std::string partial = replace_line(text, "hard_antiroll = 1.25", "");
+    const rally::sim::CarParseResult half =
+        rally::sim::parse_car(partial, rally::sim::CarKeys::Sim);
+    CHECK_FALSE(half.ok);
+    MESSAGE(half.error);
+    CHECK(half.error.rfind("línea ", 0) == 0);
+    CHECK(half.error.find("falta la clave 'hard_antiroll' en [settings]") != std::string::npos);
+}
+
 TEST_CASE("car_data: a Spanish process locale reads the same numbers") {
     const std::string previous = std::setlocale(LC_ALL, nullptr);
     const char* spanish = std::setlocale(LC_ALL, "Spanish_Spain.1252");

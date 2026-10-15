@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -31,16 +32,105 @@ using rally::sim::SimInput;
 using rally::sim::SimWorld;
 using rally::sim::Surface;
 
-// FNV-1a del CSV (cabecera y filas) de 10 s de entradas pseudoaleatorias en la zona
-// (telemetry_csv_for_random_inputs). Tiene que ser el mismo en Debug y en Release. Cambia
-// cuando una tarea añade columnas o cambia la simulación: se copia aquí el valor nuevo y va en
-// el mensaje del commit («Telemetry hash: 0x... -> 0x...»).
-constexpr std::uint64_t kExpectedTelemetryHash = 0xa85dbd03a83752b7ull;
+// FNV-1a de los campos de CarTelemetry de cada paso (add_telemetry: campo a campo, en
+// little-endian) en 10 s de entradas pseudoaleatorias en la zona (random_inputs_run). Desde el
+// lote 1 no pasa por el CSV (el formato del CSV lo fija kExpectedCsvHash en tests/io). Tiene que
+// ser el mismo en Debug y en Release. Cambia cuando una tarea cambia la simulación o añade
+// campos a CarTelemetry: se copia aquí el valor nuevo y va en el mensaje del commit
+// («Telemetry hash: 0x... -> 0x...»).
+constexpr std::uint64_t kExpectedTelemetryHash = 0xfe3c612ddcaa6805ull;
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kDeg = 180.0 / kPi;
 
 double horizontal_speed(const CarTelemetry& t) { return std::hypot(t.vx, t.vz); }
+
+// Un campo nuevo de la telemetría tiene que entrar en add_telemetry: estos tamaños obligan a
+// mirarla al añadir uno (un campo que cabe en el relleno no los cambia: telemetry.h lo dice
+// junto a cada struct).
+static_assert(sizeof(rally::sim::WheelTelemetry) == 64);
+static_assert(sizeof(CarTelemetry) == 504);
+
+void add_u8(rally::sim::Fnv1a64& hash, std::uint8_t value) { hash.add_byte(value); }
+void add_bool(rally::sim::Fnv1a64& hash, bool value) { hash.add_byte(value ? 1 : 0); }
+void add_i8(rally::sim::Fnv1a64& hash, std::int8_t value) {
+    hash.add_byte(static_cast<std::uint8_t>(value));
+}
+void add_i16(rally::sim::Fnv1a64& hash, std::int16_t value) {
+    hash.add_u16(static_cast<std::uint16_t>(value));
+}
+void add_i32(rally::sim::Fnv1a64& hash, std::int32_t value) {
+    hash.add_u32(static_cast<std::uint32_t>(value));
+}
+void add_i64(rally::sim::Fnv1a64& hash, std::int64_t value) {
+    const auto bits = static_cast<std::uint64_t>(value);
+    hash.add_u32(static_cast<std::uint32_t>(bits));
+    hash.add_u32(static_cast<std::uint32_t>(bits >> 32));
+}
+void add_f32(rally::sim::Fnv1a64& hash, float value) {
+    hash.add_u32(std::bit_cast<std::uint32_t>(value));
+}
+void add_f64(rally::sim::Fnv1a64& hash, double value) {
+    add_i64(hash, std::bit_cast<std::int64_t>(value));
+}
+
+// Todos los campos de un paso, en el orden de telemetry.h.
+void add_telemetry(rally::sim::Fnv1a64& hash, const CarTelemetry& t) {
+    add_i64(hash, t.step);
+    for (const double v : {t.x, t.y, t.z}) {
+        add_f64(hash, v);
+    }
+    for (const float v : {t.vx, t.vy, t.vz, t.v_forward, t.v_right, t.v_up, t.speed, t.heading,
+                          t.yaw_rate, t.beta, t.ax, t.ay, t.az, t.a_forward, t.a_right}) {
+        add_f32(hash, v);
+    }
+    add_i16(hash, t.target.steer);
+    add_i16(hash, t.target.throttle);
+    add_i16(hash, t.target.brake);
+    hash.add_u16(t.target.buttons);
+    for (const float v : {t.steer, t.throttle, t.brake, t.handbrake}) {
+        add_f32(hash, v);
+    }
+    hash.add_u16(t.pressed);
+    add_f32(hash, t.steer_aided);
+    add_bool(hash, t.steer_digital);
+    add_bool(hash, t.assist_active);
+    add_bool(hash, t.assist_rear_sliding);
+    for (const float v : {t.assist_right_max, t.assist_left_max, t.steer_speed}) {
+        add_f32(hash, v);
+    }
+    add_i8(hash, t.surface);
+    add_i32(hash, t.laps);
+    add_i64(hash, t.lap_steps);
+    add_i64(hash, t.road_steps);
+    add_i32(hash, t.road_resets);
+    add_i32(hash, t.road_runs);
+    add_f32(hash, t.impact);
+    add_i8(hash, t.gear);
+    add_i8(hash, t.target_gear);
+    add_u8(hash, t.gearbox);
+    add_bool(hash, t.shifting);
+    add_u8(hash, t.clutch_mode);
+    add_bool(hash, t.clutch_open);
+    for (const float v : {t.engine_omega, t.boost, t.engine_throttle, t.engine_torque,
+                          t.clutch_slip, t.clutch_torque, t.axle_torque_front, t.axle_torque_rear,
+                          t.center_slip, t.viscous_torque, t.lsd_torque_front, t.lsd_torque_rear}) {
+        add_f32(hash, v);
+    }
+    add_bool(hash, t.drift_hold);
+    add_u8(hash, t.lcp_iterations);
+    add_u8(hash, t.lcp_failures);
+    add_f32(hash, t.traction_torque_cut);
+    for (const rally::sim::WheelTelemetry& w : t.wheels) {
+        add_u8(hash, w.contact);
+        add_i8(hash, w.surface);
+        for (const float v :
+             {w.load, w.compression, w.kappa, w.alpha, w.slip_x, w.slip_y, w.fx, w.fy, w.fx_pure,
+              w.fy_pure, w.mu, w.omega, w.brake_torque, w.h, w.abs_torque_cut}) {
+            add_f32(hash, v);
+        }
+    }
+}
 
 // Zona de pruebas con el coche de referencia en la salida de la recta de asfalto, mirando a -z.
 void build_zone(SimWorld& world) {
@@ -52,10 +142,17 @@ void build_zone(SimWorld& world) {
     world.set_telemetry(true);
 }
 
-std::string telemetry_csv_for_random_inputs() {
+// El CSV y el hash de la telemetría de 10 s de entradas pseudoaleatorias en la zona.
+struct RandomRun {
+    std::string csv;
+    std::uint64_t hash = 0;
+};
+
+RandomRun random_inputs_run() {
     SimWorld world;
     build_zone(world);
     rally::sim::Pcg32 rng(0x7e1e'3e7e'0000'0001ull, 3u);
+    rally::sim::Fnv1a64 hash;
     std::string csv = rally::io::telemetry_csv_header("random.rrec", true, Surface::Gravel);
     SimInput input;
     for (int step = 0; step < 10 * kStepsPerSecond; ++step) {
@@ -76,8 +173,9 @@ std::string telemetry_csv_for_random_inputs() {
         }
         world.step(input);
         rally::io::append_telemetry_row(world.telemetry(), csv);
+        add_telemetry(hash, world.telemetry());
     }
-    return csv;
+    return RandomRun{csv, hash.value()};
 }
 
 } // namespace
@@ -205,19 +303,20 @@ TEST_CASE("telemetry: the reset step reports zero acceleration and speed") {
     CHECK(t.impact == 0.0f);
 }
 
-TEST_CASE("telemetry: the same inputs give the same CSV twice and the stored hash") {
+TEST_CASE("telemetry: the same inputs give the same CSV and telemetry twice and the stored hash") {
     const rally::sim::JoltRuntime runtime;
-    const std::string first = telemetry_csv_for_random_inputs();
-    const std::string second = telemetry_csv_for_random_inputs();
-    CHECK(first == second);
-    const std::uint64_t hash = rally::sim::fnv1a64(first);
+    const RandomRun first = random_inputs_run();
+    const RandomRun second = random_inputs_run();
+    CHECK(first.csv == second.csv);
+    CHECK(first.hash == second.hash);
+    const std::uint64_t hash = first.hash;
     char message[300];
     std::snprintf(message, sizeof(message),
-                  "hash del CSV 0x%016llxull, guardado 0x%016llxull (%zu bytes). Si cambian las "
-                  "columnas o la simulación a propósito, copia el actual en "
+                  "hash de la telemetría 0x%016llxull, guardado 0x%016llxull. Si cambia la "
+                  "simulación o CarTelemetry a propósito, copia el actual en "
                   "kExpectedTelemetryHash (tests/sim/test_telemetry.cpp) y dilo en el commit.",
                   static_cast<unsigned long long>(hash),
-                  static_cast<unsigned long long>(kExpectedTelemetryHash), first.size());
+                  static_cast<unsigned long long>(kExpectedTelemetryHash));
     INFO(message);
     CHECK(hash == kExpectedTelemetryHash);
     // Para la línea de resumen de tools/ci/comprobar.ps1: el valor medido, no el guardado.

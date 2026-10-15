@@ -2,6 +2,7 @@
 # el hash de la telemetría, y la reproducibilidad de las grabaciones de tests/data/recordings/.
 # common/car_worlds.h (los mundos de prueba del coche) es de este carril; los demás lo incluyen.
 rally_add_test_executable(rally_tests_sim
+    test_aids.cpp
     test_car.cpp
     test_drivetrain.cpp
     test_input_smoothing.cpp
@@ -21,9 +22,15 @@ target_include_directories(rally_tests_sim PRIVATE common)
 # mensaje de RALLY_CHECK; si sigue después de la llamada prohibida, escribe NO_ABORT.
 add_executable(rally_check_abort check_abort.cpp)
 target_link_libraries(rally_check_abort PRIVATE rally_sim rally_warnings)
-add_test(NAME sim_world.build_after_seal_aborts COMMAND rally_check_abort)
+add_test(NAME sim_world.build_after_seal_aborts COMMAND rally_check_abort build_after_seal)
 set_tests_properties(sim_world.build_after_seal_aborts PROPERTIES
     PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: .*tras seal"
+    FAIL_REGULAR_EXPRESSION "NO_ABORT")
+# Tarea 2.8: la suspensión blanda con un coche sin [settings] (una grabación antigua) aborta.
+add_test(NAME sim_world.soft_without_settings_aborts
+    COMMAND rally_check_abort soft_without_settings)
+set_tests_properties(sim_world.soft_without_settings_aborts PROPERTIES
+    PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: .*\\[settings\\]"
     FAIL_REGULAR_EXPRESSION "NO_ABORT")
 
 # Reglas de simulación (cmake -P, sin Python). Se prueba el propio script con dos
@@ -84,9 +91,9 @@ set_tests_properties(replay.bench_lap_synth_matches PROPERTIES
     FIXTURES_REQUIRED bench_synth
     PASS_REGULAR_EXPRESSION "hash OK")
 
-# La misma grabación da el mismo CSV byte a byte dos veces (y la misma en Debug y en Release:
-# lo comprueba kExpectedTelemetryHash en tests/sim/test_telemetry.cpp). Los CSV los usan también
-# los tests de Python de tests/tools.
+# La misma grabación da el mismo CSV byte a byte dos veces (la telemetría de la simulación, la
+# misma en Debug y en Release, la comprueba kExpectedTelemetryHash en
+# tests/sim/test_telemetry.cpp). Los CSV los usan también los tests de Python de tests/tools.
 set(_lap_rrec ${RALLY_TEST_DATA}/recordings/zone_lap.rrec)
 foreach(_run first second)
     add_test(NAME replay.telemetry_${_run}
