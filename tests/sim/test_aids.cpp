@@ -146,8 +146,10 @@ constexpr double kMaxRippleRms = 0.1;
 
 struct Stop {
     double distance = 0.0;
-    double turned = 0.0;      // |cambio de rumbo| hasta parar, en grados
-    double turned_fast = 0.0; // ... hasta bajar de 36 km/h (fin de la rampa de la carcasa)
+    // |Cambio de rumbo| en grados desde que entra la dirección: hasta parar y hasta bajar de
+    // 36 km/h (carcass_damping_fade, 10 m/s: por debajo, el recorte de la huella de la 2.5).
+    double turned = 0.0;
+    double turned_fast = 0.0;
     double ripple_rms = 0.0;
     double ripple_p2p = 0.0;
     int ripple_samples = 0;
@@ -167,12 +169,16 @@ Stop brake_stop(const WorldDesc& desc, double steer = 0.0, std::uint16_t buttons
     std::array<Ripple, kWheelCount> ripples;
     Stop stop;
     int steps = 0;
+    double steer_heading = heading_deg(start); // rumbo al entrar la dirección
     while (horizontal_speed(world) > 0.05 && steps < 30 * kStepsPerSecond) {
+        if (steps == steer_from) {
+            steer_heading = heading_deg(world.car_pose());
+        }
         world.step(axes_input(steps >= steer_from ? steer : 0.0, 0.0, 1.0, buttons));
         ++steps;
         const double v = horizontal_speed(world);
         if (v >= reference_car().carcass_damping_fade) {
-            stop.turned_fast = std::abs(heading_deg(world.car_pose()) - heading_deg(start));
+            stop.turned_fast = std::abs(heading_deg(world.car_pose()) - steer_heading);
         }
         for (int i = 0; i < kWheelCount; ++i) {
             const rally::sim::WheelOutput& w = world.car_controller().wheel(i);
@@ -191,7 +197,7 @@ Stop brake_stop(const WorldDesc& desc, double steer = 0.0, std::uint16_t buttons
         }
     }
     stop.distance = horizontal_distance(start, world.car_pose());
-    stop.turned = std::abs(heading_deg(world.car_pose()) - heading_deg(start));
+    stop.turned = std::abs(heading_deg(world.car_pose()) - steer_heading);
     for (const Ripple& r : ripples) {
         stop.ripple_rms = std::max(stop.ripple_rms, r.rms());
         stop.ripple_p2p = std::max(stop.ripple_p2p, r.peak_to_peak());
@@ -365,9 +371,12 @@ TEST_CASE("aids: ABS braking in gear from 100 km/h on asphalt does not oscillate
 
 // --- Criterio 2: ABS girando (y su fila de «cada ajuste se nota») -------------------------------
 
-// La dirección entra 0,25 s después del freno («girar mientras frena»): sin ABS las ruedas ya
-// están bloqueadas. Con la dirección y el freno a la vez, en los ~0,1 s que tardan en bloquearse
-// el coche gira unos grados (se imprime: es una pregunta del informe).
+// Criterio 2 según la respuesta del consultor (mensajes/lote-1-respuesta-2.8-sim.md §1): la
+// dirección entra 0,25 s después del freno (sin ABS las ruedas ya están bloqueadas) y el cambio
+// de rumbo se mide desde ahí hasta bajar de 36 km/h, donde se separa el ABS de bloquear. Hasta
+// parar y con la dirección a la vez que el freno solo se imprimen: por debajo de 36 km/h la rueda
+// bloqueada aún da algo de lateral por el recorte de la huella de la 2.5 (hallazgo para la
+// 2.10), y a la vez, el coche gira en los ~0,1 s que tardan en bloquearse las ruedas.
 constexpr int kSteerAfterBrake = kStepsPerSecond / 4;
 
 TEST_CASE("aids: ABS braking with 30 percent steer turns at least 10 degrees, locked at most 2") {
@@ -382,19 +391,20 @@ TEST_CASE("aids: ABS braking with 30 percent steer turns at least 10 degrees, lo
         const Stop together_locked = brake_stop(neutral_brake_world(surface, false), 0.3);
         char row[400];
         std::snprintf(row, sizeof(row),
-                      "%s: cambio de rumbo con ABS %.1f°, sin ABS %.2f° (%.1f m y %.1f m); sin ABS "
-                      "hasta bajar de 36 km/h %.2f°; con la dirección a la vez que el freno, "
-                      "%.1f° y %.2f° (sin ABS hasta 36 km/h %.2f°)\n",
-                      rally::sim::surface_name(surface), with_abs.turned, locked.turned,
-                      with_abs.distance, locked.distance, locked.turned_fast, together_abs.turned,
-                      together_locked.turned, together_locked.turned_fast);
+                      "%s: hasta 36 km/h, con ABS %.1f° y sin ABS %.2f°; hasta parar, %.1f° y "
+                      "%.2f° (%.1f m y %.1f m); con la dirección a la vez que el freno, hasta "
+                      "parar, %.1f° y %.2f°\n",
+                      rally::sim::surface_name(surface), with_abs.turned_fast, locked.turned_fast,
+                      with_abs.turned, locked.turned, with_abs.distance, locked.distance,
+                      together_abs.turned, together_locked.turned);
         table += row;
-        CHECK(with_abs.turned >= 10.0);
-        CHECK(locked.turned <= 2.0);
+        CHECK(with_abs.turned_fast >= 10.0);
+        CHECK(locked.turned_fast <= 2.0);
         if (surface == Surface::Asphalt) {
-            const double change = relative_change(locked.turned, with_abs.turned);
-            MESSAGE("nota: ABS (sin / con): cambio de rumbo frenando y girando en asfalto ",
-                    locked.turned, "° / ", with_abs.turned, "° (", 100.0 * change, " %)");
+            const double change = relative_change(locked.turned_fast, with_abs.turned_fast);
+            MESSAGE("nota: ABS (sin / con): cambio de rumbo frenando y girando en asfalto hasta "
+                    "36 km/h ",
+                    locked.turned_fast, "° / ", with_abs.turned_fast, "° (", 100.0 * change, " %)");
             CHECK(change >= 0.15);
         }
     }
