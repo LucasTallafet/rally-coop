@@ -16,7 +16,7 @@ target_include_directories(rally_test_common PUBLIC common)
 target_link_libraries(rally_test_common PUBLIC doctest::doctest PRIVATE rally_warnings)
 
 # Un ejecutable doctest de un carril: lo común, la simulación, rally_io y el bucle, los datos de
-# los tests y la raíz del repositorio (la tabla de teclas de docs/07 §8).
+# los tests y la raíz del repositorio (la tabla de teclas de docs/teclas.md).
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 function(rally_add_test_executable name)
     add_executable(${name} ${ARGN})
