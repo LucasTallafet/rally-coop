@@ -1,0 +1,37 @@
+# Acciones del juego con coste de tiempo (docs/01 §8). La duración es la regla: cada acción tiene
+# ramas (una por jugador que trabaja a la vez) y cada rama, tres fases en milisegundos. Se pasan
+# a pasos de 1/240 s al cargar: pasos = (ms * 240 + 500) / 1000; una fase de 0 pasos se salta.
+# Se ajustan sin recompilar. Las acciones [post-1.0] no se escriben aquí.
+#
+# Claves de la acción (antes de sus ramas):
+#   car             = any | stopped            el coche tiene que estar parado (< 2 km/h)
+#   tablet_requires = any | stowed | out       estado de la tablet que pide
+#   tablet_result   = unchanged | stowed | out estado en que la deja al terminar de ejecutar
+# Claves de la rama (branch = driver | copilot | any):
+#   hands = 0..2, position = driver_seat | copilot_seat | any
+#   prepare_ms, execute_ms, collect_ms
+
+# Guardar la tablet (copiloto, 01 §8): 0,8 s en total. Valores de partida (decisión del lote 1:
+# preparar 200 ms, ejecutar 400 ms, recoger 200 ms); se ajustan jugando.
+action = guardar_tablet
+car = any
+tablet_requires = out
+tablet_result = stowed
+branch = copilot
+hands = 2
+position = copilot_seat
+prepare_ms = 200
+execute_ms = 400
+collect_ms = 200
+
+# Sacar la tablet (copiloto, 01 §8): solo con la tablet guardada; 0,8 s en total.
+action = sacar_tablet
+car = any
+tablet_requires = stowed
+tablet_result = out
+branch = copilot
+hands = 2
+position = copilot_seat
+prepare_ms = 200
+execute_ms = 400
+collect_ms = 200
