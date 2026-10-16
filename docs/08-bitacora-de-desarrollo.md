@@ -74,6 +74,7 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 - **Mandos leídos directamente con SDL3**: raylib los abre (conexión en caliente), pero sus datos se leen con SDL para que ejes, botones, vibración, nombre y tipo salgan siempre del mismo mando.
 - **Draw calls contadas interceptando los punteros de glad** de raylib: es la única forma de contar tanto los lotes de rlgl como las llamadas directas.
 - **Vegetación con VBO persistente**, no `DrawMeshInstanced` de raylib (§4).
+- **2.9, máquina de acciones**: el tiempo es «al principio del paso», para que «cancelada en N» y «termina en N» sean el mismo número; el fin y la liberación de manos van antes de los eventos del paso del fin (se puede volver a pedir en el paso del fin); posiciones y presentes son datos de construcción, no eventos; el hash de la línea de tiempo está congelado en un test porque irá en el pie de las grabaciones de formato 7.
 
 ---
 
