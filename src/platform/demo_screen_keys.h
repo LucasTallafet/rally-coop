@@ -7,7 +7,7 @@
 namespace rally::platform {
 
 // Pantalla de la demo (platform/demo_screen): ayuda, depuración, gráficas y contador. Su tabla
-// entra en la de platform/key_tables (ayuda y docs/07 §8).
+// entra en la de platform/key_tables (ayuda y docs/teclas.md).
 enum class ScreenAction : std::uint8_t {
     Help,
     DebugPanel,

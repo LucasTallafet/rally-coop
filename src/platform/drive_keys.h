@@ -7,7 +7,7 @@
 namespace rally::platform {
 
 // Conducir: teclado y mando del coche (platform/input, platform/gamepad). Su tabla entra en la de
-// platform/key_tables (ayuda y docs/07 §8).
+// platform/key_tables (ayuda y docs/teclas.md).
 enum class DriveAction : std::uint8_t {
     Throttle,
     Brake,

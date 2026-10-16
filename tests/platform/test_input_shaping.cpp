@@ -3,6 +3,8 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 
@@ -320,4 +322,98 @@ TEST_CASE("input shaping: rumble only above the impact threshold") {
     const rally::platform::Rumble hard = rumble_for_impact(50.0f);
     CHECK(hard.low == 1.0f);
     CHECK(hard.low > light.low);
+}
+
+namespace {
+
+// Copia fija de shape_steer tal como era antes de la sensibilidad (tarea 2.8): exponente 1,5.
+float steer_before_sensitivity(float x) {
+    const float magnitude = std::abs(x);
+    if (magnitude <= rally::platform::kSteerInnerDeadzone) {
+        return 0.0f;
+    }
+    const float t = std::min(
+        1.0f, (magnitude - rally::platform::kSteerInnerDeadzone) /
+                  (rally::platform::kSteerOuterDeadzone - rally::platform::kSteerInnerDeadzone));
+    const float shaped = std::pow(t, 1.5f);
+    return x < 0.0f ? -shaped : shaped;
+}
+
+// Stick en la mitad del recorrido entre las zonas muertas: t = 0,5.
+constexpr float kHalfStick = 0.525f;
+
+} // namespace
+
+TEST_CASE("steer sensitivity: at 100 percent the output is the same bit for bit as before") {
+    for (int i = 0; i <= 1000; ++i) {
+        const float x = -1.0f + 2.0f * static_cast<float>(i) / 1000.0f;
+        INFO(x);
+        CHECK(std::bit_cast<std::uint32_t>(shape_steer(x, 100)) ==
+              std::bit_cast<std::uint32_t>(steer_before_sensitivity(x)));
+        CHECK(std::bit_cast<std::uint32_t>(shape_steer(x)) ==
+              std::bit_cast<std::uint32_t>(steer_before_sensitivity(x)));
+    }
+}
+
+TEST_CASE("steer sensitivity: 50 and 150 percent give exponents 3 and 1, full lock is full") {
+    using rally::platform::steer_curve_exponent;
+    CHECK(steer_curve_exponent(50) == 3.0f);
+    CHECK(steer_curve_exponent(100) == 1.5f);
+    CHECK(steer_curve_exponent(150) == 1.0f);
+    // Recorta fuera de 50..150.
+    CHECK(steer_curve_exponent(10) == 3.0f);
+    CHECK(steer_curve_exponent(500) == 1.0f);
+    for (const int pct : {50, 100, 150}) {
+        INFO(pct);
+        CHECK(shape_steer(1.0f, pct) == 1.0f);
+        CHECK(shape_steer(-1.0f, pct) == -1.0f);
+        CHECK(shape_steer(0.95f, pct) == 1.0f);
+        float previous = 0.0f;
+        for (int i = 0; i <= 200; ++i) {
+            const float value = shape_steer(static_cast<float>(i) / 200.0f, pct);
+            CHECK(value >= previous);
+            previous = value;
+        }
+    }
+}
+
+TEST_CASE("steer sensitivity: at 70 percent half the stick gives 0.5^(1.5/0.7)") {
+    const double expected = std::pow(0.5, 1.5 / 0.7); // 0,2264
+    CHECK(shape_steer(kHalfStick, 70) == doctest::Approx(expected).epsilon(1e-5));
+    CHECK(shape_steer(-kHalfStick, 70) == doctest::Approx(-expected).epsilon(1e-5));
+}
+
+TEST_CASE("steer sensitivity: every step is felt, at half stick 0.125 against 0.5") {
+    CHECK(shape_steer(kHalfStick, 50) == doctest::Approx(0.125).epsilon(1e-5));
+    CHECK(shape_steer(kHalfStick, 150) == doctest::Approx(0.5).epsilon(1e-5));
+    float previous = 0.0f;
+    for (int pct = 50; pct <= 150; pct += 10) {
+        const float value = shape_steer(kHalfStick, pct);
+        INFO(pct);
+        CHECK(value > previous); // cada paso de 10 % sube la salida a medio stick
+        previous = value;
+    }
+}
+
+TEST_CASE("steer sensitivity: the gamepad state carries it, the deadzone and trigger do not") {
+    PadTracker tracker;
+    PadReading reading;
+    reading.id = 1;
+    reading.left_x = kHalfStick;
+    reading.right_trigger = 1.0f;
+    const PadState soft = tracker.update(&reading, 1, 50);
+    const PadState normal = tracker.update(&reading, 1, 100);
+    const PadState sharp = tracker.update(&reading, 1, 150);
+    CHECK(soft.steer == doctest::Approx(0.125).epsilon(1e-5));
+    CHECK(normal.steer == shape_steer(kHalfStick));
+    CHECK(sharp.steer == doctest::Approx(0.5).epsilon(1e-5));
+    CHECK(soft.throttle == normal.throttle);
+    // Dentro de la zona muerta, 0 con cualquier sensibilidad, y no activa el mando.
+    PadTracker idle;
+    PadReading drift;
+    drift.id = 2;
+    drift.left_x = 0.09f;
+    CHECK_FALSE(idle.update(&drift, 1, 50).active);
+    drift.any_button = true;
+    CHECK(idle.update(&drift, 1, 150).steer == 0.0f);
 }

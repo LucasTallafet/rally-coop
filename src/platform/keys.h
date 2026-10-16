@@ -12,8 +12,8 @@ namespace rally::platform {
 // Teclas del juego (sin menú de reasignación hasta los menús, fase 5). Cada componente tiene su
 // tabla en su propio archivo (platform/drive_keys, platform/window_keys y las partes de la demo,
 // platform/demo_*_keys) y su enum de acciones; platform/key_tables las junta en una sola: de ella
-// salen la ayuda en pantalla (H) y la tabla de docs/07-entorno-y-portabilidad.md §8
-// (keys_markdown; un test la compara con el documento). Una tecla repetida en dos tablas en
+// salen la ayuda en pantalla (H) y la tabla de docs/teclas.md (keys_markdown; un test la compara
+// con el documento). Una tecla repetida en dos tablas en
 // contextos que se cruzan hace fallar un test (count_key_conflicts).
 // Sin raylib: Key lleva los valores de KeyboardKey de raylib, y platform/keys_raylib.cpp
 // comprueba cada uno con un static_assert sobre la misma lista.
@@ -22,6 +22,8 @@ namespace rally::platform {
 // Latin-1: es lo que tiene la fuente por defecto de raylib.
 #define RALLY_KEYS(KEY)                                                                            \
     KEY(Space, SPACE, 32, "Espacio", "Espacio")                                                    \
+    KEY(Four, FOUR, 52, "4", "4")                                                                  \
+    KEY(Five, FIVE, 53, "5", "5")                                                                  \
     KEY(B, B, 66, "B", "B")                                                                        \
     KEY(C, C, 67, "C", "C")                                                                        \
     KEY(D, D, 68, "D", "D")                                                                        \
@@ -178,7 +180,7 @@ std::string_view pad_text_short(PadControl pad);
 std::string binding_label_doc(const KeyBinding& binding);
 std::string binding_label_short(const KeyBinding& binding);
 
-// Tablas de docs/07 §8, una por bloque con teclas, en el orden de la tabla.
+// Tablas de docs/teclas.md, una por bloque con teclas, en el orden de la tabla.
 std::string keys_markdown(std::span<const KeyBinding> table);
 
 } // namespace rally::platform

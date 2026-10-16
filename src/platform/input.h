@@ -30,6 +30,9 @@ public:
     bool mouse_enabled() const { return mouse_enabled_; }
     bool mouse_captured() const { return mouse_captured_; }
     const MouseSteer& mouse() const { return mouse_; }
+    // Sensibilidad de la dirección del stick (tarea 2.8, en %), antes de read(). El ratón y el
+    // teclado no la usan.
+    void set_steer_sensitivity(int pct) { steer_sensitivity_pct_ = pct; }
 
 private:
     void update_mouse();
@@ -42,6 +45,7 @@ private:
     bool mouse_captured_ = false;
     bool skip_mouse_delta_ = false;
     int mouse_full_lock_px_ = 400;
+    int steer_sensitivity_pct_ = kSteerSensitivityDefaultPct;
 };
 
 } // namespace rally::platform

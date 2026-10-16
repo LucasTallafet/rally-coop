@@ -5,14 +5,20 @@
 
 namespace rally::platform {
 
-float shape_steer(float x) {
+float steer_curve_exponent(int sensitivity_pct) {
+    const int pct = std::clamp(sensitivity_pct, kSteerSensitivityMinPct, kSteerSensitivityMaxPct);
+    // A 100 %, 1,5f / 1,0f = 1,5f exacto: la misma curva que antes de la sensibilidad.
+    return kSteerCurveExponent / (static_cast<float>(pct) / 100.0f);
+}
+
+float shape_steer(float x, int sensitivity_pct) {
     const float magnitude = std::abs(x);
     if (magnitude <= kSteerInnerDeadzone) {
         return 0.0f;
     }
     const float t = std::min(1.0f, (magnitude - kSteerInnerDeadzone) /
                                        (kSteerOuterDeadzone - kSteerInnerDeadzone));
-    const float shaped = std::pow(t, kSteerCurveExponent);
+    const float shaped = std::pow(t, steer_curve_exponent(sensitivity_pct));
     return x < 0.0f ? -shaped : shaped;
 }
 
@@ -44,7 +50,7 @@ bool in_use(const PadReading& pad) {
 
 } // namespace
 
-PadState PadTracker::update(const PadReading* pads, int count) {
+PadState PadTracker::update(const PadReading* pads, int count, int steer_sensitivity_pct) {
     count = std::min(count, kMaxPads);
 
     // Olvida los mandos desconectados y añade los nuevos, conservando lo aprendido.
@@ -90,7 +96,7 @@ PadState PadTracker::update(const PadReading* pads, int count) {
     }
     const PadReading& pad = pads[active_index];
     state.active = true;
-    state.steer = shape_steer(pad.left_x);
+    state.steer = shape_steer(pad.left_x, steer_sensitivity_pct);
     state.throttle = shape_trigger(pad.right_trigger);
     state.brake = shape_trigger(pad.left_trigger);
     state.throttle_digital = !known_[active_index].analog_right;

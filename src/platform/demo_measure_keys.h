@@ -7,7 +7,7 @@
 namespace rally::platform {
 
 // Medidas de la demo (platform/demo_measure): capturas, registro, bosque, ritmo, pausa e
-// interpolación. Su tabla entra en la de platform/key_tables (ayuda y docs/07 §8).
+// interpolación. Su tabla entra en la de platform/key_tables (ayuda y docs/teclas.md).
 enum class MeasureAction : std::uint8_t {
     Capture,
     FrameLog,

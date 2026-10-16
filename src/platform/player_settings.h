@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/input_shaping.h"
 #include "platform/seat.h"
 
 #include <cstdint>
@@ -35,6 +36,11 @@ struct PlayerSettings {
     // descripción del mundo (DriverAids::gearbox) y cambiarla lo reconstruye.
     bool sequential = false;
     int mouse_full_lock_px = kMouseFullLockPxDefault;
+    // Sensibilidad de la dirección del stick en % (tarea 2.8, teclas 4 y 5; 50..150): la
+    // linealidad de su curva (platform/input_shaping). No es de la simulación: ni reconstruye el
+    // mundo ni cambia la grabación en curso; la cabecera de cada grabación guarda el valor con el
+    // que empieza (recording_settings_text).
+    int steer_sensitivity_pct = kSteerSensitivityDefaultPct;
     // Movimiento de la cabeza (tarea 2.7, F9; activado por defecto) y volumen general en % (F4).
     // Solo presentación: ni reconstruyen el mundo ni van en la grabación.
     bool head_motion = true;
@@ -51,10 +57,15 @@ inline constexpr std::string_view kSettingsFileName = "ajustes.txt";
 
 PlayerSettings parse_settings(std::string_view text, std::vector<SettingsWarning>& warnings);
 // Ajustes de la plataforma que van en la cabecera de la grabación (RecordingHeader::settings):
-// los de la dirección que no son de la simulación (dispositivo y sensibilidad del ratón), en el
-// mismo formato que ajustes.txt. La ayuda va en la descripción del mundo, no aquí.
+// los de la dirección que no son de la simulación (dispositivo, sensibilidad del ratón y
+// sensibilidad del stick), en el mismo formato que ajustes.txt. La ayuda va en la descripción del
+// mundo, no aquí.
 std::string recording_settings_text(const PlayerSettings& settings);
 std::string format_settings(const PlayerSettings& settings);
+
+// Teclas 4 / 5: la sensibilidad un paso (10 %) por debajo (dir < 0) o por encima (dir > 0), en
+// múltiplos de 10 (desde 75, + da 80 y - da 70), con tope en 50 y en 150.
+int next_sensitivity_pct(int sensitivity_pct, int dir);
 
 // F4: el volumen siguiente de la serie 100, 70, 40, 0 (y vuelta a 100). Desde un valor que no
 // está en la serie (escrito a mano), el siguiente por debajo.

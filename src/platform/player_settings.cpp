@@ -1,5 +1,6 @@
 #include "platform/player_settings.h"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <system_error>
@@ -46,6 +47,9 @@ constexpr std::array kKeys = {
     Key{"raton_px_tope", [](const PlayerSettings& p) { return p.mouse_full_lock_px; },
         [](PlayerSettings& p, int v) { p.mouse_full_lock_px = v; }, kMouseFullLockPxMin,
         kMouseFullLockPxMax, " px"},
+    Key{"sensibilidad_direccion", [](const PlayerSettings& p) { return p.steer_sensitivity_pct; },
+        [](PlayerSettings& p, int v) { p.steer_sensitivity_pct = v; }, kSteerSensitivityMinPct,
+        kSteerSensitivityMaxPct, " %"},
     Key{"cabeza", [](const PlayerSettings& p) { return p.head_motion ? 1 : 0; },
         [](PlayerSettings& p, int v) { p.head_motion = v != 0; }, 0, 1, ""},
     Key{"volumen_pct", [](const PlayerSettings& p) { return p.volume_pct; },
@@ -157,6 +161,8 @@ std::string format_settings(const PlayerSettings& settings) {
                       "(alto: arriba; adelante: hacia delante; derecha: hacia la derecha).\n"
                       "# Dirección: ayuda_direccion 1 o 0 (F6); dispositivo_direccion teclado o "
                       "raton (F7); raton_px_tope, píxeles del ratón para el tope, de 50 a 5000.\n"
+                      "# Sensibilidad del stick: sensibilidad_direccion, de 50 a 150 % (teclas 4 y "
+                      "5); 100 es la curva de siempre.\n"
                       "# Caja: caja automatica o secuencial (F2).\n";
     for (const Key& spec : kKeys) {
         out += spec.name;
@@ -179,7 +185,21 @@ std::string recording_settings_text(const PlayerSettings& settings) {
     std::string out = "dispositivo_direccion = ";
     out += settings.steer_device == SteerDevice::Mouse ? "raton" : "teclado";
     out += "\nraton_px_tope = " + std::to_string(settings.mouse_full_lock_px) + "\n";
+    out += "sensibilidad_direccion = " + std::to_string(settings.steer_sensitivity_pct) + "\n";
     return out;
+}
+
+int next_sensitivity_pct(int sensitivity_pct, int dir) {
+    const int step = kSteerSensitivityStepPct;
+    // Al múltiplo de 10 siguiente en la dirección pedida (desde uno exacto, ±10).
+    int next = sensitivity_pct;
+    if (dir > 0) {
+        next = (sensitivity_pct / step + 1) * step;
+    } else if (dir < 0) {
+        next = (sensitivity_pct % step == 0 ? sensitivity_pct / step - 1 : sensitivity_pct / step) *
+               step;
+    }
+    return std::clamp(next, kSteerSensitivityMinPct, kSteerSensitivityMaxPct);
 }
 
 void SettingsSaver::changed(std::int64_t now_ns) {

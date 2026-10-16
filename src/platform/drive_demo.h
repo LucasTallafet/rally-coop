@@ -59,6 +59,8 @@ public:
     bool mouse_steering() const { return ctx_.settings.steer_device == SteerDevice::Mouse; }
     int mouse_full_lock_px() const { return ctx_.settings.mouse_full_lock_px; }
     bool mouse_capture_allowed() const { return !ctx_.paused; }
+    // Sensibilidad del stick (ajustes del jugador, teclas 4/5) para DriverInput.
+    int steer_sensitivity_pct() const { return ctx_.settings.steer_sensitivity_pct; }
 
     // Empieza el registro de fotogramas (también con L; --frame-log al arrancar).
     void start_frame_log() { measure_.start_frame_log(); }

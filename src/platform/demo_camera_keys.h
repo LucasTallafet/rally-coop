@@ -7,7 +7,7 @@
 namespace rally::platform {
 
 // Cámara de la demo (platform/demo_camera): vistas, cabeza, asiento y render en float del mundo. Su
-// tabla entra en la de platform/key_tables (ayuda y docs/07 §8).
+// tabla entra en la de platform/key_tables (ayuda y docs/teclas.md).
 enum class CameraAction : std::uint8_t {
     Camera,
     HeadMotion,

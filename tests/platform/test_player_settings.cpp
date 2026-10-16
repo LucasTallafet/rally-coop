@@ -248,3 +248,72 @@ TEST_CASE("player_settings: a bad steering value warns with its line and keeps t
     CHECK(warnings[2].message.find("400 px") != std::string::npos);
     CHECK(warnings[3].line == 4); // repetida: vale la primera (que era mala)
 }
+
+TEST_CASE("player settings: steer sensitivity reads, writes and defaults to 100") {
+    std::vector<SettingsWarning> warnings;
+    // Falta: 100, sin avisos.
+    const PlayerSettings missing = parse_settings("asiento_alto_cm = 2\n", warnings);
+    CHECK(missing.steer_sensitivity_pct == 100);
+    CHECK(warnings.empty());
+    // Se lee y vuelve (130 no es la de por defecto).
+    const PlayerSettings parsed = parse_settings("sensibilidad_direccion = 130\n", warnings);
+    CHECK(parsed.steer_sensitivity_pct == 130);
+    CHECK(warnings.empty());
+    PlayerSettings settings;
+    settings.steer_sensitivity_pct = 130;
+    CHECK(parse_settings(format_settings(settings), warnings) == settings);
+    CHECK(warnings.empty());
+    CHECK(format_settings(settings).find("sensibilidad_direccion = 130\n") != std::string::npos);
+    // Los dos extremos valen.
+    CHECK(parse_settings("sensibilidad_direccion = 50\n", warnings).steer_sensitivity_pct == 50);
+    CHECK(parse_settings("sensibilidad_direccion = 150\n", warnings).steer_sensitivity_pct == 150);
+    CHECK(warnings.empty());
+}
+
+TEST_CASE("player settings: steer sensitivity out of range warns with its line") {
+    for (const char* bad : {"49", "151", "0", "-100", "abc", ""}) {
+        INFO(bad);
+        std::vector<SettingsWarning> warnings;
+        const PlayerSettings parsed = parse_settings(
+            std::string("# ajustes\nsensibilidad_direccion = ") + bad + "\n", warnings);
+        CHECK(parsed.steer_sensitivity_pct == 100);
+        REQUIRE(warnings.size() == 1);
+        CHECK(warnings[0].line == 2);
+        CHECK(warnings[0].message.find("sensibilidad_direccion") != std::string::npos);
+        CHECK(warnings[0].message.find("100 %") != std::string::npos);
+    }
+}
+
+TEST_CASE("player settings: the recording header carries the steer sensitivity") {
+    PlayerSettings settings;
+    settings.steer_sensitivity_pct = 70;
+    const std::string text = rally::platform::recording_settings_text(settings);
+    CHECK(text.find("sensibilidad_direccion = 70\n") != std::string::npos);
+    // Y se lee con el mismo lector que ajustes.txt.
+    std::vector<SettingsWarning> warnings;
+    CHECK(parse_settings(text, warnings).steer_sensitivity_pct == 70);
+    CHECK(warnings.empty());
+}
+
+TEST_CASE("player settings: next_sensitivity_pct steps by 10 and stops at 50 and 150") {
+    using rally::platform::next_sensitivity_pct;
+    CHECK(next_sensitivity_pct(100, 1) == 110);
+    CHECK(next_sensitivity_pct(100, -1) == 90);
+    CHECK(next_sensitivity_pct(75, 1) == 80);
+    CHECK(next_sensitivity_pct(75, -1) == 70);
+    CHECK(next_sensitivity_pct(130, 1) == 140);
+    CHECK(next_sensitivity_pct(150, 1) == 150);
+    CHECK(next_sensitivity_pct(50, -1) == 50);
+    CHECK(next_sensitivity_pct(55, -1) == 50);
+    CHECK(next_sensitivity_pct(145, 1) == 150);
+    // De 50 a 150 en 10 pasos, y vuelta.
+    int pct = 50;
+    for (int i = 0; i < 10; ++i) {
+        pct = next_sensitivity_pct(pct, 1);
+    }
+    CHECK(pct == 150);
+    for (int i = 0; i < 10; ++i) {
+        pct = next_sensitivity_pct(pct, -1);
+    }
+    CHECK(pct == 50);
+}

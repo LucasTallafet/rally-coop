@@ -113,7 +113,9 @@ TEST_CASE("audio_snapshot: the reader never sees a half-written snapshot") {
     std::uint64_t backwards = 0;
     std::uint64_t reads = 0;
     std::uint64_t last_seen = 0;
+    std::atomic<bool> reader_running{false};
     std::thread reader([&] {
+        reader_running.store(true, std::memory_order_release);
         while (!done.load(std::memory_order_acquire)) {
             const AudioSnapshot& s = buffer->read();
             const std::uint64_t seq = s.sequence;
@@ -130,6 +132,11 @@ TEST_CASE("audio_snapshot: the reader never sees a half-written snapshot") {
             ++reads;
         }
     });
+    // El productor espera a que el lector esté en marcha: si no, en un PC rápido publica las 10⁶
+    // antes de que arranque el hilo y no se lee nada.
+    while (!reader_running.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
     for (std::uint64_t i = 1; i <= kCount; ++i) {
         AudioSnapshot s;
         s.sequence = i;
