@@ -108,6 +108,7 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 | `ctest --output-log` no guarda la salida de los tests que pasan (P1a) | ctest | La línea de resumen sale del JUnit (`--output-junit`), que sí la guarda |
 | Un mutex de un proceso muerto no siempre se ve como abandonado (P1a) | Si nadie más lo tenía abierto, Windows lo destruye con su último handle | Da igual: la plaza queda libre y la siguiente llamada entra; si otra esperaba, lo recibe como abandonado (`WaitForMultipleObjects`) y entra también |
 | La CPU de render de `--bench-forest` varía ± 25 % entre pasadas del mismo exe (P1a) | La primera pasada de cada tanda sale más baja | Comparar antes y después con pasadas intercaladas, no una contra una |
+| Control de tracción y embrague de arranque (2.8) | El corte del motor solo llega a las ruedas a través de las vueltas y de la capacidad del embrague de arranque; un corte proporcional daba un ciclo de relé de ~34 Hz al salir | Sin estado, con un adelanto τ·q' calculado con dos resoluciones de prueba del LCP del subpaso |
 
 ---
 
