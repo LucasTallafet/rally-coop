@@ -24,4 +24,4 @@ add_library(rally_io STATIC
 )
 add_dependencies(rally_io rally_build_info)
 target_include_directories(rally_io PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(rally_io PUBLIC rally_sim PRIVATE rally_warnings)
+target_link_libraries(rally_io PUBLIC rally_sim rally_game PRIVATE rally_warnings)

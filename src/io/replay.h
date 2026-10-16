@@ -11,7 +11,11 @@ namespace rally::io {
 // Repetición sin bucle ni ventana: construye el mundo de la cabecera y aplica cada entrada
 // grabada a su paso. Necesita un JoltRuntime vivo.
 
-// Construye y sella el mundo de la grabación. false (con el motivo) si la descripción no
+// Construye y sella el mundo de la grabación. Con acciones, la repetición construye la máquina
+// con la tabla de la cabecera (no la de data/game), MachineSetup{} y setup.car =
+// car_state_from(mundo recién construido); aplica los eventos de cada paso antes de simularlo y
+// llama a advance(car_state_from) después. Un evento mal puesto (validate_events) es un
+// problema, no un aborto. false (con el motivo) si la descripción no
 // es válida.
 bool build_world(const Recording& recording, sim::SimWorld& world, std::string& error);
 
@@ -35,7 +39,13 @@ struct ReplayResult {
     // Grabación incompleta (guardada al saltar un RALLY_CHECK): se repite hasta su último
     // paso y no hay hash con el que comparar.
     bool incomplete = false;
-    // Hash y pasos iguales a los del pie (solo si es completa y de la misma versión).
+    // La grabación lleva acciones (texto no vacío, formato 7): se repitió con la máquina y
+    // `actions_hash` es su ActionMachine::timeline_hash. Sin acciones, false y 0, y el hash de
+    // acciones del pie no se compara.
+    bool actions_ran = false;
+    std::uint64_t actions_hash = 0;
+    // Hash y pasos iguales a los del pie, y el de la línea de tiempo de las acciones si las hay
+    // (solo si es completa y de la misma versión).
     bool hash_ok = false;
 };
 

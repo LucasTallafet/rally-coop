@@ -1,5 +1,9 @@
 # Carril de los formatos (src/io): grabaciones, su repetición y el guardado de emergencia.
-rally_add_test_executable(rally_tests_io test_recording.cpp)
+rally_add_test_executable(rally_tests_io test_recording.cpp test_format7.cpp
+    test_actions_recording.cpp test_csv_hash.cpp)
+target_link_libraries(rally_tests_io PRIVATE rally_game)
+target_compile_definitions(rally_tests_io PRIVATE
+    RALLY_GAME_DATA_DIR="${PROJECT_SOURCE_DIR}/data/game")
 target_include_directories(rally_tests_io PRIVATE ${PROJECT_SOURCE_DIR}/tests/sim/common)
 
 # Grabación incompleta: rally_abort_recording graba 600 pasos y aborta con un RALLY_CHECK de
@@ -24,6 +28,14 @@ set_tests_properties(replay.incomplete_recording PROPERTIES
     FIXTURES_REQUIRED abort_recording
     PASS_REGULAR_EXPRESSION "pasos: 600 .*aviso: grabación incompleta"
     FAIL_REGULAR_EXPRESSION "hash OK|FALLO")
+# Formato 7 (lote 1): sesión con ABS, control alto, suspensión blanda, 10 peticiones y 2
+# cancelaciones de acciones (la genera test_actions_recording con RALLY_WRITE_ACTIONS_REC=<ruta>).
+# rally_replay la repite con la misma línea de tiempo.
+add_test(NAME replay.actions_v7
+    COMMAND rally_replay run ${RALLY_TEST_DATA}/recordings/actions_v7.rrec)
+set_tests_properties(replay.actions_v7 PROPERTIES
+    PASS_REGULAR_EXPRESSION "hash OK"
+    FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 # rally_replay con un archivo que no existe: error y código 2, sin colgarse.
 add_test(NAME replay.missing_file COMMAND rally_replay info ${RALLY_TESTS_OUT}/no_existe.rrec)
 set_tests_properties(replay.missing_file PROPERTIES

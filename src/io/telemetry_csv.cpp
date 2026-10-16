@@ -92,6 +92,9 @@ constexpr double kPiDouble = 3.14159265358979323846;
       nullptr}, \
     C{"h_" SUFFIX, "m", "+ arriba", "Media del microrrelieve h sobre la huella", kReal, 5, \
       [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].h); }, \
+      nullptr}, \
+    C{"abs_torque_cut_" SUFFIX, "N·m", "≥ 0", "Par del freno de pie que quita el ABS (media de los subpasos); 0 sin ABS", kReal, 1, \
+      [](const CarTelemetry& t) { return static_cast<double>(t.wheels[W].abs_torque_cut); }, \
       nullptr}
 
 constexpr std::array kColumns = {
@@ -227,6 +230,8 @@ constexpr std::array kColumns = {
       [](const CarTelemetry& t) { return static_cast<double>(t.lcp_iterations); }, nullptr},
     C{"lcp_failures", "", "0..4", "Subpasos del paso en que el LCP no convergió (impulsos recortados a su caja)", kInt, 0,
       [](const CarTelemetry& t) { return static_cast<double>(t.lcp_failures); }, nullptr},
+    C{"traction_torque_cut", "N·m", "≥ 0", "Par motor que quita el control de tracción (media de los subpasos); 0 sin control", kReal, 2,
+      [](const CarTelemetry& t) { return static_cast<double>(t.traction_torque_cut); }, nullptr},
     RALLY_WHEEL_COLUMNS(0, "fl"),
     RALLY_WHEEL_COLUMNS(1, "fr"),
     RALLY_WHEEL_COLUMNS(2, "rl"),

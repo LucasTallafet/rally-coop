@@ -138,12 +138,44 @@ std::filesystem::path to_path(const std::string& utf8) {
 std::size_t header_bytes(const RecordingHeader& header) {
     return kMagic.size() + 4 + 4 + (4 + header.commit.size()) + (4 + header.world.size()) +
            (4 + header.car_text.size()) + (4 + header.settings.size()) +
-           (header.format_version >= 2 ? 8 : 0) + 4;
+           (header.format_version >= 2 ? 8 : 0) +
+           (header.format_version >= 7 ? 4 + header.actions_text.size() : 0) + 4;
+}
+
+std::string validate_events(const std::vector<game::ActionEvent>& events,
+                            std::uint64_t total_steps) {
+    std::uint64_t previous = 0;
+    for (std::size_t i = 0; i < events.size(); ++i) {
+        const game::ActionEvent& e = events[i];
+        char buffer[160];
+        if (static_cast<std::uint8_t>(e.player) >
+                static_cast<std::uint8_t>(game::Player::Copilot) ||
+            static_cast<std::uint8_t>(e.kind) >
+                static_cast<std::uint8_t>(game::EventKind::Cancel)) {
+            std::snprintf(buffer, sizeof(buffer),
+                          "evento de acción %zu con jugador o tipo no válidos", i);
+            return buffer;
+        }
+        if (e.step < previous) {
+            std::snprintf(buffer, sizeof(buffer),
+                          "evento de acción %zu con un paso anterior al del evento previo", i);
+            return buffer;
+        }
+        if (e.step > total_steps) {
+            std::snprintf(buffer, sizeof(buffer),
+                          "evento de acción %zu en un paso posterior al último de la grabación", i);
+            return buffer;
+        }
+        previous = e.step;
+    }
+    return {};
 }
 
 std::string serialize(const Recording& recording) {
     std::string out;
+    const bool v7 = recording.header.format_version >= 7;
     out.reserve(header_bytes(recording.header) + recording.runs.size() * kRunBytes +
+                (v7 ? 4 + recording.events.size() * kEventBytes : 0) +
                 footer_bytes(recording.header.format_version));
     Writer w(out);
     const RecordingHeader& h = recording.header;
@@ -157,6 +189,9 @@ std::string serialize(const Recording& recording) {
     if (h.format_version >= 2) {
         w.u64(h.zone_hash);
     }
+    if (v7) {
+        w.str(h.actions_text);
+    }
     w.u32(static_cast<std::uint32_t>(recording.runs.size()));
     for (const InputRun& run : recording.runs) {
         w.u32(run.count);
@@ -164,6 +199,15 @@ std::string serialize(const Recording& recording) {
         w.i16(run.input.throttle);
         w.i16(run.input.brake);
         w.u16(run.input.buttons);
+    }
+    if (v7) {
+        w.u32(static_cast<std::uint32_t>(recording.events.size()));
+        for (const game::ActionEvent& event : recording.events) {
+            w.u64(event.step);
+            w.u8(static_cast<std::uint8_t>(event.player));
+            w.u8(static_cast<std::uint8_t>(event.kind));
+            w.u8(event.action);
+        }
     }
     const RecordingFooter& f = recording.footer;
     w.u32(f.complete ? kFlagComplete : 0u);
@@ -174,6 +218,9 @@ std::string serialize(const Recording& recording) {
         w.i64(f.road.last_run);
         w.u32(f.road.last_resets);
         w.u32(f.road.runs);
+    }
+    if (v7) {
+        w.u64(f.actions_hash);
     }
     w.raw(kEndMagic);
     return out;
@@ -205,13 +252,18 @@ ParseResult parse(std::string_view bytes) {
     if (h.format_version >= 2) {
         h.zone_hash = r.u64();
     }
+    if (h.format_version >= 7) {
+        h.actions_text = r.str();
+    }
     const std::uint32_t run_count = r.u32();
     if (!r.ok()) {
         result.error = at("archivo truncado en la cabecera", r.offset());
         return result;
     }
     // Antes de reservar: los tramos que dice tienen que caber en lo que queda.
-    if (static_cast<std::uint64_t>(run_count) * kRunBytes + footer_bytes(h.format_version) >
+    const std::uint64_t events_count_bytes = h.format_version >= 7 ? 4 : 0;
+    if (static_cast<std::uint64_t>(run_count) * kRunBytes + events_count_bytes +
+            footer_bytes(h.format_version) >
         r.remaining()) {
         result.error = at("archivo truncado: faltan tramos o el pie", r.offset());
         return result;
@@ -236,6 +288,36 @@ ParseResult parse(std::string_view bytes) {
         }
         steps += run.count;
     }
+    if (h.format_version >= 7) {
+        const std::size_t count_offset = r.offset();
+        const std::uint32_t event_count = r.u32();
+        // Antes de reservar: los eventos que dice tienen que caber en lo que queda.
+        if (static_cast<std::uint64_t>(event_count) * kEventBytes + footer_bytes(h.format_version) >
+            r.remaining()) {
+            result.error = at("archivo truncado: faltan eventos de acción o el pie", count_offset);
+            return result;
+        }
+        result.recording.events.resize(event_count);
+        for (game::ActionEvent& event : result.recording.events) {
+            const std::size_t offset = r.offset();
+            event.step = r.u64();
+            const std::uint8_t player = r.u8();
+            const std::uint8_t kind = r.u8();
+            event.action = r.u8();
+            if (player > static_cast<std::uint8_t>(game::Player::Copilot) ||
+                kind > static_cast<std::uint8_t>(game::EventKind::Cancel)) {
+                result.error = at("evento de acción con jugador o tipo no válidos", offset);
+                return result;
+            }
+            event.player = static_cast<game::Player>(player);
+            event.kind = static_cast<game::EventKind>(kind);
+        }
+        if (event_count > 0 && h.actions_text.empty()) {
+            result.error =
+                at("eventos de acción sin texto de acciones en la cabecera", count_offset);
+            return result;
+        }
+    }
     RecordingFooter& f = result.recording.footer;
     const std::uint32_t flags = r.u32();
     f.complete = (flags & kFlagComplete) != 0;
@@ -246,6 +328,9 @@ ParseResult parse(std::string_view bytes) {
         f.road.last_run = r.i64();
         f.road.last_resets = r.u32();
         f.road.runs = r.u32();
+    }
+    if (h.format_version >= 7) {
+        f.actions_hash = r.u64();
     }
     const std::size_t end_offset = r.offset();
     if (r.raw(kEndMagic.size()) != kEndMagic || !r.ok()) {
@@ -258,6 +343,11 @@ ParseResult parse(std::string_view bytes) {
     }
     if (f.total_steps != steps) {
         result.error = "los tramos no suman los pasos del pie";
+        return result;
+    }
+    const std::string events_problem = validate_events(result.recording.events, f.total_steps);
+    if (!events_problem.empty()) {
+        result.error = events_problem;
         return result;
     }
     result.ok = true;
@@ -292,6 +382,9 @@ std::string serialize_world(const sim::WorldDesc& desc) {
     w.u8(static_cast<std::uint8_t>(desc.aids.gearbox));
     w.u8(static_cast<std::uint8_t>(desc.car_spawn.gear));
     w.u8(static_cast<std::uint8_t>(desc.road_surface));
+    w.u8(desc.aids.abs ? 1 : 0);
+    w.u8(static_cast<std::uint8_t>(desc.aids.traction));
+    w.u8(static_cast<std::uint8_t>(desc.aids.suspension));
     return out;
 }
 
@@ -304,13 +397,15 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
     // dirección); hasta la 3, sin ayudas (no existían). Desde la 5, detrás, el modo de la caja
     // (u8) y la marcha de salida de los tests (i8; 127: la que da la velocidad); hasta la 4,
     // automático y la marcha que da la velocidad. Desde la 6, detrás, la superficie de la
-    // calzada de la carretera (u8: grava o asfalto); hasta la 5, grava.
+    // calzada de la carretera (u8: grava o asfalto); hasta la 5, grava. Desde la 7, detrás, u8 ABS
+    // (0/1), u8 control de tracción (0..2) y u8 suspensión (0..2); hasta la 6, sin ABS, sin
+    // control y con suspensión media.
     const bool v3 = format_version >= 3;
     const std::size_t body_bytes = 1 + 3 * 8 + 3 * 4 + (v3 ? 4 + 1 + 1 : 0);
     const std::size_t car_bytes = 1 + 3 * 8 + 2 * 4;
     const std::size_t tail_bytes = (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0) +
                                    (format_version >= 4 ? 1 : 0) + (format_version >= 5 ? 2 : 0) +
-                                   (format_version >= 6 ? 1 : 0);
+                                   (format_version >= 6 ? 1 : 0) + (format_version >= 7 ? 3 : 0);
     Reader r(bytes);
     const std::uint32_t count = r.u32();
     if (!r.ok() || static_cast<std::uint64_t>(count) * body_bytes + tail_bytes != r.remaining()) {
@@ -403,6 +498,19 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
         }
         desc.road_surface = static_cast<sim::Surface>(road);
     }
+    if (format_version >= 7) {
+        const std::uint8_t abs = r.u8();
+        const std::uint8_t traction = r.u8();
+        const std::uint8_t suspension = r.u8();
+        if (abs > 1 || traction > static_cast<std::uint8_t>(sim::TractionControl::High) ||
+            suspension > static_cast<std::uint8_t>(sim::SuspensionSetting::Hard)) {
+            error = "descripción del mundo: ABS, control de tracción o suspensión no válidos";
+            return false;
+        }
+        desc.aids.abs = abs == 1;
+        desc.aids.traction = static_cast<sim::TractionControl>(traction);
+        desc.aids.suspension = static_cast<sim::SuspensionSetting>(suspension);
+    }
     return true;
 }
 
@@ -444,6 +552,7 @@ void Recorder::begin(RecordingHeader header, std::size_t reserve_runs) {
     recording_ = Recording{};
     recording_.header = std::move(header);
     recording_.runs.reserve(reserve_runs);
+    recording_.events.reserve(kEventsPerFrame * 16);
     active_ = true;
 }
 
@@ -453,6 +562,22 @@ void Recorder::ensure_capacity(int steps) {
     if (needed > runs.capacity()) {
         runs.reserve(needed > runs.capacity() * 2 ? needed : runs.capacity() * 2);
     }
+    std::vector<game::ActionEvent>& events = recording_.events;
+    const std::size_t events_needed = events.size() + kEventsPerFrame;
+    if (events_needed > events.capacity()) {
+        events.reserve(events_needed > events.capacity() * 2 ? events_needed
+                                                             : events.capacity() * 2);
+    }
+}
+
+void Recorder::append_event(const game::ActionEvent& event) {
+    RALLY_CHECK(active_, "Recorder::append_event: no hay grabación empezada");
+    RALLY_CHECK(event.step == recording_.footer.total_steps,
+                "Recorder::append_event: el evento no es del paso que se va a simular");
+    std::vector<game::ActionEvent>& events = recording_.events;
+    RALLY_CHECK(events.size() < events.capacity(),
+                "Recorder::append_event: sin sitio (falta ensure_capacity antes del fotograma)");
+    events.push_back(event);
 }
 
 void Recorder::append(const sim::SimInput& input) {
@@ -470,15 +595,17 @@ void Recorder::append(const sim::SimInput& input) {
 }
 
 std::size_t footer_bytes(std::uint32_t format_version) {
-    return format_version >= 6 ? kFooterBytes : 32;
+    return format_version >= 7 ? kFooterBytes : (format_version >= 6 ? 48 : 32);
 }
 
-Recording Recorder::finish(std::uint64_t final_hash, std::int64_t timed_steps, RoadResult road) {
+Recording Recorder::finish(std::uint64_t final_hash, std::int64_t timed_steps, RoadResult road,
+                           std::uint64_t actions_hash) {
     RALLY_CHECK(active_, "Recorder::finish: no hay grabación empezada");
     recording_.footer.complete = true;
     recording_.footer.final_hash = final_hash;
     recording_.footer.timed_steps = timed_steps;
     recording_.footer.road = road;
+    recording_.footer.actions_hash = actions_hash;
     active_ = false;
     return std::move(recording_);
 }
