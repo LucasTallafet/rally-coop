@@ -70,6 +70,14 @@ struct CockpitData {
     float display_height = 0.0f;
 };
 
+// Multiplicadores de una dureza de la suspensión ([settings], tarea 2.8) sobre la frecuencia
+// del muelle, la fracción del crítico del amortiguador y la rigidez de las barras.
+struct SuspensionScale {
+    float frequency = 0.0f;
+    float damping = 0.0f;
+    float antiroll = 0.0f;
+};
+
 struct CarData {
     // [chassis]
     float mass = 0.0f;          // kg, con ocupantes y combustible
@@ -99,6 +107,13 @@ struct CarData {
     float damping_ratio = 0.0f;  // fracción del crítico
     float antiroll_front = 0.0f; // N/m
     float antiroll_rear = 0.0f;
+
+    // [settings] (tarea 2.8): durezas blanda y dura; la media es la de [suspension] y no es
+    // clave. Con CarKeys::Sim la sección puede faltar (has_settings = false): entonces solo se
+    // puede construir con la media (SimWorld::build lo comprueba).
+    bool has_settings = false;
+    SuspensionScale soft;
+    SuspensionScale hard;
 
     // [brakes]
     float brake_torque = 0.0f;      // N·m, total con el freno a fondo
@@ -202,8 +217,10 @@ struct CarParseResult {
 
 // Qué claves se exigen. Full: todas (el juego con data/cars: F5, F8 y el arranque). Sim: solo las
 // que lee la simulación; las de presentación (cylinders y [cockpit]) se leen si están, pero
-// pueden faltar. Para las grabaciones (rally_replay y la reproducción), que guardan el texto del
-// coche de su momento, y para tests/data/cars/reference.car.
+// pueden faltar, y [settings] también puede faltar (las grabaciones de antes de la 2.8 no la
+// llevan y siempre son con la media), pero si está lleva sus seis claves. Para las grabaciones
+// (rally_replay y la reproducción), que guardan el texto del coche de su momento, y para
+// tests/data/cars/reference.car.
 enum class CarKeys { Full, Sim };
 
 // Lee el texto de un .car: secciones [nombre], "clave = valor" y comentarios con #. Los

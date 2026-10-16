@@ -174,6 +174,24 @@ constexpr std::array kCockpitKeys = {
     CockpitKeySpec{"display_height", &CockpitData::display_height, 1.0f, 0.01f, 1.0f},
 };
 
+// Claves de [settings] (tarea 2.8): multiplicadores de las durezas blanda y dura.
+struct SettingsKeySpec {
+    std::string_view name;
+    bool hard;
+    float SuspensionScale::* field;
+};
+
+constexpr std::array kSettingsKeys = {
+    SettingsKeySpec{"soft_frequency", false, &SuspensionScale::frequency},
+    SettingsKeySpec{"soft_damping", false, &SuspensionScale::damping},
+    SettingsKeySpec{"soft_antiroll", false, &SuspensionScale::antiroll},
+    SettingsKeySpec{"hard_frequency", true, &SuspensionScale::frequency},
+    SettingsKeySpec{"hard_damping", true, &SuspensionScale::damping},
+    SettingsKeySpec{"hard_antiroll", true, &SuspensionScale::antiroll},
+};
+constexpr float kMinSettingsScale = 0.5f;
+constexpr float kMaxSettingsScale = 2.0f;
+
 // [engine] cylinders (solo presentación): un entero en este rango.
 constexpr std::string_view kCylindersKey = "cylinders";
 constexpr int kMinCylinders = 1;
@@ -182,12 +200,13 @@ constexpr int kMaxCylinders = 16;
 // Secciones del archivo. Las de los neumáticos van en el orden de Surface.
 constexpr std::size_t kEngineSection = 6;
 constexpr std::size_t kCockpitSection = 13;
-constexpr std::size_t kFirstTireSection = 14;
+constexpr std::size_t kSettingsSection = 14;
+constexpr std::size_t kFirstTireSection = 15;
 constexpr std::array<std::string_view, kFirstTireSection + static_cast<std::size_t>(kSurfaceCount)>
-    kSections = {"chassis",     "wheels",    "suspension",    "brakes",   "steering",
-                 "tire",        "engine",    "engine.torque", "turbo",    "clutch",
-                 "gearbox",     "driveline", "driver",        "cockpit",  "tire.asphalt",
-                 "tire.gravel", "tire.dirt", "tire.snow",     "tire.sand"};
+    kSections = {"chassis",      "wheels",      "suspension",    "brakes",    "steering",
+                 "tire",         "engine",      "engine.torque", "turbo",     "clutch",
+                 "gearbox",      "driveline",   "driver",        "cockpit",   "settings",
+                 "tire.asphalt", "tire.gravel", "tire.dirt",     "tire.snow", "tire.sand"};
 // [engine.torque]: sus líneas son "rpm = N·m", no claves fijas.
 constexpr std::size_t kTorqueSection = 7;
 constexpr std::size_t kTurboSection = 8;
@@ -227,11 +246,13 @@ CarParseResult fail(int line, const std::string& message) {
 CarParseResult parse_car(std::string_view text, CarKeys keys) {
     CarData car;
     // Línea de cada clave leída (0 si falta): primero las de kKeys, después las de kTireKeys
-    // de cada superficie y al final las de presentación: cylinders y las de kCockpitKeys.
+    // de cada superficie, las de presentación (cylinders y las de kCockpitKeys) y al final las
+    // de kSettingsKeys.
     constexpr std::size_t kTireSlots = static_cast<std::size_t>(kSurfaceCount) * kTireKeys.size();
     constexpr std::size_t kCylindersSlot = kKeys.size() + kTireSlots;
     constexpr std::size_t kFirstCockpitSlot = kCylindersSlot + 1;
-    constexpr std::size_t kSlots = kFirstCockpitSlot + kCockpitKeys.size();
+    constexpr std::size_t kFirstSettingsSlot = kFirstCockpitSlot + kCockpitKeys.size();
+    constexpr std::size_t kSlots = kFirstSettingsSlot + kSettingsKeys.size();
     float cylinders = 0.0f;
     std::array<int, kSlots> seen_line{};
     std::string_view section;
@@ -332,6 +353,17 @@ CarParseResult parse_car(std::string_view text, CarKeys keys) {
                     min = kCockpitKeys[k].min;
                     max = kCockpitKeys[k].max;
                     target = &(car.cockpit.*kCockpitKeys[k].field);
+                    break;
+                }
+            }
+        } else if (section_index == kSettingsSection) {
+            for (std::size_t k = 0; k < kSettingsKeys.size(); ++k) {
+                if (kSettingsKeys[k].name == key) {
+                    index = kFirstSettingsSlot + k;
+                    min = kMinSettingsScale;
+                    max = kMaxSettingsScale;
+                    SuspensionScale& setting = kSettingsKeys[k].hard ? car.hard : car.soft;
+                    target = &(setting.*kSettingsKeys[k].field);
                     break;
                 }
             }
@@ -439,6 +471,19 @@ CarParseResult parse_car(std::string_view text, CarKeys keys) {
                         "falta la clave '" + std::string(kCockpitKeys[k].name) + "' en [cockpit]");
         }
     }
+    // [settings]: con CarKeys::Full, obligatoria; con Sim puede faltar entera, pero si está
+    // lleva sus seis claves.
+    const bool settings_section = section_start[kSettingsSection] != 0;
+    if (settings_section || keys == CarKeys::Full) {
+        for (std::size_t k = 0; k < kSettingsKeys.size(); ++k) {
+            if (seen_line[kFirstSettingsSlot + k] == 0) {
+                return fail(missing_line(kSettingsSection), "falta la clave '" +
+                                                                std::string(kSettingsKeys[k].name) +
+                                                                "' en [settings]");
+            }
+        }
+    }
+    car.has_settings = settings_section;
     car.cylinders = static_cast<int>(cylinders);
     car.has_presentation = presentation;
     car.nominal_load = car.mass * kGravity / static_cast<float>(kWheelsPerCar);

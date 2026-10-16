@@ -33,12 +33,22 @@ namespace rally::sim {
 inline constexpr float kAssistStartSpeed = 15.0f / 3.6f; // m/s: desde aquí, mezcla
 inline constexpr float kAssistFullSpeed = 30.0f / 3.6f;  // m/s: desde aquí, la ventana entera
 
-// Ayudas del jugador que cambian la simulación. Van en la descripción del mundo y en la
-// grabación; cambiar una reconstruye el mundo. La 2.8 añade ABS y control de tracción.
+// Control de tracción (tarea 2.8; sim/car_controller.h): deslizamiento permitido de las
+// motrices, kTractionLowLimit o kTractionHighLimit × κ pico.
+enum class TractionControl : std::uint8_t { Off = 0, Low = 1, High = 2 };
+// Dureza de la suspensión (tarea 2.8): multiplicadores de [settings] del .car; la media es la
+// del archivo.
+enum class SuspensionSetting : std::uint8_t { Soft = 0, Medium = 1, Hard = 2 };
+
+// Ayudas y ajustes del jugador que cambian la simulación. Van en la descripción del mundo y en
+// la grabación; cambiar una reconstruye el mundo. Los valores por defecto son los de los tests y
+// las grabaciones antiguas, y con ellos la simulación es la de antes de la 2.8 bit a bit.
 struct DriverAids {
     bool steer_assist = false;
     GearboxMode gearbox = GearboxMode::Automatic; // tarea 2.6
-
+    bool abs = false;                             // tarea 2.8
+    TractionControl traction = TractionControl::Off;
+    SuspensionSetting suspension = SuspensionSetting::Medium;
     friend bool operator==(const DriverAids&, const DriverAids&) = default;
 };
 

@@ -35,6 +35,34 @@ inline constexpr float kAirDensity = 1.225f;
 // central (D3).
 inline constexpr float kHandbrakeDecouple = 0.1f;
 
+// ABS (tarea 2.8): por rueda y en cada subpaso, el par del freno de pie se recorta a la cota que
+// lleva la rueda al giro del objetivo, ω* = v_x·(1 − κ_pico)/r (κ_pico de la superficie que
+// pisa): con la velocidad libre del subpaso x* (sin las filas de Coulomb, con el término
+// semi-implícito del neumático en la inercia efectiva I), el par de parada que deja la rueda en
+// ω* es sgn(v_x)·(x* − ω*)·I/h; el pie aplicado es ese par menos la rodadura, entre 0 y el pie
+// pedido. Sin estado. No actúa por debajo de kAbsMinSpeed en |v_x| de la rueda (bloquea al
+// final, como un ABS real, y en la rampa sujeta igual que sin él), en una trasera con el freno
+// de mano tirado, sin carga, ni con la rueda girando contra el suelo. Nunca toca el freno de
+// mano ni añade fuerzas.
+inline constexpr float kAbsMinSpeed = 6.0f / 3.6f; // m/s
+
+// Control de tracción (tarea 2.8): en cada subpaso, para cada motriz con carga, deslizamiento en
+// el sentido del par s = d·(ω·r − v_x) (d: signo de la relación de la marcha) y permitido
+// a = max(límite·κ_pico·|v_x|, kTractionMinSlip); q = s/a de la que más desliza. El acelerador
+// del motor (no el del turbo ni el del embrague) se multiplica por 1 − c, con
+// c = clamp((q + τ·q' − (1 − kTractionBand))/kTractionBand, 0, 1) y τ = kTractionLead: el corte
+// es entero en el permitido, así que en régimen (q' = 0) el deslizamiento queda por debajo de
+// él. El adelanto τ·q' amortigua el retraso entre el corte y el par en las ruedas (con el
+// embrague en arranque, el corte solo llega bajando las vueltas del motor): q' es el ritmo de q
+// en el subpaso, de dos resoluciones de prueba del tren motriz (sin corte y con el corte
+// entero; el ritmo es lineal en el corte) y c sale de la ecuación lineal, implícita en q'.
+// Sin estado entre subpasos. No actúa con el embrague abierto ni sin motrices con carga.
+inline constexpr float kTractionLowLimit = 1.8f;  // × κ pico
+inline constexpr float kTractionHighLimit = 1.2f; // × κ pico
+inline constexpr float kTractionBand = 0.25f;     // del permitido
+inline constexpr float kTractionMinSlip = 0.4f;   // m/s: el arranque parado
+inline constexpr float kTractionLead = 0.02f;     // s: τ del adelanto
+
 // Mandos aplicados de un paso, normalizados (dirección en [-1, 1], positivo a la derecha; el
 // resto en [0, 1]) y las pulsaciones de marcha.
 struct CarControls {
@@ -69,6 +97,10 @@ struct WheelOutput {
     float w = 0.0f;                  // m: deformación lateral de la huella
     float brake_torque = 0.0f;       // N·m pedido (freno y freno de mano)
     float h = 0.0f;                  // m: media de h sobre la huella
+    float abs_torque_cut = 0.0f;     // N·m del freno de pie que quita el ABS, media de los subpasos
+    // Diagnóstico de los tests (2.8): s_x/(|v_x|·κ_pico) al final de cada subpaso en que el ABS
+    // modula esta rueda (1 en el objetivo); 0 en los demás.
+    std::array<float, kWheelSubsteps> abs_slip{};
 };
 
 // Lo que hizo el tren motriz en el último paso (telemetría y dibujo; no es estado). Pares en
@@ -92,14 +124,19 @@ struct DrivetrainOutput {
     bool drift_hold = false;            // el automático está retrasando la subida en derrape
     int lcp_iterations = 0;             // máximo de los subpasos del paso
     int lcp_failures = 0;               // subpasos del paso sin converger
+    float traction_torque_cut = 0.0f;   // par motor que quita el control de tracción
+    // Diagnóstico de los tests (2.8): q del control de tracción en cada subpaso (1 en el
+    // permitido; 0 sin control o sin motrices que cuenten).
+    std::array<float, kWheelSubsteps> traction_q{};
 };
 
 // Ajustes del controlador (los construye make_car).
 class CarControllerSettings final : public JPH::VehicleControllerSettings {
 public:
     CarData car;
-    // Modo de la caja (DriverAids): cambiarlo reconstruye el mundo.
-    GearboxMode gearbox = GearboxMode::Automatic;
+    // Ayudas del jugador (caja, ABS, control de tracción; la suspensión ya está en los
+    // WheelSettings): cambiarlas reconstruye el mundo.
+    DriverAids aids;
     // Diagnóstico de los tests: integración explícita del giro de las ruedas (sin el término
     // implícito de dFx/dω). No se graba: el juego y las grabaciones siempre usan la
     // semi-implícita.
@@ -153,7 +190,8 @@ public:
     SteerAssistInput steer_assist_input() const;
 
     int gear() const { return drive_.gear; }
-    GearboxMode gearbox() const { return gearbox_; }
+    GearboxMode gearbox() const { return aids_.gearbox; }
+    const DriverAids& aids() const { return aids_; }
     const DrivetrainOutput& drivetrain() const { return drive_out_; }
     // Subpasos sin converger del LCP desde que se construyó el coche (diagnóstico de los tests).
     std::int64_t lcp_failures_total() const { return lcp_failures_total_; }
@@ -184,7 +222,7 @@ protected:
 
 private:
     CarData car_;
-    GearboxMode gearbox_ = GearboxMode::Automatic;
+    DriverAids aids_;
     bool explicit_wheels_ = false;
     CarControls controls_;
 
@@ -243,8 +281,14 @@ JPH::BodyCreationSettings car_body_settings(const CarData& car, JPH::RVec3Arg po
 // Muelles con la masa suspendida de cada esquina (la frecuencia del archivo es la del coche).
 // Coloca los anclajes de la suspensión para que, en equilibrio en llano con el reparto del
 // archivo, el centro de las ruedas quede a su radio del suelo y la caja horizontal.
+// Dureza (aids.suspension, tarea 2.8): la media es la del archivo. La blanda y la dura
+// multiplican la frecuencia, la fracción del crítico y las barras ([settings]) con el anclaje
+// de la media: misma altura, actitud y recorrido libre hasta el tope en parado. La blanda, con
+// una precarga del muelle de sag − sag_media; la dura (con precarga negativa, que Jolt no
+// admite), con la extensión máxima más corta en sag_media − sag. Con blanda o dura, el coche
+// tiene que tener [settings] (SimWorld::build lo comprueba).
 JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarData& car,
-                                                     float gravity, GearboxMode gearbox,
+                                                     float gravity, const DriverAids& aids,
                                                      bool explicit_wheels);
 
 } // namespace rally::sim

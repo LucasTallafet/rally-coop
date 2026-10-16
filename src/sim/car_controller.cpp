@@ -89,7 +89,7 @@ CarControllerSettings::ConstructController(JPH::VehicleConstraint& constraint) c
 
 CarController::CarController(JPH::VehicleConstraint& constraint,
                              const CarControllerSettings& settings)
-    : JPH::VehicleController(constraint), car_(settings.car), gearbox_(settings.gearbox),
+    : JPH::VehicleController(constraint), car_(settings.car), aids_(settings.aids),
       explicit_wheels_(settings.explicit_wheels) {
     contact_surface_.fill(Surface::Dirt);
     radius_.fill(car_.wheel_radius);
@@ -99,7 +99,7 @@ CarController::CarController(JPH::VehicleConstraint& constraint,
 JPH::Ref<JPH::VehicleControllerSettings> CarController::GetSettings() const {
     auto* settings = new CarControllerSettings;
     settings->car = car_;
-    settings->gearbox = gearbox_;
+    settings->aids = aids_;
     settings->explicit_wheels = explicit_wheels_;
     return settings;
 }
@@ -238,7 +238,7 @@ void CarController::PreCollide(float, JPH::PhysicsSystem&) {
     const float v_right = velocity.Dot(transform.GetAxisX());
     const std::array<float, kWheelCount> shares = drive_shares(car_);
     GearboxInput gearbox;
-    gearbox.mode = gearbox_;
+    gearbox.mode = aids_.gearbox;
     gearbox.shift_up = controls_.shift_up;
     gearbox.shift_down = controls_.shift_down;
     gearbox.throttle = controls_.throttle;
@@ -305,6 +305,13 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
     std::array<JPH::Vec3, kWheelCount> longitudinals{};
     std::array<JPH::Vec3, kWheelCount> laterals{};
     std::array<WheelDynamics, kWheelCount> states{};
+    // ABS (car_controller.h): ruedas que modula en este paso, con su pie pedido, su rodadura, su
+    // giro objetivo y el signo de v_x.
+    std::array<bool, kWheelCount> abs_wheel{};
+    std::array<float, kWheelCount> abs_foot{};
+    std::array<float, kWheelCount> abs_rolling{};
+    std::array<float, kWheelCount> abs_target{};
+    std::array<float, kWheelCount> abs_sign{};
     for (int i = 0; i < kWheelCount; ++i) {
         const auto index = static_cast<std::size_t>(i);
         JPH::Wheel* w = mConstraint.GetWheel(static_cast<JPH::uint>(i));
@@ -315,8 +322,9 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
 
         TireInput& in = inputs[index];
         in.radius = r;
-        float brake = controls_.brake * car_.brake_torque * 0.5f *
-                      (front ? car_.brake_front_share : 1.0f - car_.brake_front_share);
+        const float foot = controls_.brake * car_.brake_torque * 0.5f *
+                           (front ? car_.brake_front_share : 1.0f - car_.brake_front_share);
+        float brake = foot;
         if (!front) {
             brake += controls_.handbrake * car_.handbrake_torque;
         }
@@ -349,6 +357,14 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         // Freno, freno de mano y rodadura: pares de Coulomb sobre la rueda (filas del LCP).
         in.stop_torque = brake + car_.tire(in.surface).rolling_resistance * in.load * r;
         states[index] = WheelDynamics{w->GetAngularVelocity(), u_[index], w_[index]};
+        if (aids_.abs && foot > 0.0f && in.load > 0.0f && rmath::abs(in.vx) >= kAbsMinSpeed &&
+            (front || !(controls_.handbrake > 0.0f))) {
+            abs_wheel[index] = true;
+            abs_foot[index] = foot;
+            abs_rolling[index] = car_.tire(in.surface).rolling_resistance * in.load * r;
+            abs_target[index] = in.vx * (1.0f - car_.tire(in.surface).slip_ratio_peak) / r;
+            abs_sign[index] = sign_of(in.vx);
+        }
     }
 
     // Filas fijas en el paso: Jacobianas (sim/drivetrain.h).
@@ -384,6 +400,29 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
     int max_iterations = 0;
     int failures = 0;
     bool clutch_open = shifting || handbrake_open || ratio == 0.0f;
+
+    // Control de tracción (car_controller.h): motrices que cuentan en este paso y su permitido.
+    std::array<bool, kWheelCount> traction_wheel{};
+    std::array<float, kWheelCount> traction_allowed{};
+    const float traction_dir = ratio < 0.0f ? -1.0f : 1.0f;
+    bool traction_any = false;
+    if (aids_.traction != TractionControl::Off && !clutch_open) {
+        const float limit =
+            aids_.traction == TractionControl::High ? kTractionHighLimit : kTractionLowLimit;
+        for (std::size_t i = 0; i < kWheelCount; ++i) {
+            if (shares[i] > 0.0f && inputs[i].load > 0.0f) {
+                traction_wheel[i] = true;
+                traction_any = true;
+                traction_allowed[i] = rmath::max(
+                    limit * car_.tire(inputs[i].surface).slip_ratio_peak * rmath::abs(inputs[i].vx),
+                    kTractionMinSlip);
+            }
+        }
+    }
+    float traction_cut_sum = 0.0f;
+    std::array<float, kWheelCount> abs_cut_sum{};
+    std::array<bool, kWheelCount> abs_modulated{};
+    drive_out_.traction_q.fill(0.0f);
     for (int s = 0; s < kWheelSubsteps; ++s) {
         // 1. Neumáticos: predicción con el giro sin cambiar.
         std::array<TirePrediction, kWheelCount> predictions{};
@@ -393,18 +432,9 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
             drive_speed += shares[i] * states[i].omega;
         }
 
-        // 2. Motor linealizado: par y −∂T/∂ω (≥ 0) por diferencia centrada.
+        // 2. Ruedas: inercia efectiva y velocidad libre (el motor va después de las capacidades:
+        // el control de tracción las necesita para su resolución de prueba).
         const float omega_e = drive_.engine_omega;
-        const float command =
-            shifting ? shift_throttle(car_, drive_, drive_speed) : controls_.throttle;
-        const float t0 = engine_at(omega_e, command);
-        const float slope_e = rmath::max(0.0f, -(engine_at(omega_e + kEngineSlopeDelta, command) -
-                                                 engine_at(omega_e - kEngineSlopeDelta, command)) /
-                                                   (2.0f * kEngineSlopeDelta));
-        engine_torque_sum += t0;
-        throttle_sum += rmath::max(command, idle_throttle(car_, omega_e));
-        system.inv_mass[0] = 1.0f / (car_.engine_inertia + h * slope_e);
-        system.velocity[0] = omega_e + h * system.inv_mass[0] * t0;
         for (std::size_t i = 0; i < kWheelCount; ++i) {
             const float inv = 1.0f / wheel_effective_inertia(car_, inputs[i], h, predictions[i]);
             system.inv_mass[i + 1] = inv;
@@ -436,11 +466,95 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         system.cap[kRowLsdRear] = h * lsd_rear;
         for (std::size_t i = 0; i < kWheelCount; ++i) {
             const auto row = static_cast<std::size_t>(kRowStop) + i;
-            system.active[row] = inputs[i].stop_torque > 0.0f;
-            system.cap[row] = h * inputs[i].stop_torque;
+            float stop = inputs[i].stop_torque;
+            abs_modulated[i] = false;
+            if (abs_wheel[i]) {
+                // Velocidad libre de la rueda (sin las filas) en el sentido de v_x: con la rueda
+                // girando a favor del suelo, el par que la deja en ω* en el subpaso.
+                const float free = abs_sign[i] * system.velocity[i + 1];
+                if (free > 0.0f) {
+                    const float needed =
+                        (free - abs_sign[i] * abs_target[i]) / (h * system.inv_mass[i + 1]);
+                    const float applied = rmath::clamp(needed - abs_rolling[i], 0.0f, abs_foot[i]);
+                    abs_cut_sum[i] += abs_foot[i] - applied;
+                    stop = abs_rolling[i] + applied;
+                    abs_modulated[i] = true;
+                }
+            }
+            system.active[row] = stop > 0.0f;
+            system.cap[row] = h * stop;
         }
 
-        // 4. Tren motriz resuelto a la vez.
+        // 4. Motor linealizado con su acelerador: par y −∂T/∂ω (≥ 0) por diferencia centrada.
+        const auto set_engine = [&](float throttle_command) {
+            const float torque = engine_at(omega_e, throttle_command);
+            const float slope =
+                rmath::max(0.0f, -(engine_at(omega_e + kEngineSlopeDelta, throttle_command) -
+                                   engine_at(omega_e - kEngineSlopeDelta, throttle_command)) /
+                                     (2.0f * kEngineSlopeDelta));
+            system.inv_mass[0] = 1.0f / (car_.engine_inertia + h * slope);
+            system.velocity[0] = omega_e + h * system.inv_mass[0] * torque;
+            return torque;
+        };
+        float command = shifting ? shift_throttle(car_, drive_, drive_speed) : controls_.throttle;
+        if (traction_any) {
+            // La motriz que más desliza respecto a su permitido, con el giro al empezar el
+            // subpaso, y su q al final del subpaso con un giro dado.
+            float q = -1.0e9f;
+            std::size_t worst = 0;
+            for (std::size_t i = 0; i < kWheelCount; ++i) {
+                if (traction_wheel[i]) {
+                    const float slip =
+                        traction_dir * (states[i].omega * inputs[i].radius - inputs[i].vx);
+                    if (slip / traction_allowed[i] > q) {
+                        q = slip / traction_allowed[i];
+                        worst = i;
+                    }
+                }
+            }
+            drive_out_.traction_q[static_cast<std::size_t>(s)] = q;
+            // v_x del contacto es fija en el paso: al final del subpaso se le suma la
+            // aceleración que dan las fuerzas previstas del neumático (si no, la aceleración del
+            // coche contaría como deslizamiento que crece).
+            float push = 0.0f;
+            for (std::size_t i = 0; i < kWheelCount; ++i) {
+                push += predictions[i].fx0;
+            }
+            const float vx_end = inputs[worst].vx + h * push / car_.mass;
+            const auto q_at = [&](float omega) {
+                return traction_dir * (omega * inputs[worst].radius - vx_end) /
+                       traction_allowed[worst];
+            };
+            // Ritmo de q en el subpaso con el acelerador sin recortar (resolución de prueba, con
+            // una copia del conjunto activo): el adelanto que amortigua el retraso del par en
+            // las ruedas (embrague en arranque: el corte llega bajando las vueltas).
+            std::array<RowState, kDriveRows> trial_rows = drive_.rows;
+            set_engine(command);
+            const float rate_open =
+                (q_at(solve_drive(system, trial_rows).velocity[worst + 1]) - q) / h;
+            const float lead = q + kTractionLead * rate_open - (1.0f - kTractionBand);
+            float cut = 0.0f;
+            if (lead > 0.0f && command > 0.0f) {
+                // Con el corte entero: el ritmo baja en `gain` por unidad de corte (0 con el
+                // embrague patinando). Corte que cumple c = (q + τ·ritmo(c) − (1 − b))/b.
+                trial_rows = drive_.rows;
+                set_engine(0.0f);
+                const float rate_closed =
+                    (q_at(solve_drive(system, trial_rows).velocity[worst + 1]) - q) / h;
+                const float gain = rmath::max(0.0f, rate_open - rate_closed);
+                cut = rmath::clamp(lead / (kTractionBand + kTractionLead * gain), 0.0f, 1.0f);
+            }
+            if (cut > 0.0f) {
+                const float uncut = engine_at(omega_e, command);
+                command *= 1.0f - cut;
+                traction_cut_sum += uncut - engine_at(omega_e, command);
+            }
+        }
+        const float t0 = set_engine(command);
+        engine_torque_sum += t0;
+        throttle_sum += rmath::max(command, idle_throttle(car_, omega_e));
+
+        // 5. Tren motriz resuelto a la vez.
         const DriveSolution solution = solve_drive(system, drive_.rows);
         max_iterations = rmath::max(max_iterations, solution.iterations);
         if (!solution.converged) {
@@ -448,7 +562,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         }
         drive_.engine_omega = rmath::max(0.0f, solution.velocity[0]);
 
-        // 5. Huellas con el giro nuevo. El freno y la rodadura son pares de Coulomb, como en
+        // 6. Huellas con el giro nuevo. El freno y la rodadura son pares de Coulomb, como en
         // step_tire: una rueda frenada pegada queda exactamente parada, y la que desliza nunca
         // invierte el giro (la tolerancia del conjunto activo deja un residuo de ~1e-8 rad/s).
         for (std::size_t i = 0; i < kWheelCount; ++i) {
@@ -458,6 +572,12 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
                 (stop == RowState::SlipNegative && omega < 0.0f)) {
                 omega = 0.0f;
             }
+            if (abs_modulated[i]) {
+                const float vx = rmath::abs(inputs[i].vx);
+                outputs_[i].abs_slip[static_cast<std::size_t>(s)] =
+                    (vx - abs_sign[i] * omega * inputs[i].radius) /
+                    (vx * car_.tire(inputs[i].surface).slip_ratio_peak);
+            }
             const TireForce f = finish_tire(car_, inputs[i], h, predictions[i], omega, states[i]);
             sums[i].fx += f.fx;
             sums[i].fy += f.fy;
@@ -465,7 +585,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
             sums[i].fy_pure += f.fy_pure;
         }
 
-        // 6. Par de entrada de cada eje (embrague y viscoacoplador), para la cota de los
+        // 7. Par de entrada de cada eje (embrague y viscoacoplador), para la cota de los
         // autoblocantes del subpaso siguiente.
         const float inv_h = 1.0f / h;
         for (std::size_t a = 0; a < 2; ++a) {
@@ -483,7 +603,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         lsd_sum[0] += rmath::abs(solution.impulse[kRowLsdFront]) * inv_h;
         lsd_sum[1] += rmath::abs(solution.impulse[kRowLsdRear]) * inv_h;
 
-        // 7. Embrague: arranque → cerrado cuando la fila se pega; cerrado → arranque por debajo
+        // 8. Embrague: arranque → cerrado cuando la fila se pega; cerrado → arranque por debajo
         // de open_rpm (nunca cala).
         if (drive_.clutch == ClutchMode::Launch && system.active[kRowClutch] &&
             drive_.rows[kRowClutch] == RowState::Stick) {
@@ -524,6 +644,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
         out.fx_pure = sums[index].fx_pure / kWheelSubsteps;
         out.fy_pure = sums[index].fy_pure / kWheelSubsteps;
         out.mu = out.contact ? peak_mu(tire, in.load, car_.nominal_load) : 0.0f;
+        out.abs_torque_cut = abs_cut_sum[index] * kInvSubsteps;
         if (out.contact) {
             const JPH::Vec3 force = longitudinals[index] * fx + laterals[index] * fy;
             body->AddForce(force, points[index]);
@@ -555,6 +676,7 @@ void CarController::PostCollide(float dt, JPH::PhysicsSystem&) {
     d.lsd_torque = {lsd_sum[0] * kInvSubsteps, lsd_sum[1] * kInvSubsteps};
     d.lcp_iterations = max_iterations;
     d.lcp_failures = failures;
+    d.traction_torque_cut = traction_cut_sum * kInvSubsteps;
 
     // Resistencia aerodinámica en el centro de masas.
     const JPH::Vec3 v = body->GetLinearVelocity();
@@ -790,9 +912,16 @@ JPH::BodyCreationSettings car_body_settings(const CarData& car, JPH::RVec3Arg po
 }
 
 JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarData& car,
-                                                     float gravity, GearboxMode gearbox,
+                                                     float gravity, const DriverAids& aids,
                                                      bool explicit_wheels) {
     const float max_length = kMinSuspensionLength + car.travel;
+    // Dureza: la media no lee los multiplicadores (ni un ×1 pasa por el código).
+    const SuspensionScale* scale = nullptr;
+    if (aids.suspension == SuspensionSetting::Soft) {
+        scale = &car.soft;
+    } else if (aids.suspension == SuspensionSetting::Hard) {
+        scale = &car.hard;
+    }
 
     JPH::VehicleConstraintSettings settings;
     settings.mUp = kCarUp;
@@ -834,6 +963,23 @@ JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarD
         // En equilibrio la suspensión mide max_length - sag y el centro de la rueda está a su
         // radio del suelo (el origen del coche).
         wheel->mPosition = JPH::Vec3(x, car.wheel_radius + max_length - sag, z);
+        if (scale != nullptr) {
+            // Blanda o dura: muelle y amortiguador con sus multiplicadores y el anclaje de la
+            // media. Para que en equilibrio la suspensión siga midiendo max_length - sag, la
+            // longitud natural del muelle (max + precarga en Jolt) se mueve en sag' - sag: con
+            // la blanda (sag' > sag), precarga; con la dura, extensión máxima más corta.
+            const float scaled_omega = kTwoPi * frequency * scale->frequency;
+            const float scaled_stiffness = corner_mass * scaled_omega * scaled_omega;
+            wheel->mSuspensionSpring.mStiffness = scaled_stiffness;
+            wheel->mSuspensionSpring.mDamping = 2.0f * car.damping_ratio * scale->damping *
+                                                rmath::sqrt(scaled_stiffness * corner_mass);
+            const float scaled_sag = static_load / scaled_stiffness;
+            if (scaled_sag > sag) {
+                wheel->mSuspensionPreloadLength = scaled_sag - sag;
+            } else {
+                wheel->mSuspensionMaxLength = max_length - (sag - scaled_sag);
+            }
+        }
         settings.mWheels.push_back(wheel);
     }
     settings.mAntiRollBars.resize(2);
@@ -843,10 +989,14 @@ JPH::Ref<JPH::VehicleConstraint> make_car_constraint(JPH::Body& body, const CarD
     settings.mAntiRollBars[1].mLeftWheel = kRearLeft;
     settings.mAntiRollBars[1].mRightWheel = kRearRight;
     settings.mAntiRollBars[1].mStiffness = car.antiroll_rear;
+    if (scale != nullptr) {
+        settings.mAntiRollBars[0].mStiffness = car.antiroll_front * scale->antiroll;
+        settings.mAntiRollBars[1].mStiffness = car.antiroll_rear * scale->antiroll;
+    }
 
     auto* controller = new CarControllerSettings;
     controller->car = car;
-    controller->gearbox = gearbox;
+    controller->aids = aids;
     controller->explicit_wheels = explicit_wheels;
     settings.mController = controller;
 

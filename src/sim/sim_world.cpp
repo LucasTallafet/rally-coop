@@ -114,6 +114,10 @@ void SimWorld::build(const WorldDesc& desc) {
                 "SimWorld::build: demasiados cuerpos");
     RALLY_CHECK(!desc.car || desc.car_data.mass > 0.0f,
                 "SimWorld::build: el coche no tiene datos (WorldDesc::car_data)");
+    RALLY_CHECK(!desc.car || desc.aids.suspension == SuspensionSetting::Medium ||
+                    desc.car_data.has_settings,
+                "SimWorld::build: la suspensión blanda o dura necesita la sección [settings] del "
+                "coche");
     const int count = static_cast<int>(desc.bodies.size());
 
     JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
@@ -225,8 +229,8 @@ void SimWorld::build(const WorldDesc& desc) {
     }
     if (car_body != nullptr) {
         w.car_constraint =
-            make_car_constraint(*car_body, desc.car_data, -w.system.GetGravity().GetY(),
-                                desc.aids.gearbox, desc.explicit_wheels);
+            make_car_constraint(*car_body, desc.car_data, -w.system.GetGravity().GetY(), desc.aids,
+                                desc.explicit_wheels);
         w.car_controller = static_cast<CarController*>(w.car_constraint->GetController());
         w.car_tester = new CarWheelTester(
             layers::kMoving, ReliefSource{w.zone.get(), w.noise.get()}, *w.car_controller);
@@ -433,6 +437,7 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
     t.drift_hold = drive.drift_hold;
     t.lcp_iterations = static_cast<std::uint8_t>(drive.lcp_iterations);
     t.lcp_failures = static_cast<std::uint8_t>(drive.lcp_failures);
+    t.traction_torque_cut = drive.traction_torque_cut;
     for (int i = 0; i < kWheelCount; ++i) {
         const WheelOutput& out = controller.wheel(i);
         WheelTelemetry& wt = t.wheels[static_cast<std::size_t>(i)];
@@ -452,6 +457,7 @@ void SimWorld::Impl::capture_telemetry(const SimInput& input, JPH::Vec3Arg befor
         wt.omega = out.omega;
         wt.brake_torque = out.brake_torque;
         wt.h = out.h;
+        wt.abs_torque_cut = out.abs_torque_cut;
     }
 }
 

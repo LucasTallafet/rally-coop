@@ -1,4 +1,4 @@
-# Copia congelada de data/cars/mid_awd_turbo.car (tarea 2.4; neumático de la tarea 2.5; motor y transmisión de la 2.6) para la huella y los tests.
+# Copia congelada de data/cars/mid_awd_turbo.car (tarea 2.4; neumático de la tarea 2.5; motor y transmisión de la 2.6; durezas de la suspensión de la 2.8) para la huella y los tests.
 # No se toca al ajustar el manejo (2.10); solo la cambian las tareas que cambian el código de
 # la simulación (por ejemplo, al añadir claves).
 # Coche de la 1.0: 4x4 con motor central y turbo, inspirado en el Peugeot 205 T16 Evo 1.
@@ -36,6 +36,19 @@ frequency_rear = 1.8      # Hz. Estimado (grava)
 damping_ratio = 0.35      # fracción del crítico. Estimado
 antiroll_front = 15000    # N/m. Estimado
 antiroll_rear = 10000     # N/m. Estimado
+
+# Durezas de la suspensión que elige el jugador (tarea 2.8): multiplicadores sobre la
+# frecuencia del muelle, la fracción del crítico del amortiguador y la rigidez de las barras de
+# [suspension]. La media es la de [suspension] (no es clave). Las tres quedan a la misma altura
+# y con el mismo recorrido hasta el tope en parado (como ajustar la precarga). Valores de
+# partida, se ajustan en 2.10.
+[settings]
+soft_frequency = 0.85
+soft_damping = 0.9
+soft_antiroll = 0.8
+hard_frequency = 1.2
+hard_damping = 1.15
+hard_antiroll = 1.25
 
 [brakes]
 max_torque = 4400         # N·m total con el freno a fondo. Estimado (~1,3 g en asfalto)

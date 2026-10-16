@@ -37,6 +37,19 @@ damping_ratio = 0.35      # fracción del crítico. Estimado
 antiroll_front = 15000    # N/m. Estimado
 antiroll_rear = 10000     # N/m. Estimado
 
+# Durezas de la suspensión que elige el jugador (tarea 2.8): multiplicadores sobre la
+# frecuencia del muelle, la fracción del crítico del amortiguador y la rigidez de las barras de
+# [suspension]. La media es la de [suspension] (no es clave). Las tres quedan a la misma altura
+# y con el mismo recorrido hasta el tope en parado (como ajustar la precarga). Valores de
+# partida, se ajustan en 2.10.
+[settings]
+soft_frequency = 0.85
+soft_damping = 0.9
+soft_antiroll = 0.8
+hard_frequency = 1.2
+hard_damping = 1.15
+hard_antiroll = 1.25
+
 [brakes]
 max_torque = 4000         # N·m total. Estimado
 front_share = 0.60        # Estimado
