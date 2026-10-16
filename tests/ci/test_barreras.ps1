@@ -199,8 +199,16 @@ try {
         G -C $repo switch -q -c 'lote-1/2.9' | Out-Null
         Commit $repo 'src/game/actions.cpp' 'acciones'
         # Una ruta ajena escrita con Bash, como la escribiría un agente saltándose el hook.
+        $cmd = Get-Command bash -ErrorAction SilentlyContinue
+        $bash = if ($cmd) { $cmd.Source } else { $null }
+        if (-not $bash) {
+            $git = (Get-Command git -ErrorAction Stop).Source
+            $junto = Join-Path (Split-Path (Split-Path $git)) 'bin\bash.exe'
+            if (Test-Path $junto) { $bash = $junto }
+        }
+        if (-not $bash) { throw 'FALLO: no encuentro bash.exe (ni en el PATH ni en <Git>\bin junto a git)' }
         Push-Location $repo
-        try { & bash -c 'mkdir -p src/platform && echo x > src/platform/ajeno.cpp' 2>&1 | Out-Null } finally { Pop-Location }
+        try { & $bash -c 'mkdir -p src/platform && echo x > src/platform/ajeno.cpp' 2>&1 | Out-Null } finally { Pop-Location }
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $repo 'src\platform\ajeno.cpp'))) { throw 'bash no ha escrito el archivo' }
         G -C $repo add -A | Out-Null
         G -C $repo -c user.name=t -c user.email=t@t commit -q -m 'ajeno' | Out-Null

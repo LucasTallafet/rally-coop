@@ -293,6 +293,12 @@ def tests_duenos(repo):
     esperar("una ruta sin dueño se detecta", 1, lanzar(["--duenos"], b"src/nuevo/a.cpp\n"))
     esperar("una ruta compartida (sim y juego) tiene dos dueños y vale", 0,
             lanzar(["--duenos"], b"tests/data/recordings/a.rrec\n"))
+    esperar("un fragmento de progreso es del carril de su tarea y vale", 0,
+            lanzar(["--duenos"], b"docs/progreso/2.8-sim.md\n"))
+    esperar("el README de docs/progreso sigue siendo del consultor y vale", 0,
+            lanzar(["--duenos"], b"docs/progreso/README.md\n"))
+    esperar("una ruta de docs fuera de progreso sigue sin dueño", 1,
+            lanzar(["--duenos"], b"docs/otra/x.md\n"))
 
 
 def main():

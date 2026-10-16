@@ -264,6 +264,8 @@ def modo_duenos():
     malas = 0
     for ruta in leer_rutas():
         duenos = [d for d in prop["duenos"] if es_de(prop, d, ruta)]
+        if not duenos and es_fragmento(prop, ruta):
+            continue  # docs/progreso/<tarea>.md: del carril de su tarea (docs/09-agentes.md §4)
         if not duenos:
             print(f"sin dueño: {ruta}")
             malas += 1
