@@ -87,6 +87,7 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `drift_hold` | — | 0/1 | El automático está retrasando la subida en derrape |
 | `lcp_iterations` | — | 1..8 | Iteraciones del LCP del tren motriz: máximo de los subpasos del paso |
 | `lcp_failures` | — | 0..4 | Subpasos del paso en que el LCP no convergió (impulsos recortados a su caja) |
+| `traction_torque_cut` | N·m | ≥ 0 | Par motor que quita el control de tracción (media de los subpasos); 0 sin control |
 | `contact_fl` | — | 0 o 1 | Rueda en el suelo |
 | `surface_fl` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_fl` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
@@ -103,6 +104,7 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `omega_fl` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_fl` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_fl` | m | + arriba | Media del microrrelieve h sobre la huella |
+| `abs_torque_cut_fl` | N·m | ≥ 0 | Par del freno de pie que quita el ABS (media de los subpasos); 0 sin ABS |
 | `contact_fr` | — | 0 o 1 | Rueda en el suelo |
 | `surface_fr` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_fr` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
@@ -119,6 +121,7 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `omega_fr` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_fr` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_fr` | m | + arriba | Media del microrrelieve h sobre la huella |
+| `abs_torque_cut_fr` | N·m | ≥ 0 | Par del freno de pie que quita el ABS (media de los subpasos); 0 sin ABS |
 | `contact_rl` | — | 0 o 1 | Rueda en el suelo |
 | `surface_rl` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_rl` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
@@ -135,6 +138,7 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `omega_rl` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_rl` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_rl` | m | + arriba | Media del microrrelieve h sobre la huella |
+| `abs_torque_cut_rl` | N·m | ≥ 0 | Par del freno de pie que quita el ABS (media de los subpasos); 0 sin ABS |
 | `contact_rr` | — | 0 o 1 | Rueda en el suelo |
 | `surface_rr` | — | texto | Superficie del material del contacto (la que usa el neumático); none en el aire |
 | `load_rr` | N | ≥ 0 | Carga normal (suspensión, barra y tope del paso anterior) |
@@ -151,3 +155,4 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `omega_rr` | rad/s | + rodando hacia delante | Giro de la rueda al final del paso |
 | `brake_torque_rr` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_rr` | m | + arriba | Media del microrrelieve h sobre la huella |
+| `abs_torque_cut_rr` | N·m | ≥ 0 | Par del freno de pie que quita el ABS (media de los subpasos); 0 sin ABS |

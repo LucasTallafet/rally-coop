@@ -1,9 +1,11 @@
 #include "io/replay.h"
 
+#include "game/actions.h"
 #include "sim/sim_version.h"
 
 #include <cinttypes>
 #include <cstdio>
+#include <optional>
 
 namespace rally::io {
 
@@ -57,14 +59,66 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
         return result;
     }
     world.set_telemetry(observer != nullptr);
+
+    // Acciones: desde el formato 7, con el texto de la cabecera.
+    const bool has_actions =
+        recording.header.format_version >= 7 && !recording.header.actions_text.empty();
+    std::uint64_t total_steps = 0;
+    for (const InputRun& run : recording.runs) {
+        total_steps += run.count;
+    }
+    const std::vector<game::ActionEvent> no_events;
+    const std::vector<game::ActionEvent>& events =
+        recording.header.format_version >= 7 ? recording.events : no_events;
+    const std::string events_problem = validate_events(events, total_steps);
+    if (!events_problem.empty()) {
+        result.problem = events_problem;
+        return result;
+    }
+    if (!events.empty() && !has_actions) {
+        result.problem = "eventos de acción sin texto de acciones en la cabecera";
+        return result;
+    }
+    game::ActionTable table;
+    std::optional<game::ActionMachine> machine;
+    if (has_actions) {
+        game::ActionParseResult parsed = game::parse_actions(recording.header.actions_text);
+        if (!parsed.ok) {
+            result.problem = "acciones de la cabecera: línea " + std::to_string(parsed.line) +
+                             ": " + parsed.message;
+            return result;
+        }
+        table = std::move(parsed.table);
+        game::MachineSetup setup;
+        setup.car = game::car_state_from(world);
+        machine.emplace(table, setup);
+    }
+
+    std::size_t next_event = 0;
+    std::uint64_t step = 0;
     for (const InputRun& run : recording.runs) {
         for (std::uint32_t i = 0; i < run.count; ++i) {
+            while (machine && next_event < events.size() && events[next_event].step == step) {
+                machine->apply(events[next_event++]);
+            }
             world.step(run.input);
+            if (machine) {
+                machine->advance(game::car_state_from(world));
+            }
             if (observer != nullptr) {
                 observer->after_step(world);
             }
+            ++step;
         }
         result.steps += run.count;
+    }
+    // Eventos tras el último paso.
+    while (machine && next_event < events.size() && events[next_event].step == step) {
+        machine->apply(events[next_event++]);
+    }
+    if (machine) {
+        result.actions_ran = true;
+        result.actions_hash = machine->timeline_hash();
     }
     result.ran = true;
     result.hash = world.state_hash();
@@ -116,6 +170,12 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
                       recording.footer.road.runs, result.road.last_run, result.road.last_resets,
                       result.road.runs);
         result.problem = buffer;
+    } else if (result.actions_ran && result.actions_hash != recording.footer.actions_hash) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "hash de las acciones distinto: grabado 0x%016" PRIx64
+                      ", repetido 0x%016" PRIx64,
+                      recording.footer.actions_hash, result.actions_hash);
+        result.problem = buffer;
     } else {
         result.hash_ok = true;
     }
@@ -149,6 +209,7 @@ ReplayResult rewrite_footer(Recording& recording) {
     recording.footer.final_hash = result.hash;
     recording.footer.timed_steps = result.timed_steps;
     recording.footer.road = result.road;
+    recording.footer.actions_hash = result.actions_hash;
     return replay(recording);
 }
 

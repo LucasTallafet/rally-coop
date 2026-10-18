@@ -152,12 +152,14 @@ TEST_CASE("recording: the file is exactly header plus 12 bytes per run plus foot
     const Recording recording = record(steps);
     const std::string bytes = rally::io::serialize(recording);
     const RecordingHeader& h = recording.header;
-    // Firma, dos versiones, cuatro cadenas con su longitud, el hash de la zona (formato 2) y
-    // el número de tramos.
+    // Firma, dos versiones, cuatro cadenas con su longitud, el hash de la zona (formato 2), el
+    // texto de las acciones (formato 7) y el número de tramos.
     const std::size_t header = 8 + 4 + 4 + (4 + h.commit.size()) + (4 + h.world.size()) +
-                               (4 + h.car_text.size()) + (4 + h.settings.size()) + 8 + 4;
+                               (4 + h.car_text.size()) + (4 + h.settings.size()) + 8 +
+                               (4 + h.actions_text.size()) + 4;
     CHECK(rally::io::header_bytes(h) == header);
-    CHECK(bytes.size() == header + 12 * recording.runs.size() + rally::io::kFooterBytes);
+    // Detrás de los tramos, el número de eventos de acción (formato 7).
+    CHECK(bytes.size() == header + 12 * recording.runs.size() + 4 + rally::io::kFooterBytes);
 
     // RLE: entradas que cambian cada 4 pasos dan un tramo cada 4 pasos; si se repite la del
     // fotograma anterior, el tramo se alarga.
