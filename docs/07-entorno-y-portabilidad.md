@@ -229,6 +229,7 @@ Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junt
 - `info <archivo>`: dice, entre otras cosas, la superficie real de la pista ciega.
 - `run <archivo>`: «hash OK» o el primer problema, y la mejor vuelta cronometrada.
 - `run <archivo> --telemetry <salida.csv>`: CSV por paso; columnas en `tools/telemetry/columns.md`.
+- `run` repite también las acciones del formato 7 y compara el hash de su línea de tiempo; el CSV de telemetría lleva 133 columnas (con `abs_torque_cut_<rueda>` y `traction_torque_cut`). Para generar la grabación de formato 7 de los tests: `RALLY_WRITE_ACTIONS_REC=<ruta> rally_tests_io -tc="actions_recording: a session*"`.
 - `run <archivo> --bench N`: ms por paso, sin y con la captura de la telemetría, alternando las dos en cada repetición, con los 5 pasos más lentos (repetición y paso). Si los pasos más lentos cambian de una repetición a otra, son ruido del sistema y no de la simulación.
 - `run tests/data/recordings/bench_lap.rrec --bench 10`: la medida de referencia del coste por paso (120 s del coche congelado en la zona; presupuesto ≤ 0,5 ms de media en Release).
 - `rewrite <archivo>`: solo para grabaciones sintéticas de tests.

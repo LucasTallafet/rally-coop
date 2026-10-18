@@ -109,6 +109,7 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 | Un mutex de un proceso muerto no siempre se ve como abandonado (P1a) | Si nadie más lo tenía abierto, Windows lo destruye con su último handle | Da igual: la plaza queda libre y la siguiente llamada entra; si otra esperaba, lo recibe como abandonado (`WaitForMultipleObjects`) y entra también |
 | La CPU de render de `--bench-forest` varía ± 25 % entre pasadas del mismo exe (P1a) | La primera pasada de cada tanda sale más baja | Comparar antes y después con pasadas intercaladas, no una contra una |
 | Control de tracción y embrague de arranque (2.8) | El corte del motor solo llega a las ruedas a través de las vueltas y de la capacidad del embrague de arranque; un corte proporcional daba un ciclo de relé de ~34 Hz al salir | Sin estado, con un adelanto τ·q' calculado con dos resoluciones de prueba del LCP del subpaso |
+| Formato 7 de las grabaciones (2.8 y 2.9) | Un solo salto de formato para las ayudas y las acciones | El estado de la máquina no se guarda: la repetición lo reconstruye con los eventos y el hash de la línea de tiempo detecta cualquier diferencia. El paso de un evento es el que se va a simular, así que `Recorder::append_event` exige `step == steps()` y un desfase de la plataforma salta en el acto. La repetición arranca la máquina con el estado del coche tal como sale del `build()`, porque el formato no guarda `MachineSetup`. Las columnas nuevas del CSV se añaden sin subir `kTelemetryFormatVersion` |
 
 ---
 
