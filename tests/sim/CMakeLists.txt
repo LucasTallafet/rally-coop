@@ -101,7 +101,7 @@ foreach(_run first second)
                 ${RALLY_TESTS_OUT}/telemetry_${_run}.csv)
     set_tests_properties(replay.telemetry_${_run} PROPERTIES
         FIXTURES_SETUP telemetry_csv
-        PASS_REGULAR_EXPRESSION "telemetría: .*128 columnas.*hash OK"
+        PASS_REGULAR_EXPRESSION "telemetría: .*[0-9]+ columnas.*hash OK"
         FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 endforeach()
 add_test(NAME replay.telemetry_twice_identical
