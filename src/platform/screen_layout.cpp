@@ -163,10 +163,16 @@ bool layers_exclusive(Layer a, Layer b) {
     const auto top_panel = [](Layer l) {
         return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs;
     };
-    const auto covered_by_help = [&top_panel](Layer l) {
-        return top_panel(l) || l == Layer::ActionRing;
-    };
-    return (a == Layer::Help && covered_by_help(b)) || (b == Layer::Help && covered_by_help(a));
+    return (a == Layer::Help && top_panel(b)) || (b == Layer::Help && top_panel(a));
+}
+
+bool layers_overdraw(Layer a, Layer b) {
+    return (a == Layer::Help && b == Layer::ActionRing) ||
+           (b == Layer::Help && a == Layer::ActionRing);
+}
+
+bool layers_may_overlap(Layer a, Layer b) {
+    return layers_exclusive(a, b) || layers_overdraw(a, b);
 }
 
 std::string_view layer_name(Layer layer) {

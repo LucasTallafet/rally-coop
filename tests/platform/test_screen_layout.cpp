@@ -76,7 +76,7 @@ TEST_CASE("screen_layout: with every layer visible no two rectangles overlap") {
                 const UiRect& rb = layout.rects[static_cast<std::size_t>(b)];
                 INFO("frente a ", std::string(rally::platform::layer_name(Layer(b))), " ",
                      describe(rb));
-                if (!rally::platform::layers_exclusive(Layer(a), Layer(b))) {
+                if (!rally::platform::layers_may_overlap(Layer(a), Layer(b))) {
                     CHECK_FALSE(rally::platform::overlaps(ra, rb));
                 }
             }
@@ -175,9 +175,17 @@ TEST_CASE("screen_layout: graph headers fit their panel") {
     }
 }
 
-TEST_CASE("screen_layout: the action ring is centered below the middle and the help covers it") {
-    CHECK(rally::platform::layers_exclusive(Layer::Help, Layer::ActionRing));
-    CHECK_FALSE(rally::platform::layers_exclusive(Layer::Messages, Layer::ActionRing));
+TEST_CASE(
+    "screen_layout: the action ring is centered below the middle and is drawn over the help") {
+    // El anillo se dibuja siempre y encima de la ayuda: solo con ella puede compartir sitio.
+    CHECK_FALSE(rally::platform::layers_exclusive(Layer::Help, Layer::ActionRing));
+    CHECK(rally::platform::layers_overdraw(Layer::Help, Layer::ActionRing));
+    CHECK(rally::platform::layers_overdraw(Layer::ActionRing, Layer::Help));
+    for (int l = 0; l < kLayerCount; ++l) {
+        if (Layer(l) != Layer::Help && Layer(l) != Layer::ActionRing) {
+            CHECK_FALSE(rally::platform::layers_may_overlap(Layer::ActionRing, Layer(l)));
+        }
+    }
     for (const Resolution res : kResolutions) {
         const ScreenLayout layout = layout_screen(res.width, res.height);
         const UiRect& ring = layout.rect(Layer::ActionRing);
@@ -189,5 +197,11 @@ TEST_CASE("screen_layout: the action ring is centered below the middle and the h
         CHECK(ring.h >= layout.ring.diameter + layout.m.line);
         // La línea de debajo cabe y no tapa los mensajes ni el indicador.
         CHECK(ring.bottom() <= layout.rect(Layer::Messages).y);
+        // Con la ayuda abierta se ve entero y no pisa el indicador mínimo ni el aviso de la ayuda.
+        CHECK(rally::platform::contains(UiRect{0, 0, res.width, res.height}, ring));
+        CHECK_FALSE(rally::platform::overlaps(ring, layout.rect(Layer::Indicator)));
+        CHECK_FALSE(rally::platform::overlaps(ring, layout.rect(Layer::HelpHint)));
+        CHECK_FALSE(rally::platform::overlaps(ring, layout.rect(Layer::Messages)));
+        CHECK(rally::platform::overlaps(ring, layout.rect(Layer::Help)));
     }
 }
