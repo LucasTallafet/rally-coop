@@ -111,7 +111,6 @@ void DemoScreen::draw_2d(DemoContext& ctx, const DemoFrame& frame) {
     if (help_page_ >= 0) {
         draw_help(ctx);
     } else {
-        draw_action_ring(ctx);
         if (debug_visible_) {
             draw_debug(ctx, frame);
         }
@@ -127,12 +126,14 @@ void DemoScreen::draw_2d(DemoContext& ctx, const DemoFrame& frame) {
         frame.perf.draw(frame.pacer, frame.clock, ctx.snap, render_width, render_height,
                         ctx.overlay);
     }
+    // El anillo, siempre y el último: encima de la ayuda si está abierta.
+    draw_action_ring(ctx);
 }
 
 void DemoScreen::draw_action_ring(DemoContext& ctx) {
     // Anillo de progreso de la acción en curso del copiloto (tarea 2.9): lo llena la duración de
-    // la acción (en pasos) hasta que haya animaciones. Con la ayuda abierta no se dibuja (comparte
-    // sitio con ella, screen_layout).
+    // la acción (en pasos) hasta que haya animaciones. Se dibuja siempre, también con la ayuda
+    // abierta: encima de ella y con un fondo propio (screen_layout, layers_overdraw).
     if (ctx.actions == nullptr) {
         return;
     }
@@ -141,6 +142,9 @@ void DemoScreen::draw_action_ring(DemoContext& ctx) {
         return;
     }
     const UiRect& r = ctx.overlay.rect(Layer::ActionRing);
+    if (help_page_ >= 0) {
+        ctx.overlay.panel(Layer::ActionRing, kPanelBackground);
+    }
     const RingGeometry& g = ctx.overlay.layout().ring;
     const float outer = 0.5f * static_cast<float>(g.diameter);
     const float inner = outer - static_cast<float>(g.thickness);

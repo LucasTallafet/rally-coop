@@ -58,10 +58,14 @@ enum class Layer : std::uint8_t {
 };
 inline constexpr int kLayerCount = static_cast<int>(Layer::Count);
 std::string_view layer_name(Layer layer);
-// Capas que nunca se dibujan a la vez (la ayuda tapa la depuración, el rendimiento, las gráficas y
-// el anillo de las acciones mientras está abierta, tareas 2.5b y 2.9): pueden compartir sitio.
-// Todas las demás, no.
+// Capas que nunca se dibujan a la vez (la ayuda tapa la depuración, el rendimiento y las gráficas
+// mientras está abierta, tarea 2.5b): pueden compartir sitio. Todas las demás, no.
 bool layers_exclusive(Layer a, Layer b);
+// Pareja que se solapa a propósito: el anillo de las acciones se dibuja siempre, encima de la ayuda
+// (con un fondo propio). Con cualquier otra capa, el anillo no se solapa.
+bool layers_overdraw(Layer a, Layer b);
+// Exclusivas o una dibujada encima de la otra: las únicas parejas que pueden compartir sitio.
+bool layers_may_overlap(Layer a, Layer b);
 
 inline constexpr int kMessageLines = 2;
 
