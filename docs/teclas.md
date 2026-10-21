@@ -22,6 +22,9 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | F2 | Caja: automática / secuencial: reconstruye el mundo y empieza otra grabación; se guarda en ajustes.txt |
 | F7 | Dirección: teclado / ratón: con ratón, el desplazamiento horizontal es el volante (cursor capturado; se suelta en pausa o al perder el foco y el volante vuelve al centro); A/D no giran; no reconstruye el mundo; se guarda en ajustes.txt |
 | 4/5 | Sensibilidad del stick: menos / más: 10 % por pulsación, de 50 a 150 % (100 % es la curva de siempre; menos, más fina al centro; más, más lineal); solo el stick (el ratón y el teclado no la usan); no reconstruye el mundo; se guarda en ajustes.txt |
+| 1 | ABS: sí / no: frena cada rueda cerca de su máximo agarre y no actúa por debajo de 6 km/h ni con el freno de mano; reconstruye el mundo y empieza otra grabación; se guarda en ajustes.txt |
+| 2 | Control de tracción: no / bajo / alto: limita el deslizamiento de las ruedas motrices quitando par al motor; reconstruye el mundo y empieza otra grabación; se guarda en ajustes.txt |
+| 3 | Suspensión: blanda / media / dura: la misma altura en parado en las tres; reconstruye el mundo y empieza otra grabación; se guarda en ajustes.txt |
 
 **Cámara y asiento**
 
@@ -64,6 +67,9 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | V | Sincronización vertical |
 | I | Interpolación |
 | N | Ajuste del dt al refresco |
+| 7 | Copiloto: guardar la tablet: hace de copiloto (no hay tablet hasta la fase 3): acción de 0,8 s con anillo de progreso; solo con la tablet fuera; se graba en la grabación |
+| 8 | Copiloto: sacar la tablet: solo con la tablet guardada; el motivo de un rechazo sale en los mensajes |
+| 9 | Copiloto: cancelar la acción: al preparar no cuesta nada; al ejecutar se pierde lo avanzado |
 
 **General**
 

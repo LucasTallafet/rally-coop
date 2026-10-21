@@ -21,6 +21,7 @@ public:
     void draw_2d(DemoContext& ctx, const DemoFrame& frame) override;
 
 private:
+    void draw_action_ring(DemoContext& ctx);
     void draw_indicator(DemoContext& ctx, const DemoFrame& frame);
     void draw_help(DemoContext& ctx);
     void draw_debug(DemoContext& ctx, const DemoFrame& frame);

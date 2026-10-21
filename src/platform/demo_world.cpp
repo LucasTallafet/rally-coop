@@ -2,6 +2,7 @@
 
 #include "io/atomic_file.h"
 #include "platform/camera_space.h"
+#include "platform/demo_actions_keys.h"
 #include "platform/demo_common.h"
 #include "platform/demo_world_keys.h"
 #include "platform/fixed_step_clock.h"
@@ -237,11 +238,11 @@ bool read_golden_recording(const std::string& path, io::Recording& recording, st
     return true;
 }
 
-std::string default_car_path() {
+std::string find_data_file(const std::string& relative) {
     std::error_code error;
     std::filesystem::path folder = std::filesystem::path(GetApplicationDirectory());
     for (int up = 0; up < 8 && !folder.empty(); ++up) {
-        const std::filesystem::path candidate = folder / "data" / "cars" / "mid_awd_turbo.car";
+        const std::filesystem::path candidate = folder / utf8_path(relative);
         if (std::filesystem::exists(candidate, error)) {
             const std::u8string text = candidate.u8string();
             return std::string(text.begin(), text.end());
@@ -254,6 +255,8 @@ std::string default_car_path() {
     }
     return {};
 }
+
+std::string default_car_path() { return find_data_file("data/cars/mid_awd_turbo.car"); }
 
 DemoWorld::DemoWorld(DemoContext& ctx, std::string car_path) : ctx_(ctx) {
     ctx.car_path = std::move(car_path);
@@ -268,6 +271,15 @@ DemoWorld::DemoWorld(DemoContext& ctx, std::string car_path) : ctx_(ctx) {
                 message.c_str());
     ctx.car = sim::load_car_or_abort(car_text_, ctx.car_path, sim::CarKeys::Full);
     load_settings(ctx);
+    // Acciones del copiloto (tarea 2.9): data/game/actions.txt, buscado como el coche. Si no está,
+    // el juego sigue sin acciones (las teclas 7, 8 y 9 lo dicen); si tiene un error, aborta con su
+    // línea.
+    const std::string actions_path = find_data_file("data/game/actions.txt");
+    std::string actions_text;
+    if (!actions_path.empty() && io::read_file(actions_path, actions_text, error)) {
+        actions_.load(actions_text);
+    }
+    ctx.actions = &actions_;
 }
 
 DemoWorld::DemoWorld(DemoContext& ctx, const io::Recording& recording) : ctx_(ctx) {
@@ -286,6 +298,9 @@ DemoWorld::DemoWorld(DemoContext& ctx, const io::Recording& recording) : ctx_(ct
     // Lo que se ve de los ajustes que van en la descripción (la caja en el indicador).
     ctx.settings.steer_assist = ctx.desc.aids.steer_assist;
     ctx.settings.sequential = ctx.desc.aids.gearbox == sim::GearboxMode::Sequential;
+    ctx.settings.abs = ctx.desc.aids.abs;
+    ctx.settings.traction = ctx.desc.aids.traction;
+    ctx.settings.suspension = ctx.desc.aids.suspension;
 }
 
 DemoWorld::~DemoWorld() {
@@ -293,7 +308,7 @@ DemoWorld::~DemoWorld() {
         save_settings(ctx_);
     }
     if (ctx_.world) {
-        recording_.finish(*ctx_.world);
+        recording_.finish(*ctx_.world, actions_.timeline_hash());
     }
 }
 
@@ -347,26 +362,27 @@ void DemoWorld::describe(DemoContext& ctx) const {
     } else {
         ctx.desc = sim::demo_arena(mode.far_from_origin ? kFarOffset : 0.0, ctx.car);
     }
-    // La ayuda de dirección y el modo de la caja cambian la simulación: van en la descripción
-    // (y en la grabación).
-    ctx.desc.aids.steer_assist = ctx.settings.steer_assist;
-    ctx.desc.aids.gearbox =
-        ctx.settings.sequential ? sim::GearboxMode::Sequential : sim::GearboxMode::Automatic;
+    // Las ayudas (dirección, caja, ABS, control de tracción y suspensión) cambian la simulación:
+    // van en la descripción (y en la grabación).
+    ctx.desc.aids = driver_aids(ctx.settings);
 }
 
 void DemoWorld::reset(DemoContext& ctx) {
     if (ctx.world) {
-        recording_.finish(*ctx.world);
+        recording_.finish(*ctx.world, actions_.timeline_hash());
     }
     ctx.world = std::make_unique<sim::SimWorld>();
     ctx.world->build(ctx.desc);
     ctx.world->seal();
     ctx.world->set_telemetry(true);
+    // La máquina de acciones empieza con el mundo y con su grabación (paso 0 de las dos).
+    actions_.start(*ctx.world);
     if (ctx.world->zone() != nullptr) {
         zone_draw_.build(*ctx.world->zone(), ctx.mode.blind);
     }
     if (ctx.golden == nullptr) {
-        recording_.start(ctx.desc, *ctx.world, car_text_, recording_settings_text(ctx.settings));
+        recording_.start(ctx.desc, *ctx.world, car_text_, recording_settings_text(ctx.settings),
+                         actions_.text());
     }
     ctx.shift_up_presses = 0;
     ctx.shift_down_presses = 0;
@@ -399,6 +415,7 @@ void DemoWorld::step(DemoContext& ctx, const sim::SimInput& input) {
     ctx.world->step(input);
     if (ctx.golden == nullptr) {
         recording_.record(input);
+        actions_.advance(*ctx.world);
     }
     const std::uint16_t pressed = ctx.world->controls().pressed;
     ctx.shift_up_presses += (pressed & sim::kButtonShiftUp) != 0 ? 1 : 0;
@@ -470,9 +487,104 @@ void DemoWorld::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounter
                                     std::to_string(ctx.settings.steer_sensitivity_pct) + " %",
                                 kText, kShortMessageNs);
     }
+    handle_aid_keys(ctx, context);
+    handle_action_keys(ctx, context);
     // Guardado diferido de los ajustes: no en cada repetición de una tecla mantenida.
     if (ctx.settings_saver.due(now_ns())) {
         save_settings(ctx);
+    }
+}
+
+void DemoWorld::handle_aid_keys(DemoContext& ctx, std::uint8_t context) {
+    // ABS, control de tracción y suspensión (tarea 2.8): cambian la simulación, así que como F6
+    // y F2 reconstruyen el mundo y empiezan otra grabación.
+    const auto changed = [&ctx](std::string message) {
+        ctx.settings_saver.changed(now_ns());
+        ctx.rebuild = Rebuild::Describe;
+        ctx.overlay.set_message(Overlay::Message::Settings, std::move(message), kText,
+                                kShortMessageNs);
+    };
+    if (action_pressed(action(WorldAction::Abs), context)) {
+        ctx.settings.abs = !ctx.settings.abs;
+        changed(ctx.settings.abs ? "1: ABS activado" : "1: ABS desactivado");
+    }
+    if (action_pressed(action(WorldAction::TractionControl), context)) {
+        ctx.settings.traction = next_traction(ctx.settings.traction);
+        changed("2: control de tracción " + std::string(traction_name(ctx.settings.traction)));
+    }
+    if (action_pressed(action(WorldAction::Suspension), context)) {
+        ctx.settings.suspension = next_suspension(ctx.settings.suspension);
+        changed("3: suspensión " + std::string(suspension_name(ctx.settings.suspension)));
+    }
+}
+
+void DemoWorld::request_action(DemoContext& ctx, const char* key, std::string_view name) {
+    const std::string prefix = std::string(key) + ": ";
+    const int index = actions_.table().find(name);
+    if (!actions_.enabled() || index < 0) {
+        ctx.overlay.set_message(Overlay::Message::Action,
+                                prefix + "sin acciones (data/game/actions.txt)", kError,
+                                kShortMessageNs);
+        return;
+    }
+    const game::ApplyResult result = actions_.submit(
+        ctx.golden == nullptr ? recording_.recorder() : nullptr, game::Player::Copilot,
+        game::EventKind::Request, static_cast<std::uint8_t>(index));
+    const game::ActionDef& def = actions_.table().actions[static_cast<std::size_t>(index)];
+    if (result.ok()) {
+        ctx.overlay.set_message(Overlay::Message::Action,
+                                prefix + def.name + ", " + duration_text(result.end - result.start),
+                                kText, kShortMessageNs);
+    } else {
+        ctx.overlay.set_message(Overlay::Message::Action,
+                                prefix + def.name + ": " + reject_text(result.reject, &def), kError,
+                                kShortMessageNs);
+    }
+}
+
+void DemoWorld::handle_action_keys(DemoContext& ctx, std::uint8_t context) {
+    // Teclas de depuración que hacen de copiloto hasta que haya tablet (fase 3).
+    if (action_pressed(action(ActionsAction::StowTablet), context)) {
+        request_action(ctx, "7", "guardar_tablet");
+    }
+    if (action_pressed(action(ActionsAction::TakeTablet), context)) {
+        request_action(ctx, "8", "sacar_tablet");
+    }
+    if (action_pressed(action(ActionsAction::CancelAction), context)) {
+        const game::ActionProgress progress = actions_.copilot_progress();
+        if (!progress.active) {
+            ctx.overlay.set_message(Overlay::Message::Action,
+                                    "9: no hay ninguna acción que cancelar", kText,
+                                    kShortMessageNs);
+        } else {
+            // Si la cancelación se rechazara, la dice; si se acepta, el aviso llega con la
+            // transición (after_steps).
+            const game::ApplyResult result =
+                actions_.submit(ctx.golden == nullptr ? recording_.recorder() : nullptr,
+                                game::Player::Copilot, game::EventKind::Cancel, progress.action);
+            if (!result.ok()) {
+                ctx.overlay.set_message(Overlay::Message::Action,
+                                        "9: " + reject_text(result.reject, nullptr), kError,
+                                        kShortMessageNs);
+            }
+        }
+    }
+}
+
+void DemoWorld::after_steps(DemoContext& ctx, Gamepads& /*pads*/, float /*frame_impact*/,
+                            std::int64_t /*frame_ns*/) {
+    // Los cambios de la máquina que se dicen en pantalla (cancelaciones y efecto sobre la
+    // tablet), fuera del paso.
+    std::array<game::Transition, 8> pending;
+    for (std::size_t n = actions_.drain(pending); n > 0; n = actions_.drain(pending)) {
+        for (std::size_t i = 0; i < n; ++i) {
+            std::string text = transition_text(pending[i], actions_.table());
+            if (!text.empty()) {
+                const bool cancelled = pending[i].kind == game::TransitionKind::Cancelled;
+                ctx.overlay.set_message(Overlay::Message::Action, std::move(text),
+                                        cancelled ? kError : kText, kShortMessageNs);
+            }
+        }
     }
 }
 

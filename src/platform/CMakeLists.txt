@@ -9,11 +9,13 @@
 # asiento y ajustes.txt. No enlaza raylib ni SDL, para que los tests lo usen sin ventana
 # (cmake/CheckBuildRules.cmake); de rally_sim solo usa el PCG32 para el bosque.
 add_library(rally_loop STATIC
+    action_driver.cpp
     button_latch.cpp
     camera_space.cpp
     car_feedback.cpp
     car_synth.cpp
     cockpit.cpp
+    demo_actions_keys.cpp
     demo_camera_keys.cpp
     demo_driver_feel_keys.cpp
     demo_measure_keys.cpp
@@ -41,7 +43,9 @@ add_library(rally_loop STATIC
     window_keys.cpp
 )
 target_include_directories(rally_loop PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(rally_loop PRIVATE rally_sim rally_warnings)
+# action_driver (tarea 2.9, parte P) liga la máquina de acciones (rally_game) con el grabador
+# (rally_io); ninguna de las dos usa raylib ni SDL.
+target_link_libraries(rally_loop PRIVATE rally_sim rally_game rally_io rally_warnings)
 
 # Plataforma: ventana, render, entrada, audio y grabación de la partida sobre raylib
 # (backend SDL), y la demo: el compositor (drive_demo) y sus partes (demo_*.cpp).
@@ -79,6 +83,6 @@ add_library(rally_platform STATIC
 )
 target_include_directories(rally_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_platform
-    PUBLIC raylib rally_loop rally_io rally_sim
+    PUBLIC raylib rally_loop rally_io rally_game rally_sim
     PRIVATE rally_warnings SDL3::SDL3 user32 winmm
 )

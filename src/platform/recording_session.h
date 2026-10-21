@@ -25,14 +25,18 @@ public:
 
     // Con el mundo ya construido a partir de `desc` (de él sale el hash de la zona).
     // `settings`: los ajustes de la plataforma al empezar (RecordingHeader::settings).
+    // `actions_text`: el texto de data/game/actions.txt (vacío: sin acciones).
     void start(const sim::WorldDesc& desc, const sim::SimWorld& world, const std::string& car_text,
-               const std::string& settings);
+               const std::string& settings, const std::string& actions_text);
     // Antes de los pasos del fotograma.
     void prepare(int steps) { recorder_.ensure_capacity(steps); }
     // Tras cada paso simulado, con su entrada.
     void record(const sim::SimInput& input) { recorder_.append(input); }
-    // Escribe el archivo con el hash final de `world` (nada si no hay pasos).
-    void finish(const sim::SimWorld& world);
+    // El grabador, para los eventos de acción (platform/action_driver).
+    io::Recorder* recorder() { return &recorder_; }
+    // Escribe el archivo con el hash final de `world` y el de la línea de tiempo de las acciones
+    // (ActionDriver::timeline_hash; 0 sin acciones). Nada si no hay pasos.
+    void finish(const sim::SimWorld& world, std::uint64_t actions_hash);
 
     bool active() const { return recorder_.active(); }
     const std::string& name() const { return name_; } // nombre del archivo, sin carpeta

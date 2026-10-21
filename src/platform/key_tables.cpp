@@ -1,5 +1,6 @@
 #include "platform/key_tables.h"
 
+#include "platform/demo_actions_keys.h"
 #include "platform/demo_camera_keys.h"
 #include "platform/demo_driver_feel_keys.h"
 #include "platform/demo_measure_keys.h"
@@ -14,8 +15,8 @@ namespace rally::platform {
 namespace {
 
 constexpr const KeyTable* kTables[] = {
-    &kDriveKeys,      &kWorldKeys,  &kZoneModeKeys, &kCameraKeys,
-    &kDriverFeelKeys, &kScreenKeys, &kMeasureKeys,  &kWindowKeys,
+    &kDriveKeys,  &kWorldKeys,   &kZoneModeKeys, &kCameraKeys,  &kDriverFeelKeys,
+    &kScreenKeys, &kMeasureKeys, &kWindowKeys,   &kActionsKeys,
 };
 
 } // namespace

@@ -3,6 +3,7 @@
 # plataforma. Los mundos de prueba del coche vienen de tests/sim/common (solo se leen).
 # golden/: capturas de rally.exe --golden (tools/ci/golden.ps1; necesitan ventana, no van aquí).
 rally_add_test_executable(rally_tests_platform
+    test_action_driver.cpp
     test_button_latch.cpp
     test_camera_space.cpp
     test_car_feedback.cpp

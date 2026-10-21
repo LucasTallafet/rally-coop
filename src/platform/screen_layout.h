@@ -46,19 +46,21 @@ struct UiMetrics {
 UiMetrics ui_metrics(int screen_height);
 
 enum class Layer : std::uint8_t {
-    Indicator, // velocidad, selector, vueltas y prueba a ciegas: siempre visible
-    HelpHint,  // «H: ayuda»: siempre visible
-    Messages,  // avisos: error de F5, ajustes.txt, grabación, pausa, texto fuera de su sitio
-    Help,      // H
-    Debug,     // F3
-    Perf,      // F1
-    Graphs,    // T
+    Indicator,  // velocidad, selector, vueltas y prueba a ciegas: siempre visible
+    HelpHint,   // «H: ayuda»: siempre visible
+    Messages,   // avisos: error de F5, ajustes.txt, grabación, pausa, texto fuera de su sitio
+    Help,       // H
+    Debug,      // F3
+    Perf,       // F1
+    Graphs,     // T
+    ActionRing, // anillo de progreso de la acción en curso (teclas 7, 8 y 9), sin fondo
     Count,
 };
 inline constexpr int kLayerCount = static_cast<int>(Layer::Count);
 std::string_view layer_name(Layer layer);
-// Capas que nunca se dibujan a la vez (la ayuda tapa la depuración, el rendimiento y las gráficas
-// mientras está abierta, tarea 2.5b): pueden compartir sitio. Todas las demás, no.
+// Capas que nunca se dibujan a la vez (la ayuda tapa la depuración, el rendimiento, las gráficas y
+// el anillo de las acciones mientras está abierta, tareas 2.5b y 2.9): pueden compartir sitio.
+// Todas las demás, no.
 bool layers_exclusive(Layer a, Layer b);
 
 inline constexpr int kMessageLines = 2;
@@ -137,6 +139,15 @@ HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int ma
 // Título de la página `page` (desde 0) de `pages`: "Ayuda 1/2 · H: página siguiente".
 std::string help_title(int page, int pages);
 
+// Anillo de progreso de las acciones (tarea 2.9): centrado y algo por debajo del centro (de
+// partida, el centro al 62 % del alto; Lucas dirá dónde lo quiere). Su capa es el rectángulo del
+// anillo y, debajo, una línea con la acción y su fase.
+struct RingGeometry {
+    int diameter = 0;  // exterior
+    int thickness = 0; // del trazo
+    int label_y = 0;   // de la línea de texto, desde el borde de arriba de la capa
+};
+
 struct ScreenLayout {
     int width = 0;
     int height = 0;
@@ -144,6 +155,7 @@ struct ScreenLayout {
     PerfGeometry perf;
     GraphGeometry graphs;
     HelpGrid help;
+    RingGeometry ring;
     std::array<UiRect, kLayerCount> rects{};
     const UiRect& rect(Layer layer) const { return rects[static_cast<std::size_t>(layer)]; }
 };

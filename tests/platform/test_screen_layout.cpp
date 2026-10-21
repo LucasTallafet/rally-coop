@@ -4,6 +4,7 @@
 
 #include <doctest/doctest.h>
 
+#include <cstdlib>
 #include <set>
 #include <string>
 #include <tuple>
@@ -35,7 +36,8 @@ UiRect inner(const UiRect& r, int padding) {
 
 // Relleno de cada capa: las de una línea suelta no llevan fondo.
 int padding_of(Layer layer, const ScreenLayout& layout) {
-    return layer == Layer::Indicator || layer == Layer::HelpHint || layer == Layer::Messages
+    return layer == Layer::Indicator || layer == Layer::HelpHint || layer == Layer::Messages ||
+                   layer == Layer::ActionRing
                ? 0
                : layout.m.padding;
 }
@@ -170,5 +172,22 @@ TEST_CASE("screen_layout: graph headers fit their panel") {
                 }
             }
         }
+    }
+}
+
+TEST_CASE("screen_layout: the action ring is centered below the middle and the help covers it") {
+    CHECK(rally::platform::layers_exclusive(Layer::Help, Layer::ActionRing));
+    CHECK_FALSE(rally::platform::layers_exclusive(Layer::Messages, Layer::ActionRing));
+    for (const Resolution res : kResolutions) {
+        const ScreenLayout layout = layout_screen(res.width, res.height);
+        const UiRect& ring = layout.rect(Layer::ActionRing);
+        INFO(res.width, "×", res.height, " ", describe(ring));
+        // Centrado en x (± 1 px) y con el centro del anillo por debajo del de la pantalla.
+        CHECK(std::abs(ring.x + ring.w / 2 - res.width / 2) <= 1);
+        CHECK(ring.y + layout.ring.diameter / 2 > res.height / 2);
+        CHECK(layout.ring.diameter >= 2 * layout.ring.thickness);
+        CHECK(ring.h >= layout.ring.diameter + layout.m.line);
+        // La línea de debajo cabe y no tapa los mensajes ni el indicador.
+        CHECK(ring.bottom() <= layout.rect(Layer::Messages).y);
     }
 }
