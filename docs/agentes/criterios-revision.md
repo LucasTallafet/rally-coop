@@ -19,7 +19,8 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
 11. **¿Toca algo con lo que se mide el criterio de una fase abierta?** Por ejemplo, la carretera de prueba de la 2.6b hasta la 2.11. → Que no lo cambie: lo nuevo va al lado (`09-agentes.md` §2).
 12. **¿Choca con otra tarea del lote?** Un mismo formato, una misma interfaz, las mismas grabaciones de test. → Que use los números de versión y las interfaces del contrato del lote. Si el contrato no los fija, **Necesita consultor**.
 12b. **¿Cambia una fuente de un archivo generado o de un hash de referencia?** (tablas de teclas → `docs/teclas.md`; tabla del CSV → `columns.md` y `kExpectedCsvHash`; `CarTelemetry` → `kExpectedTelemetryHash`). → Que la misma rama actualice el generado o el hash; si no es suyo, **Necesita consultor** (`09` §4).
-13. **¿Se juzga conduciendo?** → Que el informe diga cómo hace Lucas el A/B en el mismo ejecutable (una tecla, el archivo del coche de `master` al lado), o por qué no se puede.
+13. **¿Reutiliza lo que ya existe?** Antes de aprobar, busca en `src/` y `tests/` funciones o tipos que ya hagan lo que la tarea pide (`rmath`, `fnv1a`, `input_shaping`, `atomic_file`, `PlayerSettings`, `screen_layout`, las tablas de teclas, los mundos de `car_worlds.h`…). Si el prompt o la tarea llevan a duplicar algo, dilo con la ruta y la línea. Nada genérico nuevo «por si acaso».
+14. **¿Se juzga conduciendo?** → Que el informe diga cómo hace Lucas el A/B en el mismo ejecutable (una tecla, el archivo del coche de `master` al lado), o por qué no se puede.
 
 **Formato de `<tarea>-revision.md`:**
 - veredicto: **Adelante**, **Adelante con cambios** o **Necesita consultor**;
@@ -33,6 +34,7 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
 3. ¿La tabla de regímenes está completa?
 4. ¿Cambia algo que no le toca (rutas, decisiones, umbrales)? **Los umbrales y los valores esperados no se relajan sin una razón física explicada.**
 5. ¿Hay preguntas del carril? Contéstalas si son técnicas y caben en las reglas. Si son de gusto, de prioridad o de diseño, van a Lucas o al consultor.
+6. **Cada utilidad nueva del plan** (función, tipo o archivo de ayuda) lleva una línea: qué buscó en el código y por qué no sirve lo que hay. Sin esa línea, **Aprobado con cambios**.
 
 **Formato de `<tarea>-revision-plan.md`:** **Aprobado**, **Aprobado con cambios** o **Necesita consultor**, con los cambios numerados.
 

@@ -13,6 +13,7 @@ Cada prompt `2.X.md` da por leído este archivo. Si algo de un prompt choca con 
 Antes de escribir código, un plan corto (una pantalla como mucho):
 - archivos nuevos y archivos que cambian, por módulo (`src/sim`, `src/platform`, `src/game`, `tools`, `tests`, `data`);
 - tipos y funciones públicas nuevas, con su firma;
+- lo que reutilizas del código existente y, para cada utilidad nueva, qué buscaste y por qué no sirve lo que hay;
 - tests que vas a escribir, con el valor esperado de cada uno;
 - si la huella cambia y por qué;
 - riesgos y preguntas abiertas: cualquier valor que no esté en el prompt ni en los documentos y que vayas a elegir tú.
