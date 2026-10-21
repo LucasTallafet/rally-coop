@@ -36,7 +36,8 @@ RecordingSession::~RecordingSession() {
 }
 
 void RecordingSession::start(const sim::WorldDesc& desc, const sim::SimWorld& world,
-                             const std::string& car_text, const std::string& settings) {
+                             const std::string& car_text, const std::string& settings,
+                             const std::string& actions_text) {
     const std::string folder = std::string(GetApplicationDirectory()) + "grabaciones/";
     name_ = free_name(folder, name_);
     path_ = folder + name_;
@@ -45,19 +46,20 @@ void RecordingSession::start(const sim::WorldDesc& desc, const sim::SimWorld& wo
     header.world = io::serialize_world(desc);
     header.car_text = car_text;
     header.settings = settings;
+    header.actions_text = actions_text;
     header.zone_hash = world.zone_hash();
     recorder_.begin(std::move(header), io::steps_for_minutes(kReservedMinutes));
     io::set_crash_recording(&recorder_, path_);
 }
 
-void RecordingSession::finish(const sim::SimWorld& world) {
+void RecordingSession::finish(const sim::SimWorld& world, std::uint64_t actions_hash) {
     if (!active()) {
         return;
     }
     io::set_crash_recording(nullptr, {});
     const bool has_steps = recorder_.steps() > 0;
-    const io::Recording recording =
-        recorder_.finish(world.state_hash(), io::timed_steps(world), io::road_result(world));
+    const io::Recording recording = recorder_.finish(world.state_hash(), io::timed_steps(world),
+                                                     io::road_result(world), actions_hash);
     if (has_steps && !io::write_file(path_, io::serialize(recording), error_)) {
         TraceLog(LOG_WARNING, "grabación: %s", error_.c_str());
     }

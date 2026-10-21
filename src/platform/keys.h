@@ -22,8 +22,14 @@ namespace rally::platform {
 // Latin-1: es lo que tiene la fuente por defecto de raylib.
 #define RALLY_KEYS(KEY)                                                                            \
     KEY(Space, SPACE, 32, "Espacio", "Espacio")                                                    \
+    KEY(One, ONE, 49, "1", "1")                                                                    \
+    KEY(Two, TWO, 50, "2", "2")                                                                    \
+    KEY(Three, THREE, 51, "3", "3")                                                                \
     KEY(Four, FOUR, 52, "4", "4")                                                                  \
     KEY(Five, FIVE, 53, "5", "5")                                                                  \
+    KEY(Seven, SEVEN, 55, "7", "7")                                                                \
+    KEY(Eight, EIGHT, 56, "8", "8")                                                                \
+    KEY(Nine, NINE, 57, "9", "9")                                                                  \
     KEY(B, B, 66, "B", "B")                                                                        \
     KEY(C, C, 67, "C", "C")                                                                        \
     KEY(D, D, 68, "D", "D")                                                                        \

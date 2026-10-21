@@ -23,7 +23,8 @@ constexpr Color kMessageError{255, 110, 90, 255};
 // Las capas de una línea suelta no llevan fondo ni relleno (como en
 // tests/platform/test_screen_layout).
 bool padded(Layer layer) {
-    return layer != Layer::Indicator && layer != Layer::HelpHint && layer != Layer::Messages;
+    return layer != Layer::Indicator && layer != Layer::HelpHint && layer != Layer::Messages &&
+           layer != Layer::ActionRing;
 }
 
 // Puntos de código de la fuente cuyo ancho en la tabla no es el de MeasureText (y el primero).

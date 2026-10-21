@@ -1,5 +1,6 @@
 #include "platform/demo_screen.h"
 
+#include "platform/action_driver.h"
 #include "platform/audio_output.h"
 #include "platform/demo_common.h"
 #include "platform/demo_screen_keys.h"
@@ -16,6 +17,7 @@
 #include "platform/recording_session.h"
 #include "platform/screen_layout.h"
 #include "platform/telemetry_graphs.h"
+#include "platform/ui_text.h"
 #include "platform/zone_draw.h"
 
 #include <SDL3/SDL_video.h>
@@ -109,6 +111,7 @@ void DemoScreen::draw_2d(DemoContext& ctx, const DemoFrame& frame) {
     if (help_page_ >= 0) {
         draw_help(ctx);
     } else {
+        draw_action_ring(ctx);
         if (debug_visible_) {
             draw_debug(ctx, frame);
         }
@@ -124,6 +127,33 @@ void DemoScreen::draw_2d(DemoContext& ctx, const DemoFrame& frame) {
         frame.perf.draw(frame.pacer, frame.clock, ctx.snap, render_width, render_height,
                         ctx.overlay);
     }
+}
+
+void DemoScreen::draw_action_ring(DemoContext& ctx) {
+    // Anillo de progreso de la acción en curso del copiloto (tarea 2.9): lo llena la duración de
+    // la acción (en pasos) hasta que haya animaciones. Con la ayuda abierta no se dibuja (comparte
+    // sitio con ella, screen_layout).
+    if (ctx.actions == nullptr) {
+        return;
+    }
+    const RingState ring = ring_state(ctx.actions->copilot_progress());
+    if (!ring.visible) {
+        return;
+    }
+    const UiRect& r = ctx.overlay.rect(Layer::ActionRing);
+    const RingGeometry& g = ctx.overlay.layout().ring;
+    const float outer = 0.5f * static_cast<float>(g.diameter);
+    const float inner = outer - static_cast<float>(g.thickness);
+    const Vector2 center{static_cast<float>(r.x) + 0.5f * static_cast<float>(r.w),
+                         static_cast<float>(r.y) + outer};
+    DrawRing(center, inner, outer, 0.0f, 360.0f, 48, Color{60, 64, 72, 215});
+    DrawRing(center, inner, outer, -90.0f, -90.0f + 360.0f * ring.fraction, 48, kStrong);
+    // «acción · fase», centrado bajo el anillo (recortado si el nombre es largo).
+    const std::string& name = ctx.actions->table().actions[ring.action].name;
+    const std::string label = name + " · " + std::string(phase_name(ring.phase));
+    const int width = text_width(label, ctx.overlay.metrics().font);
+    const int x = width <= r.w ? r.x + (r.w - width) / 2 : r.x;
+    ctx.overlay.text_fit(Layer::ActionRing, x, r.y + g.label_y, label, kText);
 }
 
 void DemoScreen::draw_indicator(DemoContext& ctx, const DemoFrame& frame) {
@@ -357,6 +387,7 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     line(TextFormat("ojo: %.3f, %.3f, %.3f m", eye.x, eye.y, eye.z));
     line(TextFormat("asiento: alto %d cm, adelante %d cm, derecha %d cm", ctx.settings.seat.up,
                     ctx.settings.seat.forward, ctx.settings.seat.right));
+    line(aids_summary(ctx.settings).c_str());
 
     const char* target =
         pacer.target() == FrameTarget::MonitorRate ? "frecuencia del monitor" : "30 fps";

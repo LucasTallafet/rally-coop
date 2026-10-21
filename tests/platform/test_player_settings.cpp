@@ -317,3 +317,80 @@ TEST_CASE("player settings: next_sensitivity_pct steps by 10 and stops at 50 and
     }
     CHECK(pct == 50);
 }
+
+TEST_CASE("player_settings: ABS, traction control and suspension default, read, write and warn") {
+    using rally::sim::SuspensionSetting;
+    using rally::sim::TractionControl;
+    std::vector<SettingsWarning> warnings;
+    // Faltan (un ajustes.txt de antes de la 2.8): ABS activado, control no, suspensión media.
+    const PlayerSettings old = parse_settings("asiento_alto_cm = 3\n", warnings);
+    CHECK(warnings.empty());
+    CHECK(old.abs);
+    CHECK(old.traction == TractionControl::Off);
+    CHECK(old.suspension == SuspensionSetting::Medium);
+    // Se leen y vuelven exactos.
+    PlayerSettings parsed =
+        parse_settings("abs = 0\ncontrol_traccion = alto\nsuspension = blanda\n", warnings);
+    CHECK(warnings.empty());
+    CHECK_FALSE(parsed.abs);
+    CHECK(parsed.traction == TractionControl::High);
+    CHECK(parsed.suspension == SuspensionSetting::Soft);
+    const std::string text = format_settings(parsed);
+    CHECK(text.find("abs = 0\n") != std::string::npos);
+    CHECK(text.find("control_traccion = alto\n") != std::string::npos);
+    CHECK(text.find("suspension = blanda\n") != std::string::npos);
+    CHECK(parse_settings(text, warnings) == parsed);
+    CHECK(warnings.empty());
+    CHECK(parse_settings("control_traccion = bajo\nsuspension = dura\n", warnings).traction ==
+          TractionControl::Low);
+    // Valores malos: aviso con la línea y el valor por defecto.
+    parsed = parse_settings("abs = 2\ncontrol_traccion = medio\nsuspension = rigida\n", warnings);
+    CHECK(parsed == PlayerSettings{});
+    REQUIRE(warnings.size() == 3);
+    CHECK(warnings[0].line == 1);
+    CHECK(warnings[1].line == 2);
+    CHECK(warnings[1].message == "control_traccion: 'medio' no es no, bajo ni alto (se usa no)");
+    CHECK(warnings[2].line == 3);
+    CHECK(warnings[2].message.find("blanda, media ni dura") != std::string::npos);
+    // El aviso de dos palabras sigue igual.
+    warnings.clear();
+    parse_settings("dispositivo_direccion = mando\n", warnings);
+    REQUIRE(warnings.size() == 1);
+    CHECK(warnings[0].message.find("no es teclado ni raton") != std::string::npos);
+}
+
+TEST_CASE("player_settings: keys 2 and 3 cycle and the settings become the world's aids") {
+    using rally::sim::GearboxMode;
+    using rally::sim::SuspensionSetting;
+    using rally::sim::TractionControl;
+    CHECK(rally::platform::next_traction(TractionControl::Off) == TractionControl::Low);
+    CHECK(rally::platform::next_traction(TractionControl::Low) == TractionControl::High);
+    CHECK(rally::platform::next_traction(TractionControl::High) == TractionControl::Off);
+    CHECK(rally::platform::next_suspension(SuspensionSetting::Soft) == SuspensionSetting::Medium);
+    CHECK(rally::platform::next_suspension(SuspensionSetting::Medium) == SuspensionSetting::Hard);
+    CHECK(rally::platform::next_suspension(SuspensionSetting::Hard) == SuspensionSetting::Soft);
+    // Los cinco campos de DriverAids.
+    const rally::sim::DriverAids defaults = rally::platform::driver_aids(PlayerSettings{});
+    CHECK(defaults.steer_assist);
+    CHECK(defaults.gearbox == GearboxMode::Automatic);
+    CHECK(defaults.abs);
+    CHECK(defaults.traction == TractionControl::Off);
+    CHECK(defaults.suspension == SuspensionSetting::Medium);
+    PlayerSettings custom;
+    custom.steer_assist = false;
+    custom.sequential = true;
+    custom.abs = false;
+    custom.traction = TractionControl::High;
+    custom.suspension = SuspensionSetting::Hard;
+    const rally::sim::DriverAids aids = rally::platform::driver_aids(custom);
+    CHECK_FALSE(aids.steer_assist);
+    CHECK(aids.gearbox == GearboxMode::Sequential);
+    CHECK_FALSE(aids.abs);
+    CHECK(aids.traction == TractionControl::High);
+    CHECK(aids.suspension == SuspensionSetting::Hard);
+    // La línea de F3.
+    CHECK(rally::platform::aids_summary(PlayerSettings{}) ==
+          "ayudas: dirección sí, ABS sí, control no, suspensión media");
+    CHECK(rally::platform::aids_summary(custom) ==
+          "ayudas: dirección no, ABS no, control alto, suspensión dura");
+}

@@ -2,6 +2,7 @@
 
 #include "platform/input_shaping.h"
 #include "platform/seat.h"
+#include "sim/steer_assist.h"
 
 #include <cstdint>
 #include <string>
@@ -35,6 +36,13 @@ struct PlayerSettings {
     // Caja secuencial (tarea 2.6; automática por defecto). Cambia la simulación: va en la
     // descripción del mundo (DriverAids::gearbox) y cambiarla lo reconstruye.
     bool sequential = false;
+    // ABS, control de tracción y suspensión (tarea 2.8, teclas 1, 2 y 3). Cambian la simulación:
+    // van en la descripción del mundo (DriverAids) y cambiarlos lo reconstruye. El ABS empieza
+    // activado (ajustes base del protocolo de manejo); la simulación de los tests, no
+    // (DriverAids por defecto).
+    bool abs = true;
+    sim::TractionControl traction = sim::TractionControl::Off;
+    sim::SuspensionSetting suspension = sim::SuspensionSetting::Medium;
     int mouse_full_lock_px = kMouseFullLockPxDefault;
     // Sensibilidad de la dirección del stick en % (tarea 2.8, teclas 4 y 5; 50..150): la
     // linealidad de su curva (platform/input_shaping). No es de la simulación: ni reconstruye el
@@ -62,6 +70,16 @@ PlayerSettings parse_settings(std::string_view text, std::vector<SettingsWarning
 // mundo, no aquí.
 std::string recording_settings_text(const PlayerSettings& settings);
 std::string format_settings(const PlayerSettings& settings);
+
+// Las ayudas que cambian la simulación, tal como van en WorldDesc::aids.
+sim::DriverAids driver_aids(const PlayerSettings& settings);
+// Teclas 2 y 3: no > bajo > alto > no; blanda > media > dura > blanda.
+sim::TractionControl next_traction(sim::TractionControl traction);
+sim::SuspensionSetting next_suspension(sim::SuspensionSetting suspension);
+std::string_view traction_name(sim::TractionControl traction);
+std::string_view suspension_name(sim::SuspensionSetting suspension);
+// Línea de F3: «ayudas: dirección sí, ABS sí, control alto, suspensión blanda».
+std::string aids_summary(const PlayerSettings& settings);
 
 // Teclas 4 / 5: la sensibilidad un paso (10 %) por debajo (dir < 0) o por encima (dir > 0), en
 // múltiplos de 10 (desde 75, + da 80 y - da 70), con tope en 50 y en 150.

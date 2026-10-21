@@ -18,7 +18,7 @@ struct Key {
     int min;
     int max;
     const char* unit;
-    std::array<std::string_view, 2> words{}; // vacías: entera
+    std::array<std::string_view, 3> words{}; // vacías: entera (2 o 3 palabras)
 };
 
 constexpr std::array kKeys = {
@@ -50,6 +50,22 @@ constexpr std::array kKeys = {
     Key{"sensibilidad_direccion", [](const PlayerSettings& p) { return p.steer_sensitivity_pct; },
         [](PlayerSettings& p, int v) { p.steer_sensitivity_pct = v; }, kSteerSensitivityMinPct,
         kSteerSensitivityMaxPct, " %"},
+    Key{"abs", [](const PlayerSettings& p) { return p.abs ? 1 : 0; },
+        [](PlayerSettings& p, int v) { p.abs = v != 0; }, 0, 1, ""},
+    Key{"control_traccion",
+        [](const PlayerSettings& p) { return static_cast<int>(p.traction); },
+        [](PlayerSettings& p, int v) { p.traction = static_cast<sim::TractionControl>(v); },
+        0,
+        2,
+        "",
+        {"no", "bajo", "alto"}},
+    Key{"suspension",
+        [](const PlayerSettings& p) { return static_cast<int>(p.suspension); },
+        [](PlayerSettings& p, int v) { p.suspension = static_cast<sim::SuspensionSetting>(v); },
+        0,
+        2,
+        "",
+        {"blanda", "media", "dura"}},
     Key{"cabeza", [](const PlayerSettings& p) { return p.head_motion ? 1 : 0; },
         [](PlayerSettings& p, int v) { p.head_motion = v != 0; }, 0, 1, ""},
     Key{"volumen_pct", [](const PlayerSettings& p) { return p.volume_pct; },
@@ -57,6 +73,21 @@ constexpr std::array kKeys = {
 };
 
 bool has_words(const Key& key) { return !key.words[0].empty(); }
+
+std::size_t word_count(const Key& key) { return key.words[2].empty() ? 2 : 3; }
+
+// «teclado ni raton» o «no, bajo ni alto».
+std::string words_list(const Key& key) {
+    const std::size_t count = word_count(key);
+    std::string out;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (i > 0) {
+            out += i + 1 == count ? " ni " : ", ";
+        }
+        out += key.words[i];
+    }
+    return out;
+}
 
 std::string value_text(const Key& key, int value) {
     if (has_words(key)) {
@@ -121,14 +152,12 @@ PlayerSettings parse_settings(std::string_view text, std::vector<SettingsWarning
         const std::string fallback = " (se usa " + value_text(spec, spec.get(settings)) + ")";
         if (has_words(spec)) {
             std::size_t word = 0;
-            while (word < spec.words.size() && spec.words[word] != value) {
+            while (word < word_count(spec) && spec.words[word] != value) {
                 ++word;
             }
-            if (word == spec.words.size()) {
+            if (word == word_count(spec)) {
                 warnings.push_back({line_number, std::string(key) + ": " + quoted(value) +
-                                                     " no es " + std::string(spec.words[0]) +
-                                                     " ni " + std::string(spec.words[1]) +
-                                                     fallback});
+                                                     " no es " + words_list(spec) + fallback});
                 continue;
             }
             spec.set(settings, static_cast<int>(word));
@@ -186,6 +215,46 @@ std::string recording_settings_text(const PlayerSettings& settings) {
     out += settings.steer_device == SteerDevice::Mouse ? "raton" : "teclado";
     out += "\nraton_px_tope = " + std::to_string(settings.mouse_full_lock_px) + "\n";
     out += "sensibilidad_direccion = " + std::to_string(settings.steer_sensitivity_pct) + "\n";
+    return out;
+}
+
+sim::DriverAids driver_aids(const PlayerSettings& settings) {
+    sim::DriverAids aids;
+    aids.steer_assist = settings.steer_assist;
+    aids.gearbox = settings.sequential ? sim::GearboxMode::Sequential : sim::GearboxMode::Automatic;
+    aids.abs = settings.abs;
+    aids.traction = settings.traction;
+    aids.suspension = settings.suspension;
+    return aids;
+}
+
+sim::TractionControl next_traction(sim::TractionControl traction) {
+    return static_cast<sim::TractionControl>((static_cast<int>(traction) + 1) % 3);
+}
+
+sim::SuspensionSetting next_suspension(sim::SuspensionSetting suspension) {
+    return static_cast<sim::SuspensionSetting>((static_cast<int>(suspension) + 1) % 3);
+}
+
+std::string_view traction_name(sim::TractionControl traction) {
+    constexpr std::string_view kNames[] = {"no", "bajo", "alto"};
+    return kNames[static_cast<int>(traction)];
+}
+
+std::string_view suspension_name(sim::SuspensionSetting suspension) {
+    constexpr std::string_view kNames[] = {"blanda", "media", "dura"};
+    return kNames[static_cast<int>(suspension)];
+}
+
+std::string aids_summary(const PlayerSettings& settings) {
+    std::string out = "ayudas: dirección ";
+    out += settings.steer_assist ? "sí" : "no";
+    out += ", ABS ";
+    out += settings.abs ? "sí" : "no";
+    out += ", control ";
+    out += traction_name(settings.traction);
+    out += ", suspensión ";
+    out += suspension_name(settings.suspension);
     return out;
 }
 

@@ -27,6 +27,7 @@ class AudioOutput;
 class DriverInput;
 class FixedStepClock;
 class FrameLog;
+class ActionDriver;
 class FramePacer;
 class Gamepads;
 class PerfCounter;
@@ -104,6 +105,7 @@ struct DemoContext {
     sim::CarData car;
     std::string car_path; // archivo del coche (o la grabación, con --golden)
     const RecordingSession* recording = nullptr;
+    const ActionDriver* actions = nullptr; // null con --golden (sin máquina)
     ZoneDraw* zone_draw = nullptr; // el suelo de la zona (la pantalla y las medidas leen su CPU)
     ScenePoses poses;
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).

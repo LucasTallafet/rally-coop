@@ -18,6 +18,8 @@ constexpr std::string_view kIndicatorSamples[] = {
     "volante [---------O---------]",
 };
 constexpr std::string_view kHelpHintSamples[] = {"H: ayuda"};
+// Anillo de las acciones: la línea de debajo («acción · fase»); un nombre más largo se recorta.
+constexpr std::string_view kRingSamples[] = {"guardar_tablet · preparar"};
 // Panel de depuración: estas líneas y, entre la tercera y la cuarta, la fila de las barras de los
 // ejes (kDebugBarsRow).
 constexpr std::string_view kDebugSamples[] = {
@@ -37,6 +39,7 @@ constexpr std::string_view kDebugSamples[] = {
     "bosque: DrawMeshInstanced de raylib, 8888 árboles de 888 triáng.",
     "ojo: -88888.888, -88888.888, -88888.888 m",
     "asiento: alto -15 cm, adelante -15 cm, derecha -15 cm",
+    "ayudas: dirección sí, ABS sí, control alto, suspensión blanda",
     "ritmo: frecuencia del monitor   sincronización vertical: sí",
     "monitor: 888.88 Hz   intervalo pedido 8, real (SDL) desconocido",
     "temporizador: de alta resolución",
@@ -160,7 +163,10 @@ bool layers_exclusive(Layer a, Layer b) {
     const auto top_panel = [](Layer l) {
         return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs;
     };
-    return (a == Layer::Help && top_panel(b)) || (b == Layer::Help && top_panel(a));
+    const auto covered_by_help = [&top_panel](Layer l) {
+        return top_panel(l) || l == Layer::ActionRing;
+    };
+    return (a == Layer::Help && covered_by_help(b)) || (b == Layer::Help && covered_by_help(a));
 }
 
 std::string_view layer_name(Layer layer) {
@@ -179,6 +185,8 @@ std::string_view layer_name(Layer layer) {
         return "rendimiento";
     case Layer::Graphs:
         return "gráficas";
+    case Layer::ActionRing:
+        return "anillo de la acción";
     case Layer::Count:
         break;
     }
@@ -367,6 +375,18 @@ ScreenLayout layout_screen(int width, int height) {
     help.h = messages.y - m.gap / 2 - help.y;
     layout.help =
         help_grid(key_table(), m, (help.h - 2 * m.padding) / m.line, help.w - 2 * m.padding);
+
+    // El anillo, centrado, con su centro al 62 % del alto: la línea de debajo y el anillo caben
+    // sobre los mensajes y bajo los paneles de arriba (lo comprueban los tests de este archivo).
+    RingGeometry& ring = layout.ring;
+    ring.diameter = std::max(8, height * 11 / 100);
+    ring.thickness = std::max(2, ring.diameter / 8);
+    ring.label_y = ring.diameter + m.px(6);
+    UiRect& ring_rect = at(Layer::ActionRing);
+    ring_rect.w = std::max(ring.diameter, samples_width(kRingSamples, m.font));
+    ring_rect.h = ring.label_y + m.line;
+    ring_rect.x = (width - ring_rect.w) / 2;
+    ring_rect.y = height * 62 / 100 - ring.diameter / 2;
     return layout;
 }
 
@@ -380,6 +400,8 @@ std::span<const std::string_view> layer_samples(Layer layer) {
         return kDebugSamples;
     case Layer::Perf:
         return kPerfSamples;
+    case Layer::ActionRing:
+        return kRingSamples;
     case Layer::Messages:
     case Layer::Help:
     case Layer::Graphs:
@@ -400,6 +422,8 @@ int layer_content_width(Layer layer, const ScreenLayout& layout) {
         return std::max(samples_width(kDebugSamples, m.font), axis_bars_width(m));
     case Layer::Perf:
         return perf_content_width(layout.perf, m);
+    case Layer::ActionRing:
+        return std::max(layout.ring.diameter, samples_width(kRingSamples, m.font));
     case Layer::Help:
         return layout.help.columns * layout.help.column_width +
                std::max(0, layout.help.columns - 1) * layout.help.column_gap;

@@ -27,6 +27,7 @@ public:
         Car,
         Recording,
         Settings,
+        Action, // acciones del copiloto (teclas 7, 8 y 9)
         Count,
     };
 
