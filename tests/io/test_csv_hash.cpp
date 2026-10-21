@@ -18,11 +18,11 @@ namespace {
 using rally::sim::CarTelemetry;
 using rally::sim::Pcg32;
 
-// FNV-1a del CSV (cabecera y 64 filas) de telemetrÃ­a sintÃ©tica fija: no pasa por la simulaciÃ³n,
-// asÃ­ que solo cambia cuando cambia el CSV (columnas, orden, precisiÃ³n o formato de los
-// nÃºmeros). Tiene que ser el mismo en Debug y en Release. Si cambia a propÃ³sito, se copia aquÃ­
-// el valor nuevo y va en el mensaje del commit (Â«CSV hash: 0x... -> 0x...Â»). El hash de
-// la telemetrÃ­a de la simulaciÃ³n es otro: kExpectedTelemetryHash (tests/sim).
+// FNV-1a del CSV (cabecera y 64 filas) de telemetría sintética fija: no pasa por la simulación,
+// así que solo cambia cuando cambia el CSV (columnas, orden, precisión o formato de los
+// números). Tiene que ser el mismo en Debug y en Release. Si cambia a propósito, se copia aquí
+// el valor nuevo y va en el mensaje del commit («CSV hash: 0x... -> 0x...»). El hash de
+// la telemetría de la simulación es otro: kExpectedTelemetryHash (tests/sim).
 constexpr std::uint64_t kExpectedCsvHash = 0xdc7d3a061d9f3d6bull;
 
 float real(Pcg32& rng, float scale) { return (rng.next_float01() - 0.5f) * scale; }
@@ -33,8 +33,8 @@ std::int8_t surface_index(Pcg32& rng) {
     return pick == 5 ? std::int8_t{-1} : static_cast<std::int8_t>(pick);
 }
 
-// Una telemetrÃ­a con todos los campos rellenados (ninguno a 0 salvo que el azar lo diga), en
-// el orden de CarTelemetry. Un campo nuevo sin rellenar aquÃ­ sale a 0 en todas las filas.
+// Una telemetría con todos los campos rellenados (ninguno a 0 salvo que el azar lo diga), en
+// el orden de CarTelemetry. Un campo nuevo sin rellenar aquí sale a 0 en todas las filas.
 CarTelemetry synthetic(Pcg32& rng, std::int64_t step) {
     CarTelemetry t;
     t.step = step;
@@ -140,12 +140,12 @@ TEST_CASE("csv: the synthetic telemetry CSV has the stored hash") {
     CHECK(csv == synthetic_csv());
     const std::uint64_t hash = rally::sim::fnv1a64(csv);
     char message[300];
-    std::snprintf(
-        message, sizeof(message),
-        "hash del CSV 0x%016llxull, guardado 0x%016llxull. Si cambia el CSV a propÃ³sito, "
-        "copia el actual en kExpectedCsvHash (tests/io/test_csv_hash.cpp), regenera "
-        "tools/telemetry/columns.md y dilo en el commit.",
-        static_cast<unsigned long long>(hash), static_cast<unsigned long long>(kExpectedCsvHash));
+    std::snprintf(message, sizeof(message),
+                  "hash del CSV 0x%016llxull, guardado 0x%016llxull. Si cambia el CSV a propósito, "
+                  "copia el actual en kExpectedCsvHash (tests/io/test_csv_hash.cpp), regenera "
+                  "tools/telemetry/columns.md y dilo en el commit.",
+                  static_cast<unsigned long long>(hash),
+                  static_cast<unsigned long long>(kExpectedCsvHash));
     INFO(message);
     CHECK(hash == kExpectedCsvHash);
     std::printf("RALLY_SUMMARY csv=0x%016llx\n", static_cast<unsigned long long>(hash));
@@ -164,11 +164,11 @@ TEST_CASE("csv: the ABS and traction control columns are in the table, once each
 
 TEST_CASE("csv: every field of the synthetic telemetry reaches a column") {
     // Un campo de CarTelemetry sin columna: cambiarlo no cambia ninguna fila. Se comprueba
-    // columna por columna: cada una cambia el CSV al cambiar un telemetrÃ­a con 0 por otra
-    // rellenada, salvo las que valen 0 por construcciÃ³n (el paso del segundo CSV es otro).
+    // columna por columna: cada una cambia el CSV al cambiar un telemetría con 0 por otra
+    // rellenada, salvo las que valen 0 por construcción (el paso del segundo CSV es otro).
     Pcg32 rng(0xc5f0'0000'0000'0002ull, 7u);
     CarTelemetry filled = synthetic(rng, 5);
-    // Lo que el azar puede dejar igual que la telemetrÃ­a vacÃ­a (0, none, falso), a la fuerza.
+    // Lo que el azar puede dejar igual que la telemetría vacía (0, none, falso), a la fuerza.
     filled.steer_digital = filled.assist_active = filled.assist_rear_sliding = true;
     filled.shifting = filled.clutch_open = filled.drift_hold = true;
     filled.surface = static_cast<std::int8_t>(rally::sim::Surface::Snow);
