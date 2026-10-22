@@ -12,11 +12,11 @@
 #include "sim/sim_world.h"
 
 #include <doctest/doctest.h>
-#include <enet/enet.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <enet/enet.h>
 #include <memory>
 #include <string>
 
@@ -79,7 +79,8 @@ TEST_CASE("net_link: handshake, world, 300 states in order") {
     auto copilot = start_copilot(host->port());
 
     // Conectado sin mundo.
-    REQUIRE(pump(host.get(), {copilot.get()}, [&] { return host->copilot_connected() && copilot->stats().connected; }));
+    REQUIRE(pump(host.get(), {copilot.get()},
+                 [&] { return host->copilot_connected() && copilot->stats().connected; }));
     CHECK(copilot->status() == "conectado");
     CHECK_FALSE(copilot->take_world().has_value());
     Pose pose;
@@ -128,9 +129,8 @@ TEST_CASE("net_link: handshake, world, 300 states in order") {
         last_newest = newest;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    REQUIRE(pump(host.get(), {copilot.get()}, [&] {
-        return copilot->stats().received + 3 >= host->stats().sent;
-    }));
+    REQUIRE(pump(host.get(), {copilot.get()},
+                 [&] { return copilot->stats().received + 3 >= host->stats().sent; }));
     const BufferStats stats = copilot->buffer().stats(wall_seconds());
     std::printf("net_link: enviados %llu, recibidos %llu, perdidos %llu, tarde %llu, rtt %.3f ms; "
                 "reservas del host (new + ENet) %llu en 10 s de simulacion = %.1f por segundo\n",
@@ -138,7 +138,8 @@ TEST_CASE("net_link: handshake, world, 300 states in order") {
                 static_cast<unsigned long long>(stats.received),
                 static_cast<unsigned long long>(stats.missing),
                 static_cast<unsigned long long>(stats.late), host->stats().rtt_s * 1000.0,
-                static_cast<unsigned long long>(host_allocs), static_cast<double>(host_allocs) / 10.0);
+                static_cast<unsigned long long>(host_allocs),
+                static_cast<double>(host_allocs) / 10.0);
     CHECK(host->stats().sent >= 300);
     CHECK(in_order);
     CHECK(stats.late == 0);
@@ -174,9 +175,9 @@ TEST_CASE("net_link: another protocol version is answered with its reason") {
                     enet_packet_create(hello.data(), hello.size(), ENET_PACKET_FLAG_RELIABLE);
                 enet_peer_send(peer, 0, packet);
             } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
-                replied = decode_reply(std::span<const std::uint8_t>(event.packet->data,
-                                                                      event.packet->dataLength),
-                                       reply);
+                replied = decode_reply(
+                    std::span<const std::uint8_t>(event.packet->data, event.packet->dataLength),
+                    reply);
                 enet_packet_destroy(event.packet);
             }
         }

@@ -14,9 +14,7 @@ constexpr double kDelaySteps = kInterpolationDelay * kStepRate; // 24
 constexpr double kOffsetWindow = 2.0;                           // s
 constexpr double kRecentWindow = 0.5;                           // s
 
-Pose pose_of(const CarState& s) {
-    return Pose{s.x, s.y, s.z, s.qx, s.qy, s.qz, s.qw};
-}
+Pose pose_of(const CarState& s) { return Pose{s.x, s.y, s.z, s.qx, s.qy, s.qz, s.qw}; }
 
 // El estado seguido con su velocidad durante dt_steps pasos, como mucho kMaxExtrapolation; la
 // rotación se queda (el estado no lleva velocidad angular).
@@ -183,7 +181,8 @@ BufferStats StateBuffer::stats(double now_s) const {
     s.late = late_;
     if (count_ > 0) {
         const double est = host_step_estimate(now_s);
-        const double newest = static_cast<double>(ring_[static_cast<std::size_t>(count_ - 1)].state.step);
+        const double newest =
+            static_cast<double>(ring_[static_cast<std::size_t>(count_ - 1)].state.step);
         s.delay_s = (est - newest) / kStepRate;
         s.extrapolating = est - kDelaySteps > newest;
         s.host_step = est > 0.0 ? static_cast<std::uint32_t>(est) : 0;
@@ -230,7 +229,8 @@ void LinkSimulator::submit(const CarState& state, double now_s) {
 bool LinkSimulator::pop_ready(double now_s, CarState& out, double& release_s) {
     Slot* best = nullptr;
     for (Slot& slot : slots_) {
-        if (slot.used && slot.release <= now_s && (best == nullptr || slot.release < best->release)) {
+        if (slot.used && slot.release <= now_s &&
+            (best == nullptr || slot.release < best->release)) {
             best = &slot;
         }
     }

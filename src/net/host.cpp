@@ -2,9 +2,8 @@
 
 #include "net/enet_runtime.h"
 
-#include <enet/enet.h>
-
 #include <array>
+#include <enet/enet.h>
 #include <span>
 #include <utility>
 
@@ -139,9 +138,7 @@ bool Host::start(std::uint16_t port, std::string& error) {
     return true;
 }
 
-std::uint16_t Host::port() const {
-    return impl_->port;
-}
+std::uint16_t Host::port() const { return impl_->port; }
 
 void Host::set_world(std::string world_bytes, std::string car_text, std::uint64_t zone_hash) {
     impl_->world_bytes = std::move(world_bytes);
@@ -169,7 +166,8 @@ void Host::after_steps(const sim::SimWorld& world, std::uint32_t step, bool rese
     encode(state, bytes);
     // Sin secuencia: un estado que llega tarde y desordenado todavía sirve (el búfer ordena y
     // descarta duplicados), y la red simulada y la real se comportan igual.
-    ENetPacket* packet = enet_packet_create(bytes.data(), bytes.size(), ENET_PACKET_FLAG_UNSEQUENCED);
+    ENetPacket* packet =
+        enet_packet_create(bytes.data(), bytes.size(), ENET_PACKET_FLAG_UNSEQUENCED);
     if (packet != nullptr && enet_peer_send(s.active, kChannelStates, packet) != 0) {
         enet_packet_destroy(packet);
         packet = nullptr;
@@ -208,9 +206,7 @@ void Host::service() {
     }
 }
 
-bool Host::copilot_connected() const {
-    return impl_->active != nullptr;
-}
+bool Host::copilot_connected() const { return impl_->active != nullptr; }
 
 LinkStats Host::stats() const {
     LinkStats stats;

@@ -3,7 +3,6 @@
 #include "net/enet_runtime.h"
 
 #include <enet/enet.h>
-
 #include <span>
 #include <utility>
 
@@ -193,9 +192,7 @@ std::optional<WorldInfo> Copilot::take_world() {
     return out;
 }
 
-const StateBuffer& Copilot::buffer() const {
-    return impl_->buffer;
-}
+const StateBuffer& Copilot::buffer() const { return impl_->buffer; }
 
 void Copilot::set_impairment(const Impairment& impairment, std::uint64_t seed) {
     impl_->link.set(impairment, seed);
@@ -204,13 +201,12 @@ void Copilot::set_impairment(const Impairment& impairment, std::uint64_t seed) {
 LinkStats Copilot::stats() const {
     LinkStats stats;
     stats.connected = impl_->state == Impl::State::Active;
-    stats.rtt_s = (stats.connected && impl_->peer != nullptr) ? impl_->peer->roundTripTime / 1000.0 : 0.0;
+    stats.rtt_s =
+        (stats.connected && impl_->peer != nullptr) ? impl_->peer->roundTripTime / 1000.0 : 0.0;
     stats.received = impl_->received;
     return stats;
 }
 
-std::string_view Copilot::status() const {
-    return impl_->status;
-}
+std::string_view Copilot::status() const { return impl_->status; }
 
 } // namespace rally::net

@@ -120,10 +120,10 @@ TEST_CASE("net_state: 10000 random states round trip within the contract table")
         encode(in, bytes);
         ++omitted_seen[bytes[18] & 3];
     }
-    std::printf("net_state: peor error: pos %.4f mm, rot %.2e rad, vel %.4f cm/s, compresion %.4f mm, "
-                "rpm %.3f\n",
-                worst.pos * 1000.0, worst.angle, worst.vel * 100.0, worst.compression * 1000.0,
-                worst.rpm);
+    std::printf(
+        "net_state: peor error: pos %.4f mm, rot %.2e rad, vel %.4f cm/s, compresion %.4f mm, "
+        "rpm %.3f\n",
+        worst.pos * 1000.0, worst.angle, worst.vel * 100.0, worst.compression * 1000.0, worst.rpm);
     CHECK(worst.pos <= 0.5e-3 + 1e-9);
     CHECK(worst.angle <= 1e-4);
     CHECK(worst.vel <= 0.005 + 1e-5);
@@ -136,7 +136,9 @@ TEST_CASE("net_state: 10000 random states round trip within the contract table")
 
 TEST_CASE("net_state: each omitted component and the sign of q") {
     // Una rotación con cada componente como la mayor, en las dos versiones de signo.
-    const double base[4][4] = {{0.9, 0.2, -0.3, 0.1}, {0.1, -0.8, 0.3, 0.4}, {-0.2, 0.3, 0.7, 0.5},
+    const double base[4][4] = {{0.9, 0.2, -0.3, 0.1},
+                               {0.1, -0.8, 0.3, 0.4},
+                               {-0.2, 0.3, 0.7, 0.5},
                                {0.1, -0.2, 0.3, -0.9}};
     for (int k = 0; k < 4; ++k) {
         for (double sign : {1.0, -1.0}) {
@@ -145,7 +147,8 @@ TEST_CASE("net_state: each omitted component and the sign of q") {
             in.qy = sign * base[k][1];
             in.qz = sign * base[k][2];
             in.qw = sign * base[k][3];
-            const double n = std::sqrt(in.qx * in.qx + in.qy * in.qy + in.qz * in.qz + in.qw * in.qw);
+            const double n =
+                std::sqrt(in.qx * in.qx + in.qy * in.qy + in.qz * in.qz + in.qw * in.qw);
             in.qx /= n;
             in.qy /= n;
             in.qz /= n;
@@ -188,7 +191,8 @@ TEST_CASE("net_state: decode rejects wrong sizes, types, omitted index and surfa
 
 TEST_CASE("net_state: car_state_from copies the fields from the world") {
     const rally::sim::JoltRuntime runtime;
-    rally::sim::WorldDesc desc = rally::tests::flat_world(rally::sim::Surface::Gravel, false, 15.0f);
+    rally::sim::WorldDesc desc =
+        rally::tests::flat_world(rally::sim::Surface::Gravel, false, 15.0f);
     rally::sim::SimWorld world;
     world.build(desc);
     world.seal();

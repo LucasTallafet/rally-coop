@@ -66,7 +66,8 @@ std::int32_t to_mm(double meters) {
 }
 
 std::int16_t to_cm_s(float v) {
-    return static_cast<std::int16_t>(round_clamped(static_cast<double>(v) * 100.0, -32767.0, 32767.0));
+    return static_cast<std::int16_t>(
+        round_clamped(static_cast<double>(v) * 100.0, -32767.0, 32767.0));
 }
 
 } // namespace

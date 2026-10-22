@@ -14,8 +14,8 @@ namespace rally::net {
 
 inline constexpr std::uint16_t kProtocolVersion = 1;
 inline constexpr std::uint16_t kDefaultPort = 29470;
-inline constexpr int kStateEverySteps = 8; // 30 Hz a 240 Hz
-inline constexpr double kStepRate = 240.0; // pasos por segundo de la simulación
+inline constexpr int kStateEverySteps = 8;           // 30 Hz a 240 Hz
+inline constexpr double kStepRate = 240.0;           // pasos por segundo de la simulación
 inline constexpr double kInterpolationDelay = 0.100; // s (24 pasos)
 inline constexpr double kMaxExtrapolation = 0.100;   // s; después, quieto
 

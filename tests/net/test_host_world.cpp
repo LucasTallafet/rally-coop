@@ -47,7 +47,8 @@ std::uint64_t run(bool with_host) {
         copilot = std::make_unique<Copilot>();
         REQUIRE_MESSAGE(copilot->connect("127.0.0.1", host->port(), error), error);
         host->set_world("mundo", "coche", 1);
-        REQUIRE(rally::tests::pump(host.get(), {copilot.get()}, [&] { return copilot->take_world().has_value(); }));
+        REQUIRE(rally::tests::pump(host.get(), {copilot.get()},
+                                   [&] { return copilot->take_world().has_value(); }));
     }
     for (int frame = 0; frame < 600; ++frame) {
         for (int i = 0; i < 4; ++i) {
@@ -93,9 +94,10 @@ TEST_CASE("net_host: size of the world message") {
                     info.world_bytes.size(), info.car_text.size());
         CHECK(message.size() == 1 + 1 + 8 + 4 + info.world_bytes.size() + 4 + car_text.size());
         WorldInfo back;
-        REQUIRE(decode_world(std::span<const std::uint8_t>(
-                                 reinterpret_cast<const std::uint8_t*>(message.data()), message.size()),
-                             back));
+        REQUIRE(
+            decode_world(std::span<const std::uint8_t>(
+                             reinterpret_cast<const std::uint8_t*>(message.data()), message.size()),
+                         back));
         CHECK(back.world_bytes == info.world_bytes);
         CHECK(back.car_text == info.car_text);
     }
@@ -110,23 +112,23 @@ TEST_CASE("net_host: control messages reject truncated or inconsistent bytes") {
     const std::string message = encode_world(info);
     for (std::size_t n = 0; n < message.size(); ++n) {
         WorldInfo out;
-        CHECK_FALSE(decode_world(std::span<const std::uint8_t>(
-                                     reinterpret_cast<const std::uint8_t*>(message.data()), n),
-                                 out));
+        CHECK_FALSE(decode_world(
+            std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(message.data()), n),
+            out));
     }
     Reply reply;
     reply.accepted = true;
     const std::string r = encode_reply(reply);
     Reply out;
-    CHECK(decode_reply(std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(r.data()),
-                                                     r.size()),
-                       out));
+    CHECK(decode_reply(
+        std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(r.data()), r.size()),
+        out));
     CHECK(out.accepted);
     std::uint16_t version = 0;
     const std::string h = encode_hello(7);
-    CHECK(decode_hello(std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(h.data()),
-                                                     h.size()),
-                       version));
+    CHECK(decode_hello(
+        std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t*>(h.data()), h.size()),
+        version));
     CHECK(version == 7);
     CHECK_FALSE(decode_hello(std::span<const std::uint8_t>(
                                  reinterpret_cast<const std::uint8_t*>(h.data()), h.size() - 1),

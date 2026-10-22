@@ -23,7 +23,7 @@ struct BufferStats {
     std::uint64_t late = 0;     // llegados con un paso menor que el máximo visto
     // Edad del último estado respecto al paso estimado del host (s). Sano: < 0,1 s.
     double delay_s = 0.0;
-    bool extrapolating = false; // el objetivo está más allá del último estado
+    bool extrapolating = false;  // el objetivo está más allá del último estado
     std::uint32_t host_step = 0; // paso estimado del host ahora
 };
 

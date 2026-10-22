@@ -3,9 +3,8 @@
 #include "net/runtime.h"
 #include "sim/check.h"
 
-#include <enet/enet.h>
-
 #include <cstdlib>
+#include <enet/enet.h>
 
 namespace rally::net {
 
@@ -18,13 +17,9 @@ void* counting_malloc(std::size_t size) {
     return std::malloc(size);
 }
 
-void counting_free(void* memory) {
-    std::free(memory);
-}
+void counting_free(void* memory) { std::free(memory); }
 
-void no_memory() {
-    sim::check_failed("net: ENet se quedó sin memoria", __FILE__, __LINE__);
-}
+void no_memory() { sim::check_failed("net: ENet se quedó sin memoria", __FILE__, __LINE__); }
 
 struct EnetRuntime {
     EnetRuntime() {
@@ -47,8 +42,6 @@ void ensure_enet_initialized() {
     (void)runtime;
 }
 
-std::uint64_t enet_allocation_count() {
-    return g_allocations;
-}
+std::uint64_t enet_allocation_count() { return g_allocations; }
 
 } // namespace rally::net

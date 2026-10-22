@@ -56,9 +56,7 @@ CarState through_wire(const CarState& in) {
     return out;
 }
 
-double dist(const Pose& p, double x, double z) {
-    return std::hypot(p.x - x, p.z - z);
-}
+double dist(const Pose& p, double x, double z) { return std::hypot(p.x - x, p.z - z); }
 
 CarState line_state(std::uint32_t step, double v, std::uint8_t generation = 0) {
     CarState s;
@@ -92,8 +90,8 @@ TEST_CASE("net_buffer: interpolation without simulated network follows the circl
         CHECK_FALSE(buffer.stats(now).extrapolating);
         ++samples;
     }
-    std::printf("net_buffer: sin red simulada, error maximo %.2f mm en %d muestras\n", worst * 1000.0,
-                samples);
+    std::printf("net_buffer: sin red simulada, error maximo %.2f mm en %d muestras\n",
+                worst * 1000.0, samples);
     CHECK(samples > 900);
     CHECK(worst <= 0.01);
 }
@@ -135,7 +133,8 @@ TEST_CASE("net_buffer: simulated medium network (100 +- 30 ms, 5 % loss) for 60 
         const Truth t = circle_at(target);
         const double err = dist(pose, t.x, t.z);
         // Antes del primer estado no hay nada que interpolar: se queda en él.
-        const bool before_first = target < static_cast<double>(*std::min_element(delivered.begin(), delivered.end()));
+        const bool before_first =
+            target < static_cast<double>(*std::min_element(delivered.begin(), delivered.end()));
         if (before_first) {
             ++pre_first_samples;
         } else if (buffer.stats(now).extrapolating) {
@@ -163,16 +162,19 @@ TEST_CASE("net_buffer: simulated medium network (100 +- 30 ms, 5 % loss) for 60 
     std::sort(delivered.begin(), delivered.end());
     int longest_gap = 0;
     for (std::size_t i = 1; i < delivered.size(); ++i) {
-        longest_gap = std::max(longest_gap, static_cast<int>((delivered[i] - delivered[i - 1]) / 8) - 1);
+        longest_gap =
+            std::max(longest_gap, static_cast<int>((delivered[i] - delivered[i - 1]) / 8) - 1);
     }
     const BufferStats stats = buffer.stats(60.0);
-    std::printf("net_buffer: red media: interpolando %d muestras, error max %.2f cm; extrapolando %d "
-                "muestras (y %d antes del primer estado), error max %.2f cm; hueco mas largo %d estados; perdidos por la red %llu, "
-                "tarde %llu, missing %llu; retroceso maximo del angulo %.2e rad\n",
-                interp_samples, worst_interp * 100.0, extrap_samples, pre_first_samples,
-                worst_extrap * 100.0, longest_gap, static_cast<unsigned long long>(link.dropped()),
-                static_cast<unsigned long long>(stats.late),
-                static_cast<unsigned long long>(stats.missing), worst_backwards);
+    std::printf(
+        "net_buffer: red media: interpolando %d muestras, error max %.2f cm; extrapolando %d "
+        "muestras (y %d antes del primer estado), error max %.2f cm; hueco mas largo %d estados; "
+        "perdidos por la red %llu, "
+        "tarde %llu, missing %llu; retroceso maximo del angulo %.2e rad\n",
+        interp_samples, worst_interp * 100.0, extrap_samples, pre_first_samples,
+        worst_extrap * 100.0, longest_gap, static_cast<unsigned long long>(link.dropped()),
+        static_cast<unsigned long long>(stats.late), static_cast<unsigned long long>(stats.missing),
+        worst_backwards);
     CHECK(interp_samples > 2000);
     CHECK(worst_interp <= 0.03);
     CHECK(worst_extrap <= 0.08);
