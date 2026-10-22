@@ -11,7 +11,7 @@ Para Lucas y su compañero. Cada sesión deja una carpeta en `docs/manejo/sesion
 1. `master` actualizado y compilado en Release. Apuntad el commit que enseña el overlay.
 2. Steam cerrado, pantalla completa sin bordes (`--fullscreen`), auriculares, cada uno con su mando habitual (apuntad el modelo).
 3. Crear la carpeta de la sesión: `python tools/telemetry/new_session.py` (crea `notas.md` y `hoja.csv` a partir de las plantillas).
-4. **Ajustes base** para todo lo que se compara: ayuda de dirección activada, cambio automático, control de tracción desactivado, ABS activado, suspensión media. Cada uno usa su sensibilidad de dirección, pero se apunta.
+4. **Ajustes base** para todo lo que se compara: ayuda de dirección activada, cambio automático, control de tracción desactivado, ABS desactivado (como arranca el juego desde el lote 3), suspensión media. Cada uno usa su sensibilidad de dirección, pero se apunta.
 5. Papeles: uno **conduce** y el otro **anota** (y maneja las teclas del modo a ciegas). Se cambian en cada bloque.
 6. Calentamiento: 5 minutos libres por la zona con la configuración del primer bloque.
 

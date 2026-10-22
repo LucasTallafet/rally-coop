@@ -191,7 +191,7 @@ El manejo es realista: física de simulación estándar, sin atajos arcade. El p
 
 | Ajuste | Opciones | Efecto |
 | --- | --- | --- |
-| ABS | Activado / desactivado | Evita el bloqueo de ruedas al frenar |
+| ABS | Desactivado (por defecto) / activado | Evita el bloqueo de ruedas al frenar |
 | Control de tracción | Desactivado / bajo / alto | Limita el patinaje al acelerar |
 | Ayuda de dirección | Activada / desactivada | Limita el ángulo de las ruedas delanteras al de máximo agarre (ver "Dirección") |
 | Cambio | Automático / secuencial manual | Ver 7.2 |

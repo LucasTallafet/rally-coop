@@ -67,9 +67,9 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
 
 | Dueño | Rutas |
 | --- | --- |
-| sim | `src/sim/**`, `src/gen/**`, `data/cars/**`, `tests/sim/**`, `tests/data/cars/**`, `.claude/rules/simulacion.md` |
-| plataforma | `src/platform/**`, `src/main.cpp`, `data/**` (salvo `data/cars/` y `data/game/`), `tests/platform/**`, `docs/teclas.md` (generado de las tablas de teclas) |
-| juego | `src/game/**`, `src/net/**`, `src/io/**`, `data/game/**`, `tests/io/**`, `tests/game/**`, `tools/telemetry/columns.md` (generado de la tabla del CSV) |
+| sim | `src/sim/**`, `src/gen/**`, `data/cars/**`, `data/stages/**`, `tests/sim/**`, `tests/data/cars/**`, `.claude/rules/simulacion.md` |
+| plataforma | `src/platform/**`, `src/main.cpp`, `data/**` (salvo `data/cars/`, `data/game/` y `data/stages/`), `tests/platform/**`, `docs/teclas.md` (generado de las tablas de teclas) |
+| juego | `src/game/**`, `src/net/**`, `src/io/**`, `data/game/**`, `tests/io/**`, `tests/game/**`, `tests/net/**`, `tools/telemetry/columns.md` (generado de la tabla del CSV) |
 | herramientas | `tools/**` (salvo `tools/ci/**` y `tools/telemetry/columns.md`), `tests/tools/**` |
 | sim y juego | `tests/data/recordings/**`. Son binarios: nunca se fusionan. Si dos ramas del lote las tocan, el integrador las regenera con `rally_replay` después de fusionar el código |
 | cada carril | `docs/progreso/<su tarea>.md` y `mensajes/**` de su copia |
@@ -112,7 +112,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    - las tareas, cada una con su prompt, su carril, sus dependencias y su orden de fusión;
    - los **contratos**: interfaces y números de versión de formato fijados de antemano. Por ejemplo, si dos tareas tocan `.rrec`, cada una lleva su número;
    - lo que Lucas probará, con **un A/B en el mismo ejecutable** para cada cambio que se juzga conduciendo. Si no se puede, el lote dice que esa tarea se juega antes que el resto.
-2. **Lucas**, en la sesión del director: `/lote mensajes/lote-N.md`. El director comprueba al empezar que los 8 tipos (`revisor-diseno`, `carril-sim`, `carril-plataforma`, `carril-juego`, `carril-herramientas`, `verificador`, `revisor-determinismo` e `integrador`) están en su lista de tipos de agente. Si falta alguno, para y avisa a Lucas: hace falta una sesión nueva o la definición no carga. Después crea `mensajes/lote-N/estado.md` y lo pone al día tras cada paso.
+2. **Lucas**, en la sesión del director: `/lote mensajes/lote-N.md`. El director comprueba al empezar que los 8 tipos (`revisor-diseno`, `carril-sim`, `carril-plataforma`, `carril-juego`, `carril-herramientas`, `verificador`, `revisor-determinismo` e `integrador`) están en su lista de tipos de agente. Si falta alguno, para y avisa a Lucas: hace falta una sesión nueva o la definición no carga. Después crea `mensajes/lote-N/estado.md` y lo pone al día tras cada paso. El lote manda sobre `/lote` en cómo se organiza (qué tareas se revisan, oleadas, orden, contratos y pruebas), nunca en las barreras.
 3. **Revisión de cada tarea.** `revisor-diseno` las revisa todas, y cada revisión se guarda en `mensajes/lote-N/<tarea>-revision.md`.
    - **Necesita consultor** solo por: un choque con una decisión cerrada, una tarea que crece más del 50 %, o un cambio del diseño de `01`–`05`.
    - Con ese veredicto, la tarea para y Lucas lo lleva al proyecto de claude.ai. Las demás siguen.
@@ -129,7 +129,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    - Hace commit en su rama. **Ningún agente empuja:** las ramas se ven desde la copia principal porque comparten `.git`, y una copia con commits sin empujar es la que la limpieza periódica de Claude Code respeta.
    - Escribe su informe, con lo que Lucas tiene que probar y su A/B.
    - Si un criterio no pasa, `comun.md` §9: para con el valor medido, el esperado y la pregunta.
-7. **Verificación** de cada rama, por agentes que no la escribieron:
+7. **Verificación** de cada rama, por agentes que no la escribieron, **en serie y nunca a la vez sobre la misma copia** (los dos compilan en ella; en el lote 1 chocaron con LNK1104):
    - **`verificador`.** Termina con `git status --porcelain` vacío en la copia del carril, y el director lo comprueba antes de retomar el carril.
    - **`revisor-determinismo`**, si la rama toca `src/sim`, `src/gen`, `src/net`, `src/game` o `src/io`, o si cambia la huella, el hash de la telemetría o `tests/data/recordings`. Comprueba:
      - `rmath` y PCG;
@@ -154,7 +154,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    Si el lote va en oleadas, este paso se hace por oleada, y la oleada siguiente no sale hasta que la anterior está fusionada. Los commits propios del integrador dentro del lote llevan el prefijo `lote-<N>: `.
 9. **Prueba.** El integrador escribe `mensajes/lote-N/prueba.md`: el ejecutable, **una sola lista de pruebas** con los A/B, y las preguntas numeradas.
 10. **Lucas juega.**
-    - Las respuestas cortas van al director, que lanza arreglos pequeños en el mismo carril sobre `integracion`.
+    - Las respuestas cortas van al director, que lanza arreglos pequeños en el mismo carril sobre `integracion`. Antes de lanzar un arreglo, el director añade al lote la línea `- Arreglo <tarea>: carril-<nombre>`, de la que `propiedad.ps1` saca el carril.
     - Lo que cambia el diseño o necesita diagnóstico va al consultor.
 11. **Promoción y cierre.**
     - Lucas promueve con `tools/ci/promover.ps1` (§6): empuja `integracion`, `master` y las ramas del lote en una sola orden.

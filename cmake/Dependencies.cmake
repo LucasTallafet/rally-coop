@@ -78,6 +78,17 @@ FetchContent_Declare(doctest
     SYSTEM
 )
 
+# --- ENet 1.3.18 (red, desde la fase 3) ---------------------------------------
+# Su CMakeLists no publica las cabeceras ni las bibliotecas de Windows en el target: van abajo,
+# tras FetchContent_MakeAvailable. Compila con sus propios avisos (/W3); rally_warnings no le
+# llega. Sus cabeceras incluyen winsock2.h y windows.h: solo las incluyen los .cpp de src/net.
+FetchContent_Declare(enet
+    URL https://github.com/lsalzman/enet/archive/refs/tags/v1.3.18.tar.gz
+    URL_HASH SHA256=28603c895f9ed24a846478180ee72c7376b39b4bb1287b73877e5eae7d96b0dd
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SYSTEM
+)
+
 # --- Fuentes compartidas entre copias de trabajo (tools/ci/deps.ps1) --------------------------
 # Con RALLY_DEPS_SRC en el entorno, cada dependencia sale de <RALLY_DEPS_SRC>/<nombre>-<8 del
 # hash> si su sello .rally-sha256 es el hash de arriba; si no, se descarga como siempre. Los
@@ -116,13 +127,20 @@ foreach(_rally_declare IN LISTS _rally_deps_declares)
         endif()
     endif()
 endforeach()
+# Cada FetchContent_Declare que empieza una línea tiene que llevar URL y SHA256, sin número fijo
+# (tools/ci/deps.ps1 comprueba lo mismo).
 list(LENGTH _rally_deps_declares _rally_deps_count)
-if(NOT _rally_deps_count EQUAL 4)
-    message(FATAL_ERROR "Dependencies.cmake: esperaba 4 FetchContent_Declare con URL y SHA256 "
-        "y hay ${_rally_deps_count} (tools/ci/deps.ps1 los lee igual)")
+string(REGEX MATCHALL "\nFetchContent_Declare\\(" _rally_line_declares "\n${_rally_deps_text}")
+list(LENGTH _rally_line_declares _rally_line_count)
+if(_rally_deps_count EQUAL 0 OR NOT _rally_deps_count EQUAL _rally_line_count)
+    message(FATAL_ERROR "Dependencies.cmake: hay ${_rally_line_count} FetchContent_Declare y "
+        "${_rally_deps_count} con URL y SHA256 (tools/ci/deps.ps1 los lee igual)")
 endif()
 
-FetchContent_MakeAvailable(JoltPhysics SDL3 raylib doctest)
+FetchContent_MakeAvailable(JoltPhysics SDL3 raylib doctest enet)
+
+target_include_directories(enet SYSTEM INTERFACE ${enet_SOURCE_DIR}/include)
+target_link_libraries(enet INTERFACE ws2_32 winmm)
 
 if(NOT TARGET SDL3::SDL3)
     message(FATAL_ERROR "SDL3::SDL3 no existe: raylib no usaría el backend SDL.")

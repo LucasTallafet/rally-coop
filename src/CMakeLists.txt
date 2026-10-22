@@ -6,6 +6,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/game/CMakeLists.txt)
 endif()
 add_subdirectory(platform)
 add_subdirectory(io)
+# Red (fase 3, lote 3): ENet, host y copiloto. Sin raylib ni SDL; la enlaza la plataforma.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/net/CMakeLists.txt)
+    add_subdirectory(net)
+endif()
 
 add_executable(rally main.cpp)
 target_link_libraries(rally PRIVATE rally_platform rally_io rally_sim rally_warnings)

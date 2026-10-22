@@ -4,7 +4,7 @@
 #      tests y Jolt) usa /fp:fast ni /fp:contract.
 #   3. Ningún target ni carpeta, dependencias incluidas, usa /arch:AVX, AVX2 o AVX512
 #      (objetivo SSE4.2).
-#   4. rally_sim, rally_game, rally_loop, rally_io, rally_replay, los tests (rally_tests_* y
+#   4. rally_sim, rally_game, rally_net, rally_loop, rally_io, rally_replay, los tests (rally_tests_* y
 #      rally_test_common), rally_check_abort y rally_abort_recording no enlazan raylib ni SDL,
 #      ni directa ni indirectamente.
 # Complementa a src/sim/fp_guard.h, que hace lo mismo con las macros del compilador.
@@ -16,7 +16,7 @@ set(_our_targets rally_sim rally_loop rally_io rally_platform rally rally_replay
 set(_sim_targets rally_sim rally_io rally_replay ${_test_targets} rally_check_abort
     rally_abort_recording Jolt)
 # Lógica del juego (desde el lote 1): como la simulación, si existe.
-foreach(_t rally_game rally_tests_game)
+foreach(_t rally_game rally_tests_game rally_net rally_tests_net)
     if(TARGET ${_t})
         list(APPEND _our_targets ${_t})
         list(APPEND _sim_targets ${_t})
@@ -24,6 +24,9 @@ foreach(_t rally_game rally_tests_game)
 endforeach()
 if(TARGET rally_tests_game)
     list(APPEND _test_targets rally_tests_game)
+endif()
+if(TARGET rally_tests_net)
+    list(APPEND _test_targets rally_tests_net)
 endif()
 set(_flag_vars
     CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
@@ -144,6 +147,9 @@ set(_nolib_targets rally_sim rally_loop rally_io rally_replay ${_test_targets} r
     rally_abort_recording)
 if(TARGET rally_game)
     list(APPEND _nolib_targets rally_game)
+endif()
+if(TARGET rally_net)
+    list(APPEND _nolib_targets rally_net)
 endif()
 foreach(_t IN LISTS _nolib_targets)
     _rally_link_closure(${_t} _closure)
