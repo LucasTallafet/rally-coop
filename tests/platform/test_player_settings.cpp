@@ -322,10 +322,11 @@ TEST_CASE("player_settings: ABS, traction control and suspension default, read, 
     using rally::sim::SuspensionSetting;
     using rally::sim::TractionControl;
     std::vector<SettingsWarning> warnings;
-    // Faltan (un ajustes.txt de antes de la 2.8): ABS activado, control no, suspensión media.
+    // Faltan (un ajustes.txt de antes de la 2.8): ABS desactivado (desde el lote 3), control no,
+    // suspensión media.
     const PlayerSettings old = parse_settings("asiento_alto_cm = 3\n", warnings);
     CHECK(warnings.empty());
-    CHECK(old.abs);
+    CHECK_FALSE(old.abs);
     CHECK(old.traction == TractionControl::Off);
     CHECK(old.suspension == SuspensionSetting::Medium);
     // Se leen y vuelven exactos.
@@ -373,7 +374,7 @@ TEST_CASE("player_settings: keys 2 and 3 cycle and the settings become the world
     const rally::sim::DriverAids defaults = rally::platform::driver_aids(PlayerSettings{});
     CHECK(defaults.steer_assist);
     CHECK(defaults.gearbox == GearboxMode::Automatic);
-    CHECK(defaults.abs);
+    CHECK_FALSE(defaults.abs);
     CHECK(defaults.traction == TractionControl::Off);
     CHECK(defaults.suspension == SuspensionSetting::Medium);
     PlayerSettings custom;
@@ -390,7 +391,24 @@ TEST_CASE("player_settings: keys 2 and 3 cycle and the settings become the world
     CHECK(aids.suspension == SuspensionSetting::Hard);
     // La línea de F3.
     CHECK(rally::platform::aids_summary(PlayerSettings{}) ==
-          "ayudas: dirección sí, ABS sí, control no, suspensión media");
+          "ayudas: dirección sí, ABS no, control no, suspensión media");
     CHECK(rally::platform::aids_summary(custom) ==
           "ayudas: dirección no, ABS no, control alto, suspensión dura");
+}
+
+TEST_CASE("player_settings: ABS is off by default and both values survive a round trip") {
+    std::vector<SettingsWarning> warnings;
+    CHECK_FALSE(PlayerSettings{}.abs);
+    CHECK_FALSE(parse_settings("", warnings).abs);
+    CHECK(warnings.empty());
+    for (const bool value : {false, true}) {
+        PlayerSettings settings;
+        settings.abs = value;
+        const std::string text = format_settings(settings);
+        CHECK(text.find(value ? "abs = 1\n" : "abs = 0\n") != std::string::npos);
+        const PlayerSettings parsed = parse_settings(text, warnings);
+        CHECK(parsed.abs == value);
+        CHECK(parsed == settings);
+    }
+    CHECK(rally::platform::aids_summary(PlayerSettings{}).find("ABS no") != std::string::npos);
 }
