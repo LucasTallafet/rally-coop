@@ -13,6 +13,7 @@ Cómo montar en otro ordenador el mismo entorno con el que se desarrolla Rally C
 | Código, tests, CMake, documentos (`docs/`) | GitHub, `LucasTallafet/rally-coop` (privado) | Sí | `git clone` |
 | `CLAUDE.md` y `.claude/rules/simulacion.md` | Repositorio | Sí | Vienen con el clon |
 | Targets de juego `rally_game` y `rally_tests_game` (`src/game`, `tests/game`); duraciones de las acciones en `data/game/actions.txt`, que se ajustan sin recompilar | Repositorio | Sí | Vienen con el clon |
+| Targets de red `rally_net` y `rally_tests_net` (`src/net`, `tests/net`; 25 casos, ~6 s por los de ENet). Regla: un test de ENet usa `127.0.0.1` y puerto 0 | Repositorio | Sí | Vienen con el clon |
 | Dependencias (Jolt, SDL, raylib, doctest) | Se descargan en el primer configure, fijadas por URL y SHA256 en `cmake/Dependencies.cmake` | Sí | `cmake --preset ...` |
 | `build/` (compilados, capturas, registros, informes de `--bench-forest`) | Solo local, ignorado por git | No (se regenera) | Volver a compilar. Si quieres conservar un informe o un registro, cópialo a `tests/data/` o a `docs/` |
 | Proyecto de Claude "Rally Coop" (diseño y decisiones) | claude.ai, en tu cuenta | Sí | Entrar con la misma cuenta. Nada que instalar |

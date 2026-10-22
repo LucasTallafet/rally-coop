@@ -308,6 +308,8 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 
 **Vibración del copiloto:** se reconstruye en local desde la superficie y las suspensiones recibidas.
 
+**Implementación (`src/net`, lote 3):** `rally_net` (ENet, sin raylib ni SDL). Host en 127.0.0.1:29470, un solo copiloto; mundo por el canal fiable y estado del coche de 47 B a 30 Hz por el no fiable sin secuencia. El copiloto interpola por número de paso con 100 ms de retardo (paso estimado = mínimo de llegada·240 − paso en 2 s, con salvaguarda de 0,5 s tras una pausa del host), extrapola 100 ms y después se queda quieto. Red simulada (`LinkSimulator`, PCG32) para probar sin red mala.
+
 ### 7.1 Cambio de host
 
 No necesita física idéntica entre PCs: tras el cambio, el PC nuevo es la autoridad. Es un relevo, no una simulación en paralelo: en cada momento solo un PC simula el coche y nadie compara resultados. La física idéntica entre PCs solo hace falta para verificar clasificatorias (fase 9).
