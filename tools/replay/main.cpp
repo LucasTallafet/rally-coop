@@ -1,6 +1,8 @@
 // rally_replay: repite una grabación (.rrec) sin ventana, comprueba el hash final y mide.
 //   rally_replay info <archivo>              cabecera y pie; las ayudas de la simulación y los
-//                                            ajustes de la plataforma al empezar la grabación
+//                                            ajustes de la plataforma al empezar la grabación;
+//                                            con formato 7, las acciones, los primeros 10
+//                                            eventos y el hash de la línea de tiempo
 //   rally_replay run <archivo> [--telemetry <salida.csv>] [--bench N]
 //                                            repite y dice "hash OK" o el primer problema;
 //                                            con --telemetry, CSV por paso; con --bench, N
@@ -24,6 +26,7 @@
 #include "io/recording.h"
 #include "io/replay.h"
 #include "io/telemetry_csv.h"
+#include "platform/player_settings.h"
 #include "sim/car_data.h"
 #include "sim/demo_world.h"
 #include "sim/jolt_runtime.h"
@@ -86,6 +89,43 @@ void print_timed(const char* label, std::int64_t steps) {
     }
 }
 
+constexpr std::size_t kInfoEvents = 10; // eventos de acción que enseña `info`
+
+// Formato 7: nombres de las acciones del texto de la cabecera, número de eventos con los primeros
+// kInfoEvents y hash de la línea de tiempo del pie.
+void print_actions(const Recording& recording) {
+    const rally::io::RecordingHeader& h = recording.header;
+    rally::game::ActionParseResult parsed = rally::game::parse_actions(h.actions_text);
+    if (h.actions_text.empty()) {
+        std::printf("acciones:            ninguna (grabación sin acciones)\n");
+    } else if (!parsed.ok) {
+        std::printf("acciones:            texto no válido (línea %d: %s)\n", parsed.line,
+                    parsed.message.c_str());
+    } else {
+        std::printf("acciones:            %zu\n", parsed.table.actions.size());
+        for (const rally::game::ActionDef& def : parsed.table.actions) {
+            std::printf("  action = %s\n", def.name.c_str());
+        }
+    }
+    const std::size_t shown = std::min(recording.events.size(), kInfoEvents);
+    std::printf("eventos: %zu\n", recording.events.size());
+    for (std::size_t i = 0; i < shown; ++i) {
+        const rally::game::ActionEvent& e = recording.events[i];
+        const char* name = "?";
+        if (parsed.ok && e.action < parsed.table.actions.size()) {
+            name = parsed.table.actions[e.action].name.c_str();
+        }
+        std::printf("  paso %" PRIu64 ", %s, %s, acción %u (%s)\n", e.step,
+                    e.player == rally::game::Player::Driver ? "conductor" : "copiloto",
+                    e.kind == rally::game::EventKind::Request ? "petición" : "cancelación",
+                    static_cast<unsigned>(e.action), name);
+    }
+    if (recording.events.size() > shown) {
+        std::printf("  ... y %zu más\n", recording.events.size() - shown);
+    }
+    std::printf("hash línea de tiempo: 0x%016" PRIx64 "\n", recording.footer.actions_hash);
+}
+
 bool load(const char* path, std::string& bytes, Recording& recording) {
     std::string error;
     if (!rally::io::read_file(path, bytes, error)) {
@@ -122,8 +162,25 @@ int info(const char* path) {
     if (world_ok) {
         std::printf("mundo:               %zu cuerpos, %s\n", desc.bodies.size(),
                     desc.car ? "con coche" : "sin coche");
-        std::printf("ayuda de dirección:  %s%s\n", desc.aids.steer_assist ? "sí" : "no",
-                    h.format_version < 4 ? " (formato anterior a la 4: no existía)" : "");
+        // Ayudas de la descripción del mundo; las que el formato no guardaba salen con su valor
+        // por defecto y la nota.
+        const auto print_aid = [&](const char* label, const char* value, std::uint32_t since) {
+            std::printf("%s %s", label, value);
+            if (h.format_version < since) {
+                std::printf(" (formato anterior a la %u: no existía)", since);
+            }
+            std::printf("\n");
+        };
+        print_aid("ayuda de dirección: ", desc.aids.steer_assist ? "sí" : "no", 4);
+        print_aid("caja de cambios:    ",
+                  desc.aids.gearbox == rally::sim::GearboxMode::Sequential ? "secuencial"
+                                                                           : "automática",
+                  5);
+        print_aid("ABS:                ", desc.aids.abs ? "sí" : "no", 7);
+        print_aid("control de tracción:",
+                  std::string(rally::platform::traction_name(desc.aids.traction)).c_str(), 7);
+        print_aid("suspensión:         ",
+                  std::string(rally::platform::suspension_name(desc.aids.suspension)).c_str(), 7);
         if (desc.test_zone) {
             // La superficie real: en las pruebas a ciegas solo se ve aquí.
             std::printf("zona de pruebas:     sí, pista ciega de %s, carretera de %s\n",
@@ -161,6 +218,9 @@ int info(const char* path) {
     }
     print_timed("tiempo cronometrado:", f.timed_steps);
     print_road("carretera:          ", f.road);
+    if (h.format_version >= 7) {
+        print_actions(recording);
+    }
     return 0;
 }
 

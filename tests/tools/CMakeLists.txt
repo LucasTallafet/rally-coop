@@ -91,3 +91,18 @@ else()
     message(WARNING "Python 3.12 o posterior no encontrado: los tests telemetry_py.* no se "
         "añaden")
 endif()
+
+# rally_replay info (lote 2): las ayudas de la descripción del mundo y, con el formato 7, las
+# acciones, el número de eventos (12 en actions_v7.rrec) y el hash de la línea de tiempo. Una
+# grabación anterior a la 7 enseña las ayudas por defecto y nada de acciones.
+add_test(NAME replay.info_actions_v7
+    COMMAND rally_replay info ${RALLY_TEST_DATA}/recordings/actions_v7.rrec)
+set_tests_properties(replay.info_actions_v7 PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "ayuda de dirección: +sí.*caja de cambios: +automática.*ABS: +sí.*control de tracción: +alto.*suspensión: +blanda.*action = guardar_tablet.*action = prueba_parado.*eventos: 12\n  paso 0, copiloto, petición, acción 0 \\(guardar_tablet\\).*y 2 más\nhash línea de tiempo: 0xf3fdf0407b175af8")
+add_test(NAME replay.info_zone_lap_no_actions
+    COMMAND rally_replay info ${RALLY_TEST_DATA}/recordings/zone_lap.rrec)
+set_tests_properties(replay.info_zone_lap_no_actions PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "ayuda de dirección: +no.*caja de cambios: +automática.*ABS: +no.*control de tracción: +no.*suspensión: +media"
+    FAIL_REGULAR_EXPRESSION "acciones|eventos|línea de tiempo|action =")
