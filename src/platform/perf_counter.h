@@ -54,6 +54,9 @@ public:
               int render_width, int render_height, Overlay& overlay) const;
     // Medidas del hilo de audio (tarea 2.7) para su línea del panel.
     void set_audio(const AudioStats& audio) { audio_ = audio; }
+    // CPU de la red del host (lote 3), en la fila 17 del panel, que sin copiloto está vacía; null
+    // (sin copiloto conectado) no dibuja nada.
+    void set_network(const PerfChannel* network) { network_ = network; }
 
     // Última muestra cerrada (la del fotograma anterior) y la memoria leída por última vez.
     const FrameSample& last_sample() const { return last_; }
@@ -78,6 +81,7 @@ private:
     std::int64_t render_start_ns_ = 0;
     std::int64_t present_start_ns_ = 0;
     AudioStats audio_;
+    const PerfChannel* network_ = nullptr;
 };
 
 } // namespace rally::platform

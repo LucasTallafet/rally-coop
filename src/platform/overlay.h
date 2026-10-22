@@ -27,13 +27,16 @@ public:
         Car,
         Recording,
         Settings,
-        Action, // acciones del copiloto (teclas 7, 8 y 9)
+        Action,  // acciones del copiloto (teclas 7, 8 y 9)
+        Network, // red: copiloto conectado o desconectado, puerto ocupado (lote 3)
         Count,
     };
 
     // Necesita la ventana abierta.
     Overlay();
 
+    // La pantalla del juego (por defecto) o la de la ventana del copiloto (screen_layout).
+    void set_kind(ScreenKind kind) { kind_ = kind; }
     // Al empezar el dibujo del texto: diseño para el tamaño actual de la ventana.
     void begin(int screen_width, int screen_height);
     const ScreenLayout& layout() const { return layout_; }
@@ -68,6 +71,7 @@ private:
     };
     void report_overflow(Layer layer, std::string_view text);
 
+    ScreenKind kind_ = ScreenKind::Game;
     ScreenLayout layout_;
     std::array<Entry, static_cast<std::size_t>(Message::Count)> messages_{};
     std::array<bool, kLayerCount> overflow_{}; // en este fotograma

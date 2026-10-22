@@ -5,6 +5,7 @@
 #include "platform/head_motion.h"
 #include "platform/interpolation.h"
 #include "platform/overlay.h"
+#include "platform/perf_stats.h"
 #include "platform/player_settings.h"
 #include "sim/car_data.h"
 #include "sim/sim_input.h"
@@ -94,6 +95,18 @@ struct FrameCamera {
     Camera3D camera{};
 };
 
+// Lo que la pantalla enseña de la red (lote 3). Lo escribe el mundo (demo_world, que aloja el
+// host); lo lee la pantalla: con un copiloto conectado, una línea en F3 y la CPU de la red en F1.
+struct NetworkInfo {
+    bool host = false;       // el juego escucha (puerto libre)
+    bool copilot = false;    // hay un copiloto conectado
+    bool blind_hold = false; // a ciegas: no se le manda nada
+    double rtt_ms = 0.0;
+    std::uint64_t sent = 0;
+    PerfChannel cpu;         // service + envío, por fotograma, en ns
+    PerfChannel service_cpu; // de ello, solo service()
+};
+
 // Lo que comparten dos o más partes de la demo. Lo de una sola parte se queda en ella. Cada
 // grupo dice quién lo escribe.
 struct DemoContext {
@@ -116,6 +129,9 @@ struct DemoContext {
     // Qué mundo y reconstrucción pedida (cualquier parte).
     WorldMode mode;
     Rebuild rebuild = Rebuild::None;
+
+    // Red (demo_world).
+    NetworkInfo network;
 
     // Ajustes del jugador (los lee y guarda demo_world; los cambian el mundo, la cámara y el
     // conductor) y mensajes en pantalla (todas; los dibuja la pantalla).

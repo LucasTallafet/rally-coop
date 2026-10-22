@@ -55,6 +55,7 @@ namespace rally::platform {
     KEY(W, W, 87, "W", "W")                                                                        \
     KEY(X, X, 88, "X", "X")                                                                        \
     KEY(Y, Y, 89, "Y", "Y")                                                                        \
+    KEY(Z, Z, 90, "Z", "Z")                                                                        \
     KEY(A, A, 65, "A", "A")                                                                        \
     KEY(Escape, ESCAPE, 256, "Esc", "Esc")                                                         \
     KEY(Enter, ENTER, 257, "Intro", "Intro")                                                       \
@@ -132,6 +133,10 @@ enum KeyContext : std::uint8_t {
     kContextBlind = 2,
     kContextArena = 4,
     kContextAll = kContextZone | kContextBlind | kContextArena,
+    // La ventana de rally.exe --copiloto (lote 3). No está en kContextAll: sus teclas propias (Z)
+    // nunca se disparan en el juego; las del juego que valen en el copiloto se leen con
+    // kContextZone | kContextCopilot.
+    kContextCopilot = 8,
 };
 
 enum class KeyBlock : std::uint8_t { Drive, CameraSeat, Zone, Recording, Debug, General, Count };

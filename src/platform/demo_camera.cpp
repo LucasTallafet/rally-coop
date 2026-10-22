@@ -77,7 +77,9 @@ void DemoCamera::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounte
     }
 }
 
-void DemoCamera::begin_frame(DemoContext& ctx, const DemoFrame& /*frame*/) {
+void DemoCamera::begin_frame(DemoContext& ctx, const DemoFrame& /*frame*/) { update(ctx); }
+
+void DemoCamera::update(DemoContext& ctx) {
     // Ojo y orientación de la cámara en el mundo, en doble.
     FrameCamera& c = ctx.frame_camera;
     const Pose& car = ctx.poses.drawn_car;

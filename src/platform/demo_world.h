@@ -1,11 +1,13 @@
 #pragma once
 
 #include "io/recording.h"
+#include "net/host.h"
 #include "platform/action_driver.h"
 #include "platform/demo_part.h"
 #include "platform/recording_session.h"
 #include "platform/zone_draw.h"
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -47,6 +49,11 @@ public:
     // Un paso de 1/240 s, grabado (no en pausa: lo mira el compositor).
     void step(DemoContext& ctx, const sim::SimInput& input);
 
+    // El juego hace de host (lote 3): escucha en 127.0.0.1, publica el mundo en cada reset() y,
+    // tras los pasos de cada fotograma, manda el estado del coche al copiloto conectado. La red
+    // solo lee la simulación. Si el puerto está ocupado, lo dice y el juego sigue sin copiloto.
+    void start_host(DemoContext& ctx);
+
     void handle_keys(DemoContext& ctx, FramePacer& pacer, PerfCounter& perf) override;
     void after_steps(DemoContext& ctx, Gamepads& pads, float frame_impact,
                      std::int64_t frame_ns) override;
@@ -63,13 +70,19 @@ private:
     void handle_aid_keys(DemoContext& ctx, std::uint8_t context);
     void handle_action_keys(DemoContext& ctx, std::uint8_t context);
     void request_action(DemoContext& ctx, const char* key, std::string_view name);
+    void publish_world(DemoContext& ctx);
+    void update_network(DemoContext& ctx);
 
     DemoContext& ctx_;
     std::string car_text_;      // va a la cabecera de las grabaciones
     std::string settings_path_; // UTF-8
     ZoneDraw zone_draw_;
     RecordingSession recording_;
-    ActionDriver actions_; // máquina de acciones (teclas 7, 8 y 9)
+    ActionDriver actions_;            // máquina de acciones (teclas 7, 8 y 9)
+    std::unique_ptr<net::Host> host_; // null sin red (--golden, --bench-*, puerto ocupado)
+    bool copilot_connected_ = false;
+    int reset_presses_seen_ = 0;
+    std::int64_t net_published_ns_ = 0;
 };
 
 } // namespace rally::platform

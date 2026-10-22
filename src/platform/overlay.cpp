@@ -84,8 +84,8 @@ Overlay::Overlay() {
 }
 
 void Overlay::begin(int screen_width, int screen_height) {
-    if (screen_width != layout_.width || screen_height != layout_.height) {
-        layout_ = layout_screen(screen_width, screen_height);
+    if (screen_width != layout_.width || screen_height != layout_.height || kind_ != layout_.kind) {
+        layout_ = layout_screen(screen_width, screen_height, kind_);
     }
     overflow_ = {};
 }

@@ -120,6 +120,7 @@ void DemoScreen::draw_2d(DemoContext& ctx, const DemoFrame& frame) {
         if (ctx.audio != nullptr) {
             frame.perf.set_audio(ctx.audio->stats());
         }
+        frame.perf.set_network(ctx.network.copilot ? &ctx.network.cpu : nullptr);
         const int render_width = ctx.target.id != 0 ? ctx.target.texture.width : GetScreenWidth();
         const int render_height =
             ctx.target.id != 0 ? ctx.target.texture.height : GetScreenHeight();
@@ -229,7 +230,7 @@ void DemoScreen::draw_help(DemoContext& ctx) {
     // actual, en gris.
     const ScreenLayout& layout = ctx.overlay.layout();
     const HelpGrid& grid = layout.help;
-    const std::span<const KeyBinding> table = key_table();
+    const std::span<const KeyBinding> table = help_table(ScreenKind::Game);
     const std::uint8_t context = ctx.key_context();
     ctx.overlay.panel(Layer::Help, kPanelBackground);
     const int x0 = ctx.overlay.content_x(Layer::Help);
@@ -276,6 +277,19 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     };
 
     line("DEPURACIÓN (F3)", kTitle);
+    if (ctx.network.copilot) {
+        // Solo con un copiloto conectado: sin él, el panel es el de siempre.
+        line_fit(ctx.network.blind_hold
+                     ? "red: a ciegas, no se envía al copiloto"
+                     : TextFormat("red: copiloto conectado   RTT %.1f ms   estados enviados %llu",
+                                  ctx.network.rtt_ms,
+                                  static_cast<unsigned long long>(ctx.network.sent)));
+        if (!ctx.network.blind_hold) {
+            line(TextFormat("red: CPU por fotograma %.3f ms (servicio %.3f ms)",
+                            ctx.network.cpu.average() * 1e-6,
+                            ctx.network.service_cpu.average() * 1e-6));
+        }
+    }
     const Gamepads& pads = driver.gamepads();
     if (ctx.golden != nullptr) {
         line("mando: (fijo en --golden)");

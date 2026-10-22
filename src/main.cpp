@@ -1,4 +1,6 @@
 #include "io/crash_save.h"
+#include "platform/copilot_app.h"
+#include "platform/copilot_args.h"
 #include "platform/drive_demo.h"
 #include "platform/fatal_error.h"
 #include "platform/fixed_step_clock.h"
@@ -44,6 +46,17 @@ int main(int argc, char** argv) {
     });
 
     const rally::sim::JoltRuntime jolt;
+    // --copiloto [dirección[:puerto]]: la segunda instancia (ventana del copiloto), otra ventana y
+    // otro bucle. Errores por stderr y código 2, como --golden.
+    rally::platform::CopilotArgs copilot;
+    std::string copilot_error;
+    if (!rally::platform::parse_copilot_args(argc, argv, copilot, copilot_error)) {
+        std::fprintf(stderr, "--copiloto: %s\n", copilot_error.c_str());
+        return 2;
+    }
+    if (copilot.enabled) {
+        return rally::platform::run_copilot(copilot);
+    }
     rally::platform::Window window(1280, 720, "Rally Coop");
     rally::platform::FramePacer pacer;
     rally::platform::FixedStepClock clock;
@@ -123,6 +136,15 @@ int main(int argc, char** argv) {
                 demo.set_blind_seed(seed);
             }
         }
+    }
+
+    // El juego hace de host de la red (127.0.0.1), salvo en las medidas (--bench-*).
+    bool benchmark = false;
+    for (int i = 1; i < argc; ++i) {
+        benchmark = benchmark || std::strncmp(argv[i], "--bench-", 8) == 0;
+    }
+    if (!benchmark) {
+        demo.start_host();
     }
 
     while (!window.should_close()) {

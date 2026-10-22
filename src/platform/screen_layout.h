@@ -20,6 +20,12 @@ namespace rally::platform {
 // el indicador mínimo usa base + 10; la línea, base + base / 10. Geometría (márgenes, paneles,
 // gráficas): escala continua s = alto / 1080. Los anchos de texto salen de platform/ui_text.
 
+// Qué pantalla se diseña: la del juego o la de la ventana del copiloto (rally.exe --copiloto, lote
+// 3). La del copiloto usa las mismas capas: indicador (el estado de la conexión), aviso de la
+// ayuda, mensajes, ayuda (con solo sus teclas), F3 (sus líneas) y F1 (el mismo contador); las
+// gráficas y el anillo no existen en ella y su rectángulo es vacío.
+enum class ScreenKind : std::uint8_t { Game, Copilot };
+
 struct UiRect {
     int x = 0;
     int y = 0;
@@ -153,6 +159,7 @@ struct RingGeometry {
 };
 
 struct ScreenLayout {
+    ScreenKind kind = ScreenKind::Game;
     int width = 0;
     int height = 0;
     UiMetrics m;
@@ -163,13 +170,16 @@ struct ScreenLayout {
     std::array<UiRect, kLayerCount> rects{};
     const UiRect& rect(Layer layer) const { return rects[static_cast<std::size_t>(layer)]; }
 };
-ScreenLayout layout_screen(int width, int height);
+// Las filas de la tabla de teclas que enseña la ayuda (H): las del juego que valen en él (no Z, que
+// es solo del copiloto) o las del copiloto (copilot_help_table). HelpCell::binding indexa en ella.
+std::span<const KeyBinding> help_table(ScreenKind kind);
+ScreenLayout layout_screen(int width, int height, ScreenKind kind = ScreenKind::Game);
 
 // Líneas de peor caso que cada capa tiene que poder mostrar dentro de su rectángulo (menos el
 // relleno). La ayuda y las gráficas se miden con help_grid y graph_header; los mensajes se
 // recortan con "..." al dibujar. Las mismas cifras que dibujan overlay.cpp, perf_counter.cpp y
 // frame_graph.cpp, con 8 en cada dígito; si un texto real se sale, el overlay lo avisa.
-std::span<const std::string_view> layer_samples(Layer layer);
+std::span<const std::string_view> layer_samples(Layer layer, ScreenKind kind = ScreenKind::Game);
 // Ancho del contenido de la capa sin el relleno (lo que mide el test).
 int layer_content_width(Layer layer, const ScreenLayout& layout);
 // Ancho de una fila del panel de depuración con las barras de los ejes.

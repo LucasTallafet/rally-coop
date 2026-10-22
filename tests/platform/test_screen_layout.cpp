@@ -1,3 +1,4 @@
+#include "platform/copilot_keys.h"
 #include "platform/keys.h"
 #include "platform/screen_layout.h"
 #include "platform/ui_text.h"
@@ -114,7 +115,8 @@ TEST_CASE("screen_layout: every help page fits its rectangle and each key shows 
         const UiRect help = inner(layout.rect(Layer::Help), layout.m.padding);
         const rally::platform::HelpGrid& grid = layout.help;
         REQUIRE(grid.pages >= 1);
-        std::vector<int> shown(rally::platform::key_table().size(), 0);
+        const auto table = rally::platform::help_table(rally::platform::ScreenKind::Game);
+        std::vector<int> shown(table.size(), 0);
         std::set<std::tuple<int, int, int>> places;
         for (const rally::platform::HelpCell& cell : grid.cells) {
             if (cell.binding >= 0) {
@@ -140,7 +142,7 @@ TEST_CASE("screen_layout: every help page fits its rectangle and each key shows 
                                               layout.m.font) <= help.w);
         }
         // Ninguna etiqueta de teclas se sale de su columna.
-        for (const rally::platform::KeyBinding& b : rally::platform::key_table()) {
+        for (const rally::platform::KeyBinding& b : table) {
             CHECK(rally::platform::text_width(rally::platform::binding_label_short(b),
                                               layout.m.font) <= grid.key_width);
             CHECK(grid.text_x + rally::platform::text_width(b.text, layout.m.font) <=
@@ -203,5 +205,83 @@ TEST_CASE(
         CHECK_FALSE(rally::platform::overlaps(ring, layout.rect(Layer::HelpHint)));
         CHECK_FALSE(rally::platform::overlaps(ring, layout.rect(Layer::Messages)));
         CHECK(rally::platform::overlaps(ring, layout.rect(Layer::Help)));
+    }
+}
+
+TEST_CASE("screen_layout: the game help does not show the copilot's key Z") {
+    using namespace rally::platform;
+    for (const KeyBinding& b : help_table(ScreenKind::Game)) {
+        CHECK((b.contexts & kContextAll) != 0);
+        CHECK(b.keys[0].key != Key::Z);
+    }
+    // Y la ayuda del juego sigue enseñando todo lo que vale en él.
+    std::size_t in_game = 0;
+    for (const KeyBinding& b : key_table()) {
+        in_game += (b.contexts & kContextAll) != 0 ? 1 : 0;
+    }
+    CHECK(help_table(ScreenKind::Game).size() == in_game);
+}
+
+TEST_CASE("screen_layout: the copilot screen at 640x360 and 1920x1080 has no overlaps and fits") {
+    using namespace rally::platform;
+    constexpr Resolution kCopilotResolutions[] = {{640, 360}, {1920, 1080}};
+    for (const Resolution res : kCopilotResolutions) {
+        const ScreenLayout layout = layout_screen(res.width, res.height, ScreenKind::Copilot);
+        const UiRect screen{0, 0, res.width, res.height};
+        INFO(res.width, "x", res.height);
+        for (int a = 0; a < kLayerCount; ++a) {
+            const Layer layer = static_cast<Layer>(a);
+            const UiRect& ra = layout.rects[static_cast<std::size_t>(a)];
+            INFO(std::string(layer_name(layer)), " ", describe(ra));
+            const bool unused = layer == Layer::Graphs || layer == Layer::ActionRing;
+            if (unused) {
+                CHECK(ra.w == 0);
+                CHECK(ra.h == 0);
+                continue;
+            }
+            CHECK(ra.w > 0);
+            CHECK(ra.h > 0);
+            CHECK(contains(screen, ra));
+            // El texto de peor caso cabe en el rectángulo (sin el relleno).
+            const UiRect content = inner(ra, padding_of(layer, layout));
+            CHECK(layer_content_width(layer, layout) <= content.w);
+            for (int b = a + 1; b < kLayerCount; ++b) {
+                const Layer other = static_cast<Layer>(b);
+                if (other == Layer::Graphs || other == Layer::ActionRing) {
+                    continue;
+                }
+                INFO("frente a ", std::string(layer_name(other)));
+                if (!layers_may_overlap(layer, other)) {
+                    CHECK_FALSE(overlaps(ra, layout.rects[static_cast<std::size_t>(b)]));
+                }
+            }
+        }
+        // F3 con sus líneas y los mensajes.
+        const UiRect debug = inner(layout.rect(Layer::Debug), layout.m.padding);
+        CHECK(static_cast<int>(layer_samples(Layer::Debug, ScreenKind::Copilot).size()) *
+                  layout.m.line <=
+              debug.h);
+        CHECK(kMessageLines * layout.m.line <= layout.rect(Layer::Messages).h);
+        // F1 es el contador de siempre: sus filas y su gráfica caben.
+        const UiRect perf = inner(layout.rect(Layer::Perf), layout.m.padding);
+        CHECK(layout.perf.graph_top + layout.perf.graph_height <= perf.h);
+        // Ayuda: cabe, y enseña cada fila del copiloto una vez.
+        const UiRect help = inner(layout.rect(Layer::Help), layout.m.padding);
+        const HelpGrid& grid = layout.help;
+        REQUIRE(grid.pages >= 1);
+        const auto table = help_table(ScreenKind::Copilot);
+        std::vector<int> shown(table.size(), 0);
+        for (const HelpCell& cell : grid.cells) {
+            if (cell.binding >= 0) {
+                ++shown[static_cast<std::size_t>(cell.binding)];
+            }
+        }
+        for (const int n : shown) {
+            CHECK(n == 1);
+        }
+        CHECK(grid.rows * layout.m.line <= help.h);
+        CHECK(layer_content_width(Layer::Help, layout) <= help.w);
+        // F1 y F3 son los de arriba y no se pisan entre sí.
+        CHECK_FALSE(overlaps(layout.rect(Layer::Debug), layout.rect(Layer::Perf)));
     }
 }
