@@ -226,7 +226,7 @@ La tabla de teclas está en `docs/teclas.md`.
 | `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
 
 Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: 
-- `info <archivo>`: dice, entre otras cosas, la superficie real de la pista ciega.
+- `info <archivo>`: cabecera y pie; dice, entre otras cosas, la superficie real de la pista ciega y las ayudas de la descripción del mundo (dirección, caja, ABS, control de tracción y suspensión). Con formato 7, además, los nombres de las acciones, el número de eventos con los 10 primeros (paso, jugador, tipo, acción) y el hash de la línea de tiempo.
 - `run <archivo>`: «hash OK» o el primer problema, y la mejor vuelta cronometrada.
 - `run <archivo> --telemetry <salida.csv>`: CSV por paso; columnas en `tools/telemetry/columns.md`.
 - `run` repite también las acciones del formato 7 y compara el hash de su línea de tiempo; el CSV de telemetría lleva 133 columnas (con `abs_torque_cut_<rueda>` y `traction_torque_cut`). Para generar la grabación de formato 7 de los tests: `RALLY_WRITE_ACTIONS_REC=<ruta> rally_tests_io -tc="actions_recording: a session*"`.
