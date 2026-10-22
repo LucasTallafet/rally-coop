@@ -186,6 +186,46 @@ Un tramo es una lista de primitivas (recta, clotoide, arco) con superficies y pa
 
 **Esqueleto e irregularidad.** Las primitivas son el esqueleto: sobre ellas se calculan `s`, `t`, las notas, el ritmo y la tablet. La malla visible y la de colisión se construyen con una capa de irregularidad: desplazamiento lateral del eje d(s), semianchos w_izq(s) y w_der(s), peralte θ(s) y ondulación vertical z(s). Son sumas de pocas ondas sembradas con PCG desde la semilla del tramo, con amplitudes y longitudes de onda en datos por entorno. Se calcula al cargar, nunca en el paso. El borde y la salida de pista usan d(s), w_izq(s) y w_der(s). Las curvas del generador son perfiles de curvatura κ(s) con entrada y salida asimétricas, no solo un arco con clotoides simétricas.
 
+**Formato 1 (`.stage`, lote 3).** Lo lee `sim/stage_axis.h` (`StageAxis::parse`; `kStageFormatVersion = 1`). Es solo el esqueleto: la irregularidad, los arcenes, el terreno y los objetos son del formato 2 y siguientes, y el número de versión es el gancho (no se reservan claves). Texto `clave = valor` y secciones `[nombre]`, comentarios con `#`, claves en inglés, unidades SI, números con `std::from_chars`:
+
+```text
+format = 1                 # la primera clave del archivo
+name = <texto>
+start_x = <m>              # mundo: x al este, z al sur (zone_axis.h)
+start_z = <m>
+start_heading_deg = <°>    # rumbo de salida: 0 = norte (−z), + a la derecha
+start_height = <m>         # altura del eje en s = 0 (igual a la del primer pvi)
+
+[plan]                     # planta, en orden; s empieza en 0
+straight <L>
+arc <L> <R>                # R con signo: + derecha, − izquierda
+spiral <L> <R0> <R1>       # curvatura lineal de 1/R0 a 1/R1; inf = recta
+
+[profile]                  # alzado: puntos de intersección vertical
+pvi <s> <altura> <L_curva> # rasante recta entre PIV; parábola de L_curva centrada en cada PIV
+
+[bank]                     # peralte, lineal entre puntos
+bank <s> <%>               # dy/dt de la calzada en %, + sube hacia la derecha (como RoadPoint::bank)
+
+[width]                    # semianchos de la calzada, lineales entre puntos
+width <s> <izquierda> <derecha>
+
+[surface]                  # superficie de la calzada desde s hasta la línea siguiente
+surface <s> asphalt|gravel|dirt|snow|sand
+```
+
+Reglas (cada una que no se cumple es un error «línea N: …» y el tramo no se carga):
+- `format` es la primera clave y vale 1. Las cinco secciones están, una vez cada una y no vacías; las cinco claves de la cabecera también. Una clave, sección o primitiva desconocida, que falta o repetida es un error, y también un número de valores distinto del de su primitiva.
+- L > 0. |R| ≥ 5 m; R = 0 no vale. `inf` solo vale como R0 o R1 de `spiral`; `nan` e `inf` en otro sitio son números mal escritos.
+- El primer `pvi` va en s = 0, con la altura de `start_height`, y el último en s = longitud (±1·10⁻⁶ m: la longitud es la suma de las L), los dos con L_curva = 0. L_curva ≥ 0. Las s crecen y ninguna curva vertical se solapa con la anterior (tocarse vale).
+- En `[bank]`, `[width]` y `[surface]`, la primera línea va en s = 0, las s crecen y ninguna pasa de la longitud (±1·10⁻⁶ m). El último valor sigue hasta el final. Los semianchos son > 0.
+
+Geometría (`StageAxis::pose(s)`, con s acotada a [0, longitud]; se calcula todo al cargar y `pose` no reserva memoria):
+- Rumbo θ(u) = θ₀ + κ₀·u + (κ₁ − κ₀)·u²/(2L) en cada primitiva, continuo en todo el tramo y sin envolver a [0, 2π). Rectas y arcos, exactos con las fórmulas de `zone_axis.h`; clotoides, por Gauss–Legendre de 5 puntos desde nodos de posición cada metro como mucho.
+- Intervalos semiabiertos: en una junta vale ya la primitiva nueva; la curva vertical de un PIV ocupa [s − L_curva/2, s + L_curva/2); con L_curva = 0, la pendiente nueva vale desde la s del PIV; una superficie nueva vale justo en su s.
+- El peralte del archivo va en %; el de la pose, en tanto por uno (dy/dt).
+- `hash()`: FNV-1a de los datos leídos, campo a campo (todo menos `name`), para comprobar que los dos PC tienen el mismo tramo.
+
 ### 6.2 Analizador de tramos reales (herramienta Python, fuera del juego)
 
 Fuentes:
