@@ -67,6 +67,7 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | V | Sincronización vertical |
 | I | Interpolación |
 | N | Ajuste del dt al refresco |
+| 6 | Sonido del deslizamiento: nuevo / el de la 2.7: A/B del sonido de la rueda que desliza o va bloqueada; empieza siempre en el nuevo; no se guarda en ajustes.txt ni va en la grabación |
 | 7 | Copiloto: guardar la tablet: hace de copiloto (no hay tablet hasta la fase 3): acción de 0,8 s con anillo de progreso; solo con la tablet fuera; se graba en la grabación |
 | 8 | Copiloto: sacar la tablet: solo con la tablet guardada; el motivo de un rechazo sale en los mensajes |
 | 9 | Copiloto: cancelar la acción: al preparar no cuesta nada; al ejecutar se pierde lo avanzado |

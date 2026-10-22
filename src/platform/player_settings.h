@@ -37,10 +37,10 @@ struct PlayerSettings {
     // descripción del mundo (DriverAids::gearbox) y cambiarla lo reconstruye.
     bool sequential = false;
     // ABS, control de tracción y suspensión (tarea 2.8, teclas 1, 2 y 3). Cambian la simulación:
-    // van en la descripción del mundo (DriverAids) y cambiarlos lo reconstruye. El ABS empieza
-    // activado (ajustes base del protocolo de manejo); la simulación de los tests, no
-    // (DriverAids por defecto).
-    bool abs = true;
+    // van en la descripción del mundo (DriverAids) y cambiarlos lo reconstruye. El juego arranca
+    // sin ABS desde el lote 3 (antes iba activado, como en los ajustes base del protocolo de
+    // manejo); la clave se sigue guardando en ajustes.txt como las demás ayudas.
+    bool abs = false;
     sim::TractionControl traction = sim::TractionControl::Off;
     sim::SuspensionSetting suspension = sim::SuspensionSetting::Medium;
     int mouse_full_lock_px = kMouseFullLockPxDefault;

@@ -28,7 +28,6 @@ constexpr std::array<RollingProfile, sim::kSurfaceCount + 1> kRolling = {{
 }};
 constexpr std::size_t kNeutralProfile = sim::kSurfaceCount;
 
-constexpr float kSkidSlipSpeedFull = 3.0f; // m/s de deslizamiento para el chirrido pleno
 constexpr float kSkidLooseHz = 500.0f;
 constexpr float kSkidNeutralHz = 700.0f;
 constexpr float kStonesPerSecond = 30.0f; // por rueda sobre grava a 20 m/s
@@ -40,6 +39,23 @@ float smooth_coefficient(float seconds) {
 void approach(float& value, float target, float a) { value += a * (target - value); }
 
 } // namespace
+
+float skid_level(float rho, float slip_speed, SkidModel model) {
+    const float over = std::clamp(rho - 1.0f, 0.0f, 1.0f);
+    const float slip = std::max(slip_speed, 0.0f);
+    if (model == SkidModel::Legacy27) {
+        return over * std::min(slip / kSkidSlipSpeedFullLegacy, 1.0f);
+    }
+    return over * std::min(std::sqrt(slip / kSkidSlipSpeedFullNew), 1.0f);
+}
+
+float asphalt_tone_share(float rho, SkidModel model) {
+    if (model == SkidModel::Legacy27) {
+        return 1.0f;
+    }
+    return std::clamp((kSkidNoiseRhoFull - rho) / (kSkidNoiseRhoFull - kSkidToneRhoFull), 0.0f,
+                      1.0f);
+}
 
 void CarSynth::Svf::tune(float cutoff_hz, float damping) {
     const float fc = std::min(cutoff_hz, kSynthSampleRate / 7.0f);
@@ -128,7 +144,7 @@ float CarSynth::sine(double phase) const {
     return a + (b - a) * frac;
 }
 
-void CarSynth::set_targets(const AudioSnapshot& s) {
+void CarSynth::set_targets(const AudioSnapshot& s, SkidModel model) {
     rpm_.target = s.rpm;
     load_.target = kLoadThrottleShare * std::clamp(s.engine_throttle, 0.0f, 1.0f) +
                    (1.0f - kLoadThrottleShare) * std::clamp(s.torque_load, 0.0f, 1.0f);
@@ -144,10 +160,11 @@ void CarSynth::set_targets(const AudioSnapshot& s) {
         }
         const auto surface = static_cast<std::size_t>(w.surface);
         rolling[s.blind ? kNeutralProfile : surface] += 0.25f;
-        const float skid = std::clamp(w.rho - 1.0f, 0.0f, 1.0f) *
-                           std::min(w.slip_speed / kSkidSlipSpeedFull, 1.0f);
+        const float skid = skid_level(w.rho, w.slip_speed, model);
         if (!s.blind && static_cast<sim::Surface>(w.surface) == sim::Surface::Asphalt) {
-            tonal += 0.25f * skid;
+            const float tone = asphalt_tone_share(w.rho, model);
+            tonal += 0.25f * skid * tone;
+            scrub += 0.25f * skid * (1.0f - tone);
         } else {
             scrub += 0.25f * skid;
         }
@@ -158,7 +175,9 @@ void CarSynth::set_targets(const AudioSnapshot& s) {
     for (std::size_t p = 0; p < rolling_.size(); ++p) {
         rolling_[p].target = rolling[p];
     }
-    skid_tonal_.target = tonal;
+    // La ganancia del tono va en el objetivo: al cambiar de modelo pasa por el suavizado.
+    skid_tonal_.target =
+        tonal * (model == SkidModel::Legacy27 ? kSkidToneGainLegacy : kSkidToneGainNew);
     skid_noise_.target = scrub;
     gravel_.target = gravel;
 
@@ -223,7 +242,7 @@ void CarSynth::render(float* out, int frames, const AudioSnapshot& s, unsigned b
         pause_gain_ = 0.0f;
         return;
     }
-    set_targets(s);
+    set_targets(s, skid_model_.load(std::memory_order_relaxed));
     if (!started_ || s.generation != generation_) {
         // Mundo nuevo: sin suavizado desde el anterior y sin sucesos falsos.
         jump_to_targets();
@@ -321,8 +340,8 @@ void CarSynth::render(float* out, int frames, const AudioSnapshot& s, unsigned b
             if (squeal_phase_ >= 1.0) {
                 squeal_phase_ -= std::floor(squeal_phase_);
             }
-            sample += 0.12f * skid_tonal_.value * sine(squeal_phase_);
-            sample += 0.30f * skid_noise_.value * skid_filter_.step(noise(skid_rng_));
+            sample += skid_tonal_.value * sine(squeal_phase_);
+            sample += kSkidNoiseGain * skid_noise_.value * skid_filter_.step(noise(skid_rng_));
         }
         if ((buses & kBusStones) != 0 && gravel_.value > 1e-4f) {
             if (stones_rng_.next_float01() < stone_rate_ * gravel_.value) {

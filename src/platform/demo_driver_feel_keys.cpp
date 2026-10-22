@@ -19,6 +19,17 @@ constexpr KeyBinding kRows[] = {
      30,
      "Volumen",
      "100, 70, 40 y 0 %, por turnos; se guarda en ajustes.txt"},
+    {a(DriverFeelAction::SkidSound),
+     {chord(Key::Six), {}},
+     kNoAction,
+     {},
+     PadControl::None,
+     kContextAll,
+     KeyBlock::Debug,
+     190,
+     "Sonido del deslizamiento: nuevo / el de la 2.7",
+     "A/B del sonido de la rueda que desliza o va bloqueada; empieza siempre en el nuevo; no se "
+     "guarda en ajustes.txt ni va en la grabación"},
 };
 
 } // namespace

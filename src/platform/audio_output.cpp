@@ -92,6 +92,10 @@ void AudioOutput::publish(const AudioSnapshot& snapshot) { g_snapshots.publish(s
 
 void AudioOutput::set_volume(float volume) { g_synth.set_volume(std::clamp(volume, 0.0f, 1.0f)); }
 
+void AudioOutput::set_skid_model(SkidModel model) { g_synth.set_skid_model(model); }
+
+SkidModel AudioOutput::skid_model() const { return g_synth.skid_model(); }
+
 AudioStats AudioOutput::stats() const {
     AudioStats s;
     s.ready = ready_;

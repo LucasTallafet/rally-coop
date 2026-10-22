@@ -27,6 +27,7 @@ namespace rally::platform {
     KEY(Three, THREE, 51, "3", "3")                                                                \
     KEY(Four, FOUR, 52, "4", "4")                                                                  \
     KEY(Five, FIVE, 53, "5", "5")                                                                  \
+    KEY(Six, SIX, 54, "6", "6")                                                                    \
     KEY(Seven, SEVEN, 55, "7", "7")                                                                \
     KEY(Eight, EIGHT, 56, "8", "8")                                                                \
     KEY(Nine, NINE, 57, "9", "9")                                                                  \

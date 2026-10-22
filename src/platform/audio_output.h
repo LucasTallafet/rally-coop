@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/audio_snapshot.h"
+#include "platform/car_synth.h"
 
 #include <cstdint>
 
@@ -45,6 +46,9 @@ public:
     bool ready() const { return ready_; }
     void publish(const AudioSnapshot& snapshot);
     void set_volume(float volume);
+    // Modelo del sonido del deslizamiento (tecla 6, A/B del lote 3).
+    void set_skid_model(SkidModel model);
+    SkidModel skid_model() const;
     AudioStats stats() const;
     void reset_stats();
 

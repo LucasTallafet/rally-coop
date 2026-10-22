@@ -38,6 +38,16 @@ void DemoDriverFeel::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCo
                                 "F4: volumen " + std::to_string(ctx.settings.volume_pct) + " %",
                                 kText, kShortMessageNs);
     }
+    if (action_pressed(action(DriverFeelAction::SkidSound), ctx.frame_key_context) && audio_) {
+        // A/B de lote 3: no se guarda ni va en la grabación; empieza siempre en el nuevo.
+        const SkidModel next =
+            audio_->skid_model() == SkidModel::New ? SkidModel::Legacy27 : SkidModel::New;
+        audio_->set_skid_model(next);
+        ctx.overlay.set_message(Overlay::Message::Settings,
+                                next == SkidModel::New ? "6: deslizamiento nuevo"
+                                                       : "6: deslizamiento de la 2.7",
+                                kText, kShortMessageNs);
+    }
 }
 
 void DemoDriverFeel::on_world_rebuilt(DemoContext& ctx) {

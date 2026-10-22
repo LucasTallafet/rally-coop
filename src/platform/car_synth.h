@@ -26,7 +26,10 @@ namespace rally::platform {
 // - Turbo: soplido de la válvula (contador `blowoffs`). Sin silbido hasta la fase 6 (sonido
 //   grabado): el sintético «no está muy conseguido» (parada de la 2.7).
 // - Rodadura: ruido filtrado por superficie y velocidad, por ruedas en el suelo.
-// - Deslizamiento: chirrido tonal en asfalto y arrastre de ruido en las sueltas.
+// - Deslizamiento: por rueda, un nivel según ρ y la velocidad de deslizamiento (skid_level). En
+//   asfalto (sin modo a ciegas) se reparte entre un chirrido tonal cerca del pico y ruido con la
+//   rueda bloqueada (asphalt_tone_share); en las demás superficies, todo ruido. Hay dos modelos
+//   (SkidModel): el nuevo (lote 3) y el de la 2.7, que se queda para el A/B (tecla 6).
 // - Piedras: chasquidos aleatorios en las ruedas sobre grava, más con la velocidad.
 // - Viento: ruido grave que crece con v².
 // - Sucesos: clac del cambio (`shifts`) y golpe sordo del impacto (`impacts`, de 1 a 6 m/s como
@@ -41,6 +44,33 @@ inline constexpr float kSynthFadeSeconds = 0.010f;   // pausa: fundido a silenci
 inline constexpr float kLimiterBounceHz = 15.0f;
 // Parte del acelerador efectivo en la carga del motor; el resto es par / par pleno.
 inline constexpr float kLoadThrottleShare = 0.3f;
+
+// Sonido del deslizamiento (lote 3, abs-sonido). Todas las constantes son valores de partida: se
+// juzgan de oído con el A/B de la tecla 6 (lote 3). En la fase 6 todo el sonido se sustituye por
+// sonido grabado.
+enum class SkidModel : std::uint8_t {
+    New,      // nivel con la raíz de la velocidad de deslizamiento; ruido con la rueda bloqueada
+    Legacy27, // el de la 2.7: satura a 3 m/s y en asfalto todo es tono
+};
+// Valor de partida, se juzga de oído (lote 3): velocidad de deslizamiento del nivel pleno.
+inline constexpr float kSkidSlipSpeedFullNew = 20.0f; // m/s
+// Valor de partida, se juzga de oído (lote 3): la de la 2.7.
+inline constexpr float kSkidSlipSpeedFullLegacy = 3.0f; // m/s
+// Valor de partida, se juzga de oído (lote 3): ρ hasta la que el asfalto es todo tono (w = 1) y
+// desde la que es todo ruido (w = 0); entre las dos, w baja en línea recta.
+inline constexpr float kSkidToneRhoFull = 1.0f;
+inline constexpr float kSkidNoiseRhoFull = 3.0f;
+// Valor de partida, se juzga de oído (lote 3): ganancia del tono (en la 2.7, 0,12) y del ruido.
+inline constexpr float kSkidToneGainNew = 0.05f;
+inline constexpr float kSkidToneGainLegacy = 0.12f;
+inline constexpr float kSkidNoiseGain = 0.30f;
+
+// Nivel de una rueda [0, 1]: clamp(ρ − 1, 0, 1) por la velocidad de deslizamiento (nuevo: su raíz
+// sobre kSkidSlipSpeedFullNew; la 2.7: lineal sobre 3 m/s).
+float skid_level(float rho, float slip_speed, SkidModel model);
+// Parte del nivel que va al tono en asfalto sin modo a ciegas, w en [0, 1]; el resto va al
+// ruido. La 2.7: todo al tono (1).
+float asphalt_tone_share(float rho, SkidModel model);
 
 // Capas, para los tests (CarSynth::render con una máscara).
 enum SynthBus : unsigned {
@@ -64,6 +94,11 @@ public:
     // Volumen general [0, 1]; lo cambia el bucle principal (F4) sin llamar a raylib.
     void set_volume(float volume) { volume_.store(volume, std::memory_order_relaxed); }
     float volume() const { return volume_.load(std::memory_order_relaxed); }
+
+    // Modelo del sonido del deslizamiento (tecla 6). Atómico: el callback corre en otro hilo.
+    // Empieza en el nuevo; reset() no lo toca (no es estado del sonido).
+    void set_skid_model(SkidModel model) { skid_model_.store(model, std::memory_order_relaxed); }
+    SkidModel skid_model() const { return skid_model_.load(std::memory_order_relaxed); }
 
     // Estado a cero (como al construirlo): ruido, fases y envolventes.
     void reset();
@@ -94,7 +129,7 @@ private:
     static constexpr int kChunk = 32;                        // muestras entre afinados de filtros
     static constexpr int kProfiles = sim::kSurfaceCount + 1; // superficies y la neutra
 
-    void set_targets(const AudioSnapshot& s);
+    void set_targets(const AudioSnapshot& s, SkidModel model);
     void jump_to_targets();
     void tune_chunk(const AudioSnapshot& s);
     float sine(double phase) const; // phase en ciclos
@@ -102,7 +137,7 @@ private:
 
     std::array<float, kTableSize + 1> table_{};
     std::atomic<float> volume_{1.0f};
-
+    std::atomic<SkidModel> skid_model_{SkidModel::New};
     // Contadores vistos y generación.
     bool started_ = false;
     std::uint32_t generation_ = 0;
