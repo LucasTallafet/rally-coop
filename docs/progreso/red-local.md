@@ -1,0 +1,23 @@
+## Fila del registro
+
+| 2026-10-22 | 3 | | Tarea `red-local` (lote 3, carril juego): biblioteca de red `rally_net` (`src/net`, ENet 1.3.18, protocolo 1) y `rally_tests_net`. **Estado del coche** de 47 B (tres más pequeñas, posición en mm, velocidad en cm/s, compresión en 0,1 mm, superficie 255 = aire): 10 000 estados PCG32 dan 0,5000 mm, 5,4·10⁻⁵ rad, 0,5001 cm/s (0,5 más la representación en float), 0,0500 mm y 0,500 rpm de error máximo; `decode` rechaza tamaños 0–46 y 48, tipos ≠ 1, componente omitida > 3 y superficies inválidas. **`StateBuffer`** (128 entradas ordenadas por paso, sin reservas en `push`/`sample`/`stats`, 0 `operator new` en 10 000 llamadas): paso estimado del host = `now·240 − offset` (mínimo de 2 s, con salvaguarda de 0,5 s tras una pausa del host), objetivo −24 pasos, lineal + nlerp, extrapola 0,1 s y se queda quieto, recolocar sin mezclar. **Interpolación:** sin red simulada, error máximo 1,54 mm (círculo R 50 m a 20 m/s); con red media (100 ± 30 ms, 5 %, 60 s) 1,03 cm interpolando (3565 muestras) y 0,69 cm extrapolando (24), hueco más largo 2 estados, 172 estados desordenados, el ángulo no retrocede nunca; pausas del host de 0,3 / 1 / 3 s: vuelve a interpolar a los 0,217 / 0,05 / 0,05 s de reanudar, sin retroceso del objetivo. **ENet por 127.0.0.1** en un proceso: saludo, mundo de 200 kB con bytes y `zone_hash` exactos, 300 estados (301 enviados, 301 recibidos, 0 perdidos, 0 tarde), protocolo 2 rechazado con «protocolo 2, este juego usa el 1», segundo copiloto rechazado («ya hay un copiloto») y admitido al irse el primero, cierre y reconexión, host que se va («sin conexión, reintentando») y vuelve. `Host::after_steps` no cambia la simulación: `state_hash` 0xbab7241716a9015d con y sin host (2400 pasos). Reservas del host (`operator new` + ENet) ~91 por segundo con 30 Hz de envío. Mensaje de mundo: 10 575 B con la zona y 10 876 B con el recinto (el texto del `.car` son 10 511 B). Huella `0x66c9e3a86632750e`, reservas de Jolt 1990, telemetría `0xfe3c612ddcaa6805`, `kSimVersion` 5 y formatos: sin cambios. Tests 435 → 460 en Release y Debug. Sin validar a ojo (la prueba es la de `copiloto-ventana`). | `copiloto-ventana` |
+
+## Hallazgos
+
+| Fecha | Hallazgo |
+| --- | --- |
+| 2026-10-22 | ENet reserva con `malloc`, no con `operator new`: el contador de los tests no lo ve. `net::enet_allocation_count()` (callbacks de `enet_initialize_with_callbacks`) las cuenta. Host: ~91 reservas por segundo (new + ENet) a 30 Hz; sin trabajo previsto para la fase 5. |
+| 2026-10-22 | Offset del paso del host: el mínimo de 2 s se queda atrás si el host se para (pausa, ventana arrastrada). Se añade una salvaguarda: si el mínimo de los últimos 0,5 s lo supera en más de 24 pasos, se usa ese. Cambia una fórmula de los «Detalles fijados» del prompt, no el contrato §2.6. |
+| 2026-10-22 | Estados con `ENET_PACKET_FLAG_UNSEQUENCED` y regulación (`throttle`) del par desactivada: si no, ENet tira estados por culpa de un RTT alto momentáneo o descarta los desordenados, y la red simulada y la real se comportarían distinto. |
+| 2026-10-22 | Si se pierde el estado con el bit de recolocado (5 % con la red media), el copiloto interpola sobre el salto durante un intervalo (33 ms). El contrato fija 1 bit con semántica estricta; para la fase 5, reenviarlo un par de veces cuesta casi nada. |
+| 2026-10-22 | En los primeros ~2 s y tras cada mundo nuevo el mínimo del offset aún no ha visto el paquete más rápido: el objetivo solo puede avanzar (sin retrocesos), unos ms. |
+
+## Ediciones propuestas
+
+- `docs/02` §7 (Red): añadir «`src/net`: `rally_net` (ENet, sin raylib ni SDL). Host en 127.0.0.1:29470, un solo copiloto; mundo por el canal fiable y estado del coche de 47 B a 30 Hz por el no fiable sin secuencia. El copiloto interpola por número de paso con 100 ms de retardo (paso estimado = mínimo de llegada·240 − paso en 2 s, con salvaguarda de 0,5 s tras una pausa del host), extrapola 100 ms y después se queda quieto. Red simulada (`LinkSimulator`, PCG32) para probar sin red mala.»
+- `docs/07`: tests de `rally_tests_net` (25 casos, ~6 s por los de ENet); regla: un test de ENet usa `127.0.0.1` y puerto 0.
+- `docs/08` (bitácora): el porqué de UNSEQUENCED, de desactivar el throttle y de la salvaguarda del offset (hallazgos de arriba).
+
+## Pide de lo compartido
+
+- Nada. Para `copiloto-ventana`: la plataforma llama a `io::serialize_world` y `parse_world`, a `Host::set_world` en cada `build()`, a `Host::after_steps` tras los pasos de cada fotograma (la telemetría ya se enciende en `reset()`), y a `Copilot::service(now_s)` con su propio reloj. `StateBuffer::sample(now_s)` y `stats(now_s)` necesitan el mismo `now_s`.
