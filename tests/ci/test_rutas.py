@@ -147,6 +147,12 @@ def tests_hook():
             ("carril-juego", "tools/telemetry/plot.py", 2),
             ("carril-herramientas", "tools/telemetry/columns.md", 2),
             ("carril-herramientas", "tools/telemetry/plot.py", 0),
+            # Tests de red (carril juego) y tramos escritos a mano (carril sim).
+            ("carril-juego", "tests/net/test_protocol.cpp", 0),
+            ("carril-sim", "tests/net/test_protocol.cpp", 2),
+            ("carril-sim", "data/stages/prueba.stage", 0),
+            ("carril-plataforma", "data/stages/prueba.stage", 2),
+            ("carril-plataforma", "data/fonts/x.ttf", 0),  # el resto de data/ sigue siendo de plataforma
         ]:
             esperar(f"{agente} {ruta}", codigo, lanzar([], entrada(w1, ruta, agente), env))
         esperar("carril-sim fuera de todo repositorio", 2,
@@ -278,7 +284,13 @@ def tests_rama():
     esperar("rama juego con rutas ajenas", 1, r)
     if r.stdout.decode().split() != ["src/sim/car.cpp", "CMakeLists.txt"]:
         fallos.append(f"rama juego: lista inesperada {r.stdout!r}")
-    esperar("rama herramientas tools/ci", 1, lanzar(["--rama", "herramientas"], b"tools/ci/promover.ps1\n"))
+    # Con chcp 65001, PowerShell antepone un BOM de UTF-8: el resultado es el mismo que sin él.
+    r = lanzar(["--rama", "juego"], "﻿src/game/a.cpp\nsrc\\sim\\car.cpp\nCMakeLists.txt\n".encode("utf-8"))
+    esperar("rama juego con BOM al principio", 1, r)
+    if r.stdout.decode().split() != ["src/sim/car.cpp", "CMakeLists.txt"]:
+        fallos.append(f"rama juego con BOM: lista inesperada {r.stdout!r}")
+    esperar("rama sim limpia con BOM", 0, lanzar(["--rama", "sim", "--tarea", "2.8"], b"\xef\xbb\xbf" + rutas))
+    esperar("rama herramientas tools/ci", 1,lanzar(["--rama", "herramientas"], b"tools/ci/promover.ps1\n"))
     esperar("rama de carril desconocido", 2, lanzar(["--rama", "integrador"], b"a\n"))
     esperar("rama sin carril", 2, lanzar(["--rama"], b"a\n"))
 

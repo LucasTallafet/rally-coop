@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-Descarga una sola vez las fuentes de las dependencias (Jolt, SDL, raylib y doctest) para todas
+Descarga una sola vez las fuentes de las dependencias de `cmake/Dependencies.cmake` para todas
 las copias de trabajo.
 
 .DESCRIPTION
@@ -12,7 +12,7 @@ coincide con su hash; si no, descarga como siempre.
 
 Solo se comparten las fuentes: cada copia compila sus dependencias en su propio build/.
 
-Sale con 0 si las cuatro quedan listas y con 1 si alguna falla.
+Sale con 0 si todas quedan listas y con 1 si alguna falla.
 #>
 [CmdletBinding()]
 param(
@@ -37,8 +37,11 @@ $patron = 'FetchContent_Declare\(\s*(\w+)\s+URL\s+(\S+)\s+URL_HASH\s+SHA256=([0-
 $deps = [regex]::Matches($texto, $patron) | ForEach-Object {
     [pscustomobject]@{ Nombre = $_.Groups[1].Value; Url = $_.Groups[2].Value; Sha = $_.Groups[3].Value.ToLowerInvariant() }
 }
-if (@($deps).Count -ne 4) {
-    Write-Host "error: esperaba 4 dependencias en $cmakeDeps y hay $(@($deps).Count)"
+# Cada FetchContent_Declare que empieza una línea tiene que llevar URL y SHA256 (sin número fijo:
+# una dependencia nueva no obliga a tocar este script).
+$declaraciones = [regex]::Matches($texto, '(?m)^FetchContent_Declare\(').Count
+if (@($deps).Count -eq 0 -or @($deps).Count -ne $declaraciones) {
+    Write-Host "error: en $cmakeDeps hay $declaraciones FetchContent_Declare y $(@($deps).Count) con URL y SHA256"
     exit 1
 }
 
@@ -91,5 +94,5 @@ if ($fallos -gt 0) {
     Write-Host "deps: $fallos dependencias con error"
     exit 1
 }
-Write-Host "deps: las 4 fuentes listas en $Destino (RALLY_DEPS_SRC=$Destino)"
+Write-Host ("deps: las {0} fuentes listas en {1} (RALLY_DEPS_SRC={1})" -f @($deps).Count, $Destino)
 exit 0

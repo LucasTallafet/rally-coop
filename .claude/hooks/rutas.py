@@ -239,7 +239,8 @@ def hook():
 
 
 def leer_rutas():
-    texto = sys.stdin.buffer.read().decode("utf-8")
+    # utf-8-sig: con chcp 65001, PowerShell antepone un BOM a lo que pasa por la tubería.
+    texto = sys.stdin.buffer.read().decode("utf-8-sig")
     return [linea.strip().replace("\\", "/") for linea in texto.splitlines() if linea.strip()]
 
 

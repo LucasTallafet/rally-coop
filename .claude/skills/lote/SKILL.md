@@ -50,9 +50,11 @@ Cuando un carril vuelve:
 
 ## 3. Verificación
 
-Para cada rama lista, lanza en paralelo:
-- `verificador`, con la ruta de su copia de trabajo;
-- `revisor-determinismo`, con la rama, **si toca `src/sim`, `src/gen`, `src/net`, `src/game` o `src/io`, o si cambia la huella, el hash de la telemetría o `tests/data/recordings`** (`docs/09-agentes.md` §5, paso 7).
+Para cada rama lista, lanza **en serie, nunca a la vez sobre la misma copia** (los dos compilan en ella; a la vez chocan con LNK1104, visto en el lote 1):
+1. `verificador`, con la ruta de su copia de trabajo;
+2. cuando vuelva, `revisor-determinismo`, con la rama, **si toca `src/sim`, `src/gen`, `src/net`, `src/game` o `src/io`, o si cambia la huella, el hash de la telemetría o `tests/data/recordings`** (`docs/09-agentes.md` §5, paso 7).
+
+Ramas distintas sí pueden verificarse a la vez: cada una tiene su copia.
 
 Guarda las respuestas en `mensajes/lote-<N>/<tarea>-verificacion.md` y `<tarea>-determinismo.md`.
 
@@ -74,7 +76,7 @@ Si alguna dice **No pasa**, retoma el mismo carril (el que escribió esa rama) c
 
 ## 5. Después de la prueba
 
-- **Respuestas cortas de Lucas** (sí, no, un valor): apúntalas en `mensajes/lote-<N>/respuestas.md`. Si piden un cambio pequeño y claro, lanza una tarea de arreglo en el mismo carril, sobre `integracion`, y vuelve al §3.
+- **Respuestas cortas de Lucas** (sí, no, un valor): apúntalas en `mensajes/lote-<N>/respuestas.md`. Si piden un cambio pequeño y claro, lanza una tarea de arreglo en el mismo carril, sobre `integracion`, y vuelve al §3. **Antes de lanzarla,** añade al final de `mensajes/lote-<N>.md` la línea `- Arreglo <tarea>: carril-<nombre>`: `tools/ci/propiedad.ps1` saca el carril de las líneas del lote que nombran la tarea, y sin ella el integrador no puede comprobar la rama.
 - **Si lo que dice Lucas cambia el diseño o necesita diagnóstico** (algo «se siente mal»): no lo arregles. Dile que lo lleve al consultor con `prueba.md` y sus grabaciones.
 - **Cuando Lucas confirme que ha promovido con `tools/ci/promover.ps1`:** lanza `integrador` para cerrar el lote. Antes de quitar las copias, guarda los `mensajes/` de cada una en `mensajes/lote-<N>/<tarea>/`. Después, dale a Lucas la lista de documentos que tiene que subir al proyecto de claude.ai.
 

@@ -6,6 +6,7 @@
       "src/gen/**",
       "data/cars/**",
       "tests/sim/**",
+      "data/stages/**",
       "tests/data/cars/**",
       "tests/data/recordings/**",
       ".claude/rules/simulacion.md"
@@ -24,6 +25,7 @@
       "src/io/**",
       "tests/io/**",
       "tests/game/**",
+      "tests/net/**",
       "tests/data/recordings/**",
       "data/game/**",
       "tools/telemetry/columns.md"
@@ -66,7 +68,7 @@
     ]
   },
   "excepto": {
-    "plataforma": ["data/cars/**", "data/game/**"],
+    "plataforma": ["data/cars/**", "data/game/**", "data/stages/**"],
     "herramientas": ["tools/ci/**", "tools/telemetry/columns.md"],
     "consultor": [".claude/rules/simulacion.md"]
   },
