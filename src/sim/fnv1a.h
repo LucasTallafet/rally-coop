@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -28,6 +29,12 @@ public:
             add_byte(static_cast<std::uint8_t>(value >> (8 * i)));
         }
     }
+    void add_u64(std::uint64_t value) {
+        add_u32(static_cast<std::uint32_t>(value));
+        add_u32(static_cast<std::uint32_t>(value >> 32));
+    }
+    // Los bits del double (IEEE 754), en little-endian.
+    void add_f64(double value) { add_u64(std::bit_cast<std::uint64_t>(value)); }
     std::uint64_t value() const { return hash_; }
 
 private:

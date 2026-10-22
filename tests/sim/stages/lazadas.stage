@@ -1,0 +1,105 @@
+# Tramo de test «lazadas» (tarea tramo-eje, lote 3): 1150 m escritos a mano en el formato de
+# tramo 1 (docs/02-arquitectura.md §6.1). Lo usan los tests de sim/stage_axis.h y, en el lote 4,
+# los del seguimiento de s y t. Si cambia, cambia kExpectedStageHash (tests/sim/test_stage_axis.cpp).
+#
+# Partes (s en metros):
+#   0–100        recta de salida.
+#   100–250      curva a derechas: clotoide 40 m, arco de R 80, clotoide 40 m; peralte −5 %.
+#   250–390      recta con una cresta: PIV en 320, de +6 % a −6 % con 60 m de curva vertical.
+#   390–650      inflexión: clotoide hasta R −40, arco de R −40, clotoide de inflexión de 120 m
+#                de R −40 a R +40 (la curvatura pasa por 0 en s = 520), arco de R +40 y clotoide
+#                de vuelta a recta. El peralte pasa de +4 % a −4 % por la clotoide de inflexión.
+#   650–730      recta: la superficie pasa de grava a tierra en 650 y el semiancho de 3,0 a 2,6 m
+#                entre 650 y 700.
+#   730–857,70   lazadas, subiendo al 8 %: horquilla a derechas (clotoides de 10 m a R 6 y arco
+#                de 6π − 10 m: 180° justos), recta de 70 m y horquilla a izquierdas igual. Los
+#                brazos quedan paralelos a 13,35 m: entre puntos del eje con |Δs| > 50 m, la
+#                distancia mínima está entre 8 y 15 m.
+#   857,70–1150  salida de las lazadas: recta, curva a derechas de R 100 que se aleja de ellas
+#                (peralte −3 %) y recta de meta (su L completa los 1150 m).
+#
+# Salida en (−262,5, 217,5) mirando al norte: el centro de la caja del eje queda cerca del origen.
+
+format = 1
+name = Lazadas (test)
+start_x = -262.5
+start_z = 217.5
+start_heading_deg = 0
+start_height = 0
+
+[plan]
+straight 100
+# Curva a derechas.
+spiral 40 inf 80
+arc 70 80
+spiral 40 80 inf
+# Recta de la cresta.
+straight 140
+# Inflexión.
+spiral 30 inf -40
+arc 40 -40
+spiral 120 -40 40
+arc 40 40
+spiral 30 40 inf
+straight 80
+# Lazada 1: horquilla a derechas.
+spiral 10 inf 6
+arc 8.849555921538759 6
+spiral 10 6 inf
+straight 70
+# Lazada 2: horquilla a izquierdas.
+spiral 10 inf -6
+arc 8.849555921538759 -6
+spiral 10 -6 inf
+# Salida.
+straight 50
+spiral 30 inf 100
+arc 60 100
+spiral 30 100 inf
+straight 122.30088815692488
+
+[profile]
+pvi 0 0 0
+pvi 200 6.0 40
+# Cresta.
+pvi 320 13.2 60
+pvi 470 4.2 40
+pvi 660 0.4 40
+# Subida de las lazadas al 8 %.
+pvi 900 19.6 40
+pvi 1050 15.1 40
+pvi 1150 15.1 0
+
+[bank]
+bank 0 0
+bank 100 0
+bank 140 -5
+bank 210 -5
+bank 250 0
+bank 390 0
+bank 420 4
+bank 460 4
+bank 580 -4
+bank 620 -4
+bank 650 0
+bank 730 0
+bank 740 -6
+bank 748 -6
+bank 758 0
+bank 829 0
+bank 839 6
+bank 847 6
+bank 857 0
+bank 908 0
+bank 938 -3
+bank 997 -3
+bank 1027 0
+
+[width]
+width 0 3.0 3.0
+width 650 3.0 3.0
+width 700 2.6 2.6
+
+[surface]
+surface 0 gravel
+surface 650 dirt

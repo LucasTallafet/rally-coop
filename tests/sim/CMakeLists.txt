@@ -10,6 +10,7 @@ rally_add_test_executable(rally_tests_sim
     test_pcg32.cpp
     test_rmath.cpp
     test_sim_world.cpp
+    test_stage_axis.cpp
     test_steer_assist.cpp
     test_telemetry.cpp
     test_test_road.cpp
