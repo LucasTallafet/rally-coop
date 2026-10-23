@@ -310,6 +310,8 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 
 **Implementación (`src/net`, lote 3):** `rally_net` (ENet, sin raylib ni SDL). Host en 127.0.0.1:29470, un solo copiloto; mundo por el canal fiable y estado del coche de 47 B a 30 Hz por el no fiable sin secuencia. El copiloto interpola por número de paso con 100 ms de retardo (paso estimado = mínimo de llegada·240 − paso en 2 s, con salvaguarda de 0,5 s tras una pausa del host), extrapola 100 ms y después se queda quieto. Red simulada (`LinkSimulator`, PCG32) para probar sin red mala.
 
+**Host y copiloto en la plataforma (lote 3):** la plataforma aloja el host en `DemoWorld` (publica el mundo en `reset()`, y `service()` y `after_steps` tras los pasos de cada fotograma) y `rally.exe --copiloto [IP[:puerto]]` abre la segunda instancia (640 × 360, siempre encima): construye el mundo con el mismo código, sin `step`, y dibuja la pose de `StateBuffer::sample`. No escribe `ajustes.txt`.
+
 ### 7.1 Cambio de host
 
 No necesita física idéntica entre PCs: tras el cambio, el PC nuevo es la autoridad. Es un relevo, no una simulación en paralelo: en cada momento solo un PC simula el coche y nadie compara resultados. La física idéntica entre PCs solo hace falta para verificar clasificatorias (fase 9).

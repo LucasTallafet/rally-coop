@@ -225,6 +225,7 @@ La tabla de teclas está en `docs/teclas.md`.
 | `--bench-road` | Lo mismo con la cámara por la carretera de prueba (con sus árboles), de la entrada a la frenada; escribe `rendimiento_carretera_NNN.txt` |
 | `--hide-config` | La pantalla no dice qué configuración del coche se lleva (F8 sigue cambiándola): bloque C del protocolo de la 2.10 |
 | `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
+| `--copiloto [dirección[:puerto]]` | Abre la segunda instancia, el copiloto (ventana de 640 × 360 siempre encima); se conecta al host en la dirección dada (por defecto 127.0.0.1:29470). Su tecla Z cambia la red simulada (no / media / mala) y solo existe en el copiloto. No escribe `ajustes.txt`. El juego normal hace de host al arrancar (no con `--golden` ni `--bench-*`); la «CPU red» de F1 y las 2 líneas de red de F3 solo salen con un copiloto conectado |
 
 Las grabaciones de cada pasada quedan en `grabaciones/AAAAMMDD-HHMMSS.rrec` junto al exe y el overlay muestra el archivo y los pasos. Se repiten con la herramienta de consola `build/<preset>/tools/replay/<Config>/rally_replay.exe`: 
 - `info <archivo>`: cabecera y pie; dice, entre otras cosas, la superficie real de la pista ciega y las ayudas de la descripción del mundo (dirección, caja, ABS, control de tracción y suspensión). Con formato 7, además, los nombres de las acciones, el número de eventos con los 10 primeros (paso, jugador, tipo, acción) y el hash de la línea de tiempo.
