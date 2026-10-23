@@ -88,6 +88,7 @@ void Overlay::begin(int screen_width, int screen_height) {
         layout_ = layout_screen(screen_width, screen_height, kind_);
     }
     overflow_ = {};
+    debug_rect_set_ = false;
 }
 
 int Overlay::content_x(Layer layer) const {
@@ -180,7 +181,7 @@ void Overlay::draw_messages() {
     }
     for (int i = 0; i < kLayerCount; ++i) {
         if (overflow_[static_cast<std::size_t>(i)]) {
-            const UiRect& o = layout_.rects[static_cast<std::size_t>(i)];
+            const UiRect& o = rect(static_cast<Layer>(i));
             DrawRectangleLines(o.x, o.y, o.w, o.h, kOverflow);
         }
     }

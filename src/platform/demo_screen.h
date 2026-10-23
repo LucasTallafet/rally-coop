@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/debug_panel.h"
 #include "platform/demo_part.h"
 #include "platform/telemetry_history.h"
 
@@ -26,8 +27,8 @@ private:
     void draw_help(DemoContext& ctx);
     void draw_debug(DemoContext& ctx, const DemoFrame& frame);
 
-    int help_page_ = -1;         // H: página de la ayuda de teclas (-1 oculta)
-    bool debug_visible_ = false; // F3: panel de depuración
+    int help_page_ = -1; // H: página de la ayuda de teclas (-1 oculta)
+    DebugPanel debug_;   // F3: panel de depuración, por páginas
     TelemetryHistory telemetry_history_;
     GraphPager graphs_;
 };

@@ -2,6 +2,7 @@
 
 #include "platform/action_driver.h"
 #include "platform/audio_output.h"
+#include "platform/debug_panel.h"
 #include "platform/demo_common.h"
 #include "platform/demo_screen_keys.h"
 #include "platform/fixed_step_clock.h"
@@ -72,7 +73,9 @@ LapText lap_text(std::int64_t steps) {
 DemoScreen::DemoScreen(const DemoContext& ctx) {
     if (ctx.golden != nullptr) {
         help_page_ = ctx.golden->help_page;
-        debug_visible_ = ctx.golden->debug;
+        if (ctx.golden->debug) {
+            debug_.show_first();
+        }
         for (int i = 0; i < ctx.golden->graphs; ++i) {
             graphs_.press(ctx.mode.blind, default_graph_pages());
         }
@@ -87,7 +90,7 @@ void DemoScreen::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounte
         help_page_ = help_page_ + 1 < pages ? help_page_ + 1 : -1;
     }
     if (action_pressed(action(ScreenAction::DebugPanel), context)) {
-        debug_visible_ = !debug_visible_;
+        debug_.press();
     }
     if (action_pressed(action(ScreenAction::Graphs), context)) {
         graphs_.press(ctx.mode.blind, default_graph_pages());
@@ -111,7 +114,7 @@ void DemoScreen::draw_2d(DemoContext& ctx, const DemoFrame& frame) {
     if (help_page_ >= 0) {
         draw_help(ctx);
     } else {
-        if (debug_visible_) {
+        if (debug_.visible()) {
             draw_debug(ctx, frame);
         }
         if (graphs_.visible(ctx.mode.blind) >= 0) {
@@ -262,23 +265,16 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     const sim::SimInput& input = frame.input;
     const float frame_impact = frame.frame_impact;
     const Vec3d& eye = ctx.frame_camera.eye;
-    // Las mismas líneas que las muestras de layer_samples(Layer::Debug), en el mismo orden.
+    // Las líneas se reúnen por bloques (red, mando, entradas, grabación, coche, zona, cámara y
+    // ritmo) y el panel se ajusta a lo que se dibuja de verdad (platform/debug_panel).
     const UiMetrics& m = ctx.overlay.metrics();
-    ctx.overlay.panel(Layer::Debug, kPanelBackground);
-    const int x = ctx.overlay.content_x(Layer::Debug);
-    int y = ctx.overlay.content_y(Layer::Debug);
-    const auto line = [&](const char* text, Color color = kText) {
-        ctx.overlay.text(Layer::Debug, x, y, text, color);
-        y += m.line;
-    };
-    const auto line_fit = [&](const char* text) {
-        ctx.overlay.text_fit(Layer::Debug, x, y, text, kText);
-        y += m.line;
-    };
+    DebugText text;
+    const auto line = [&text](const std::string& s, Color color = kText) { text.add(s, color); };
+    const auto line_fit = line;
 
-    line("DEPURACIÓN (F3)", kTitle);
     if (ctx.network.copilot) {
         // Solo con un copiloto conectado: sin él, el panel es el de siempre.
+        text.block();
         line_fit(ctx.network.blind_hold
                      ? "red: a ciegas, no se envía al copiloto"
                      : TextFormat("red: copiloto conectado   RTT %.1f ms   estados enviados %llu",
@@ -290,6 +286,7 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
                             ctx.network.service_cpu.average() * 1e-6));
         }
     }
+    text.block();
     const Gamepads& pads = driver.gamepads();
     if (ctx.golden != nullptr) {
         line("mando: (fijo en --golden)");
@@ -303,31 +300,26 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
         line("mando: ninguno activo");
         line(TextFormat("gatillos: -   conectados: %d", pads.connected()));
     }
-    // Barras: dirección, acelerador y freno; blanco el objetivo y naranja el aplicado.
+    // Barras: dirección, acelerador y freno; blanco el objetivo y naranja el aplicado (se dibujan
+    // después de repartir las líneas, en el sitio de esta fila).
     const sim::ControlState& controls = ctx.world->controls();
     constexpr float kAxisScale = 1.0f / sim::kAxisMax;
-    const int bar_width = axis_bar_width(m);
-    const int bar_height = m.font * 4 / 5;
-    const int bar_y = y + (m.line - bar_height) / 2;
-    draw_axis_bar(x, bar_y, bar_width, bar_height, input.steer * kAxisScale,
-                  controls.steer.applied * kAxisScale);
-    draw_axis_bar(x + bar_width + m.font, bar_y, bar_width, bar_height, input.throttle * kAxisScale,
-                  controls.throttle.applied * kAxisScale);
-    draw_axis_bar(x + 2 * (bar_width + m.font), bar_y, bar_width, bar_height,
-                  input.brake * kAxisScale, controls.brake.applied * kAxisScale);
-    y += m.line;
+    text.add_bars();
     const auto mode = [&input](std::uint16_t bit) {
         return (input.buttons & bit) != 0 ? "digital" : "analógico";
     };
     line(TextFormat("barras: dirección %s, acelerador %s, freno %s", mode(sim::kButtonSteerDigital),
                     mode(sim::kButtonThrottleDigital), mode(sim::kButtonBrakeDigital)));
+    text.block();
     line(TextFormat("freno de mano: %3.0f %%   subir %d, bajar %d, recolocar %d",
                     100.0f * controls.handbrake * kAxisScale, ctx.shift_up_presses,
                     ctx.shift_down_presses, ctx.reset_presses));
     line(TextFormat("impacto: %.2f m/s   último que vibró: %.2f m/s (umbral %.1f)", frame_impact,
                     ctx.last_rumble_impact, kImpactThreshold));
+    text.block();
     line_fit(TextFormat("grabación: %s   pasos: %llu", ctx.recording->name().c_str(),
                         static_cast<unsigned long long>(ctx.recording->steps())));
+    text.block();
     if (ctx.mode.config_hidden()) {
         line("coche: (oculto)");
     } else {
@@ -355,6 +347,7 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     }
 
     // Zona: a ciegas no se dice la superficie ni la configuración.
+    text.block();
     if (!ctx.mode.zone) {
         line("zona: recinto de la fase 1");
         line("vueltas: -");
@@ -388,6 +381,7 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
         }
     }
 
+    text.block();
     const char* view_name = ctx.zone_bench   ? "medida del suelo"
                             : ctx.view == 0  ? "ojo del conductor"
                             : ctx.view == 1  ? "persecución"
@@ -407,6 +401,7 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
                     ctx.settings.seat.forward, ctx.settings.seat.right));
     line(aids_summary(ctx.settings).c_str());
 
+    text.block();
     const char* target =
         pacer.target() == FrameTarget::MonitorRate ? "frecuencia del monitor" : "30 fps";
     line(
@@ -429,6 +424,19 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
                                                                  : "ventana"));
     line(TextFormat("registro: %s", ctx.frame_log->active() ? ctx.frame_log->name() : "no"));
     line(TextFormat("pasos en el fotograma: %d   alpha: %.2f", steps.count, steps.alpha));
+    const DebugDrawn drawn = debug_.draw(ctx.overlay, text, GetTime());
+    if (drawn.bars_y >= 0) {
+        const int bar_width = axis_bar_width(m);
+        const int bar_height = m.font * 4 / 5;
+        const int x = drawn.bars_x;
+        const int bar_y = drawn.bars_y + (m.line - bar_height) / 2;
+        draw_axis_bar(x, bar_y, bar_width, bar_height, input.steer * kAxisScale,
+                      controls.steer.applied * kAxisScale);
+        draw_axis_bar(x + bar_width + m.font, bar_y, bar_width, bar_height,
+                      input.throttle * kAxisScale, controls.throttle.applied * kAxisScale);
+        draw_axis_bar(x + 2 * (bar_width + m.font), bar_y, bar_width, bar_height,
+                      input.brake * kAxisScale, controls.brake.applied * kAxisScale);
+    }
 }
 
 } // namespace rally::platform

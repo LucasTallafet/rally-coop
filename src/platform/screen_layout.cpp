@@ -134,11 +134,6 @@ int perf_content_width(const PerfGeometry& p, const UiMetrics& m) {
 
 int perf_content_height(const PerfGeometry& p) { return p.graph_top + p.graph_height; }
 
-int debug_content_height(const UiMetrics& m) {
-    // Las líneas de muestra y la fila de las barras.
-    return (static_cast<int>(std::size(kDebugSamples)) + 1) * m.line;
-}
-
 int graphs_content_height(const UiMetrics& m, const GraphGeometry& g) {
     int height = 0;
     for (const GraphPage& page : default_graph_pages()) {
@@ -272,6 +267,67 @@ int graph_page_height(const GraphPage& page, const UiMetrics& m, const GraphGeom
 int axis_bar_width(const UiMetrics& m) { return 10 * m.font; }
 int axis_bars_width(const UiMetrics& m) { return 3 * axis_bar_width(m) + 2 * m.font; }
 
+std::string debug_title(int page, int pages) {
+    if (pages <= 1) {
+        return "DEPURACIÓN (F3)";
+    }
+    return "DEPURACIÓN (F3 " + std::to_string(page + 1) + "/" + std::to_string(pages) + ")";
+}
+
+DebugPlan plan_debug(std::span<const DebugBlock> blocks, const ScreenLayout& layout) {
+    DebugPlan plan;
+    const UiRect& area = layout.rect(Layer::Debug);
+    plan.capacity = std::max(2, (area.h - 2 * layout.m.padding) / layout.m.line);
+    const int body = plan.capacity - 1; // sin el título
+    int used = 0;
+    int widest = 0;
+    DebugPage page;
+    const auto close = [&] {
+        page.lines = used + 1;
+        page.width = widest;
+        plan.pages.push_back(page);
+        page = DebugPage{};
+        page.first_block = 0;
+        used = 0;
+        widest = 0;
+    };
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        const int lines = std::min(blocks[i].lines, body);
+        if (page.block_count > 0 && used + lines > body) {
+            close();
+        }
+        if (page.block_count == 0) {
+            page.first_block = static_cast<int>(i);
+        }
+        ++page.block_count;
+        used += lines;
+        widest = std::max(widest, blocks[i].width);
+    }
+    close();
+    const int pages = static_cast<int>(plan.pages.size());
+    for (int i = 0; i < pages; ++i) {
+        DebugPage& p = plan.pages[static_cast<std::size_t>(i)];
+        p.width = std::max(p.width, text_width(debug_title(i, pages), layout.m.font));
+    }
+    return plan;
+}
+
+UiRect debug_panel_rect(const ScreenLayout& layout, int lines, int content_width) {
+    const UiRect& area = layout.rect(Layer::Debug);
+    UiRect r = area;
+    r.w = std::min(area.w, content_width + 2 * layout.m.padding);
+    r.h = std::min(area.h, lines * layout.m.line + 2 * layout.m.padding);
+    return r;
+}
+
+int WidthHold::update(int wanted, double now_s) {
+    if (wanted > held_ || (wanted < held_ && now_s - changed_s_ >= 1.0)) {
+        held_ = wanted;
+        changed_s_ = now_s;
+    }
+    return held_;
+}
+
 std::string help_title(int page, int pages) {
     return "Ayuda " + std::to_string(page + 1) + "/" + std::to_string(pages) +
            (page + 1 < pages ? " · H: página siguiente" : " · H: ocultar");
@@ -384,16 +440,12 @@ ScreenLayout layout_screen(int width, int height, ScreenKind kind) {
         graphs.y = m.margin;
     }
 
+    // El área máxima de F3 (su alto se cierra al final, cuando se sabe dónde están los mensajes y
+    // el anillo).
     UiRect& debug = at(Layer::Debug);
     debug.x = m.margin;
     debug.y = m.margin;
-    if (copilot) {
-        debug.w = perf.x - m.gap - debug.x;
-        debug.h = static_cast<int>(std::size(kCopilotDebugSamples)) * m.line + 2 * m.padding;
-    } else {
-        debug.w = graphs.x - m.gap - debug.x;
-        debug.h = debug_content_height(m) + 2 * m.padding;
-    }
+    debug.w = (copilot ? perf.x : graphs.x) - m.gap - debug.x;
 
     // Abajo: el indicador a la izquierda y el aviso de la ayuda a la derecha; encima, los
     // mensajes. En el copiloto, el indicador es una línea de texto normal que ocupa hasta el aviso.
@@ -428,8 +480,10 @@ ScreenLayout layout_screen(int width, int height, ScreenKind kind) {
     help.h = messages.y - m.gap / 2 - help.y;
     layout.help =
         help_grid(help_table(kind), m, (help.h - 2 * m.padding) / m.line, help.w - 2 * m.padding);
+    const int debug_bottom = messages.y - m.gap / 2;
     if (copilot) {
-        return layout; // sin anillo de acciones
+        debug.h = debug_bottom - debug.y; // sin anillo de acciones
+        return layout;
     }
 
     // El anillo, centrado, con su centro al 62 % del alto: la línea de debajo y el anillo caben
@@ -443,6 +497,9 @@ ScreenLayout layout_screen(int width, int height, ScreenKind kind) {
     ring_rect.h = ring.label_y + m.line;
     ring_rect.x = (width - ring_rect.w) / 2;
     ring_rect.y = height * 62 / 100 - ring.diameter / 2;
+    // F3 llega hasta los mensajes y, si el anillo cae bajo su ancho, hasta encima del anillo.
+    const bool ring_below = ring_rect.x < debug.right() && debug.x < ring_rect.right();
+    debug.h = (ring_below ? std::min(debug_bottom, ring_rect.y - m.gap) : debug_bottom) - debug.y;
     return layout;
 }
 
