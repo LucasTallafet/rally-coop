@@ -50,6 +50,8 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
    - si la tarea dibuja, las draw calls y la CPU de render de la escena que diga el lote.
 
    Compara con la fila anterior de `progreso.md`.
+
+4b. **Medidas sin teclas al escritorio.** Se mide con las opciones de medida del juego (`--bench-*`, `--golden`) y con grabaciones pasadas por `rally_replay`, nunca enviando teclas o clics a las ventanas: en el lote 3, una medida automática tecleó en una ventana de Lucas. Si una medida necesita entrada de verdad, va a la prueba de Lucas, con lo que hay que mirar.
 5. **Informe en `<tarea>-verificacion.md`:** **Pasa** o **No pasa**, con las cifras.
 
 ## 4. Determinismo (revisor-determinismo)
