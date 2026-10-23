@@ -295,7 +295,7 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 
 | Mensaje | Sentido | Canal | Frecuencia |
 | --- | --- | --- | --- |
-| Estado del coche (paso, posición, rotación, velocidad, suspensiones, superficies, marcha, RPM, indicador de recolocación) | Host → otro | No fiable | 30 Hz |
+| Estado del coche (paso, posición, rotación, velocidad, suspensiones, superficies, marcha, RPM, dirección aplicada, presión del turbo, contador de recolocaciones) | Host → otro | No fiable | 30 Hz |
 | Nota (ancla `s`, sentido, nota, modificadores, distancia) | Copiloto → host | Fiable | Evento |
 | Borrar última nota / vaciar cola | Copiloto → host | Fiable | Evento |
 | Pedir acción / confirmar acción (paso de inicio y fin) | Ambos | Fiable | Evento |
@@ -310,7 +310,7 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 
 **Sincronía.** Todo lo que se mueve en la pantalla del copiloto llega en el estado del host: el copiloto nunca simula. En la 1.0 lo único dinámico es el coche. Las cajas sueltas del recinto de la fase 1 son de depuración y no se sincronizan, así que en el copiloto se quedan donde se construyeron. Los objetos con física de la fase 8 (inventario, personajes a pie) llegan con su propio estado, con la autoridad por entidad de `04`. Una entidad dinámica nueva que el copiloto vea lleva su mensaje en el protocolo.
 
-**Implementación (`src/net`, lote 3):** `rally_net` (ENet, sin raylib ni SDL). Host en 127.0.0.1:29470, un solo copiloto; mundo por el canal fiable y estado del coche de 47 B a 30 Hz por el no fiable sin secuencia. El copiloto interpola por número de paso con 100 ms de retardo (paso estimado = mínimo de llegada·240 − paso en 2 s, con salvaguarda de 0,5 s tras una pausa del host), extrapola 100 ms y después se queda quieto. Red simulada (`LinkSimulator`, PCG32) para probar sin red mala.
+**Implementación (`src/net`, lote 3):** `rally_net` (ENet, sin raylib ni SDL). Host en 127.0.0.1:29470, un solo copiloto; mundo por el canal fiable y estado del coche de 50 B a 30 Hz por el no fiable sin secuencia. El recolocado viaja como contador (u8, módulo 256) en todos los estados: el copiloto no mezcla nunca dos estados con contadores distintos, así que perder un paquete no deja ver el coche cruzando el mapa. `StateBuffer::sample` da además la dirección (interpolada) y marcha, rpm, turbo, superficies y compresión del estado más cercano. El copiloto interpola por número de paso con 100 ms de retardo (paso estimado = mínimo de llegada·240 − paso en 2 s, con salvaguarda de 0,5 s tras una pausa del host), extrapola 100 ms y después se queda quieto. Red simulada (`LinkSimulator`, PCG32) para probar sin red mala.
 
 **Host y copiloto en la plataforma (lote 3):** la plataforma aloja el host en `DemoWorld` (publica el mundo en `reset()`, y `service()` y `after_steps` tras los pasos de cada fotograma) y `rally.exe --copiloto [IP[:puerto]]` abre la segunda instancia (640 × 360, siempre encima): construye el mundo con el mismo código, sin `step`, y dibuja la pose de `StateBuffer::sample`. No escribe `ajustes.txt`.
 
