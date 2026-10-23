@@ -57,7 +57,9 @@ CarState random_state(Pcg32& rng) {
     }
     s.gear = static_cast<std::int8_t>(static_cast<int>(rng.bounded(7)) - 1);
     s.rpm = static_cast<float>(uniform(rng, 0.0, 9000.0));
-    s.reset = (rng.next_u32() & 1u) != 0;
+    s.steer = static_cast<float>(uniform(rng, -1.0, 1.0));
+    s.boost_bar = static_cast<float>(uniform(rng, 0.0, 2.55));
+    s.reset_count = static_cast<std::uint8_t>(rng.bounded(256));
     return s;
 }
 
@@ -90,8 +92,8 @@ Errors roundtrip(const CarState& in, CarState& out) {
 
 } // namespace
 
-TEST_CASE("net_state: the car state is exactly 47 bytes") {
-    CHECK(kCarStateBytes == 47);
+TEST_CASE("net_state: the car state is exactly 50 bytes") {
+    CHECK(kCarStateBytes == 50);
     CarState s;
     std::array<std::uint8_t, kCarStateBytes> bytes{};
     encode(s, bytes);
@@ -101,6 +103,8 @@ TEST_CASE("net_state: the car state is exactly 47 bytes") {
 TEST_CASE("net_state: 10000 random states round trip within the contract table") {
     Pcg32 rng(12345, 1);
     Errors worst;
+    double worst_steer = 0.0;
+    double worst_boost = 0.0;
     int omitted_seen[4] = {0, 0, 0, 0};
     for (int i = 0; i < 10000; ++i) {
         const CarState in = random_state(rng);
@@ -115,7 +119,10 @@ TEST_CASE("net_state: 10000 random states round trip within the contract table")
         CHECK(out.step == in.step);
         CHECK(out.surface == in.surface);
         CHECK(out.gear == in.gear);
-        CHECK(out.reset == in.reset);
+        CHECK(out.reset_count == in.reset_count);
+        worst_steer = std::max(worst_steer, std::abs(static_cast<double>(in.steer) - out.steer));
+        worst_boost =
+            std::max(worst_boost, std::abs(static_cast<double>(in.boost_bar) - out.boost_bar));
         std::array<std::uint8_t, kCarStateBytes> bytes{};
         encode(in, bytes);
         ++omitted_seen[bytes[18] & 3];
@@ -129,6 +136,10 @@ TEST_CASE("net_state: 10000 random states round trip within the contract table")
     CHECK(worst.vel <= 0.005 + 1e-5);
     CHECK(worst.compression <= 0.05e-3 + 1e-8);
     CHECK(worst.rpm <= 0.5 + 1e-3);
+    std::printf("net_state: peor error de direccion %.2e, turbo %.4f bar\n", worst_steer,
+                worst_boost);
+    CHECK(worst_steer <= 1.0 / 32767.0 + 1e-7);
+    CHECK(worst_boost <= 0.005 + 1e-6);
     for (int k = 0; k < 4; ++k) {
         CHECK(omitted_seen[k] > 100);
     }
@@ -171,22 +182,22 @@ TEST_CASE("net_state: decode rejects wrong sizes, types, omitted index and surfa
     std::array<std::uint8_t, kCarStateBytes + 1> bytes{};
     encode(s, std::span<std::uint8_t, kCarStateBytes>(bytes.data(), kCarStateBytes));
     CarState out;
-    for (std::size_t n = 0; n <= 46; ++n) {
+    for (std::size_t n = 0; n <= 49; ++n) {
         CHECK_FALSE(decode(std::span<const std::uint8_t>(bytes.data(), n), out));
     }
-    CHECK_FALSE(decode(std::span<const std::uint8_t>(bytes.data(), 48), out));
-    CHECK(decode(std::span<const std::uint8_t>(bytes.data(), 47), out));
+    CHECK_FALSE(decode(std::span<const std::uint8_t>(bytes.data(), 51), out));
+    CHECK(decode(std::span<const std::uint8_t>(bytes.data(), 50), out));
     for (int type = 0; type < 256; ++type) {
         auto copy = bytes;
         copy[0] = static_cast<std::uint8_t>(type);
-        CHECK(decode(std::span<const std::uint8_t>(copy.data(), 47), out) == (type == 1));
+        CHECK(decode(std::span<const std::uint8_t>(copy.data(), 50), out) == (type == 1));
     }
     auto bad_omitted = bytes;
     bad_omitted[18] = 4;
-    CHECK_FALSE(decode(std::span<const std::uint8_t>(bad_omitted.data(), 47), out));
+    CHECK_FALSE(decode(std::span<const std::uint8_t>(bad_omitted.data(), 50), out));
     auto bad_surface = bytes;
     bad_surface[39] = 5; // primera superficie: 5 no existe; 255 es el aire
-    CHECK_FALSE(decode(std::span<const std::uint8_t>(bad_surface.data(), 47), out));
+    CHECK_FALSE(decode(std::span<const std::uint8_t>(bad_surface.data(), 50), out));
 }
 
 TEST_CASE("net_state: car_state_from copies the fields from the world") {
@@ -199,16 +210,21 @@ TEST_CASE("net_state: car_state_from copies the fields from the world") {
     world.set_telemetry(true);
     rally::sim::SimInput input;
     input.throttle = rally::sim::kAxisMax;
+    input.steer = rally::sim::kAxisMax / 4;
     for (int i = 0; i < 480; ++i) {
         world.step(input);
     }
-    const CarState s = car_state_from(world, 480, 7, true);
+    const CarState s = car_state_from(world, 480, 7, 9);
     const auto pose = world.car_pose();
     const auto vel = world.car_velocity();
     const auto& tel = world.telemetry();
     CHECK(s.generation == 7);
     CHECK(s.step == 480);
-    CHECK(s.reset);
+    CHECK(s.reset_count == 9);
+    CHECK(tel.steer != 0.0f);
+    CHECK(tel.boost > 0.0f);
+    CHECK(s.steer == tel.steer);
+    CHECK(s.boost_bar == doctest::Approx(tel.boost / 1.0e5f));
     CHECK(s.x == pose.x);
     CHECK(s.y == pose.y);
     CHECK(s.z == pose.z);
@@ -241,7 +257,7 @@ TEST_CASE("net_state: a wheel in the air is -1 and goes as 255 on the wire") {
     world.seal();
     world.set_telemetry(true);
     world.step(rally::sim::SimInput{});
-    const CarState s = car_state_from(world, 1, 0, false);
+    const CarState s = car_state_from(world, 1, 0, 0);
     for (std::size_t i = 0; i < 4; ++i) {
         CHECK(s.surface[i] == -1);
     }
@@ -249,4 +265,26 @@ TEST_CASE("net_state: a wheel in the air is -1 and goes as 255 on the wire") {
     encode(s, bytes);
     CHECK(bytes[39] == 255);
     CHECK(bytes[42] == 255);
+}
+
+TEST_CASE("net_state: the new fields sit at bytes 46 to 49 and saturate") {
+    CarState s;
+    s.steer = 0.5f;
+    s.boost_bar = 1.23f;
+    s.reset_count = 201;
+    std::array<std::uint8_t, kCarStateBytes> bytes{};
+    encode(s, bytes);
+    const int steer = static_cast<std::int16_t>(bytes[46] | (bytes[47] << 8));
+    CHECK(steer == 16384); // 0,5 · 32767 = 16383,5 -> 16384
+    CHECK(bytes[48] == 123);
+    CHECK(bytes[49] == 201);
+
+    s.steer = 1.2f;
+    s.boost_bar = 3.0f; // los coches llegan a 5 bar en el lector: satura, no da la vuelta
+    encode(s, bytes);
+    CHECK(static_cast<std::int16_t>(bytes[46] | (bytes[47] << 8)) == 32767);
+    CHECK(bytes[48] == 255);
+    s.steer = -1.2f;
+    encode(s, bytes);
+    CHECK(static_cast<std::int16_t>(bytes[46] | (bytes[47] << 8)) == -32767);
 }

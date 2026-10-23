@@ -27,6 +27,17 @@ Pose extrapolate(const CarState& s, double dt_steps) {
     return p;
 }
 
+SampledState extra_of(const CarState& s) {
+    SampledState e;
+    e.steer = s.steer;
+    e.boost_bar = s.boost_bar;
+    e.gear = s.gear;
+    e.rpm = s.rpm;
+    e.surface = s.surface;
+    e.compression = s.compression;
+    return e;
+}
+
 Pose blend(const CarState& a, const CarState& b, double t) {
     Pose p;
     p.x = a.x + (b.x - a.x) * t;
@@ -144,6 +155,11 @@ double StateBuffer::target_step(double now_s) const {
 }
 
 bool StateBuffer::sample(double now_s, Pose& out) const {
+    SampledState extra;
+    return sample(now_s, out, extra);
+}
+
+bool StateBuffer::sample(double now_s, Pose& out, SampledState& extra) const {
     if (count_ == 0) {
         return false;
     }
@@ -152,10 +168,12 @@ bool StateBuffer::sample(double now_s, Pose& out) const {
     const CarState& last = ring_[static_cast<std::size_t>(count_ - 1)].state;
     if (target <= static_cast<double>(first.step)) {
         out = pose_of(first);
+        extra = extra_of(first);
         return true;
     }
     if (target >= static_cast<double>(last.step)) {
         out = extrapolate(last, target - static_cast<double>(last.step));
+        extra = extra_of(last);
         return true;
     }
     int i = count_ - 2; // hay un posterior: i + 1 existe
@@ -164,13 +182,20 @@ bool StateBuffer::sample(double now_s, Pose& out) const {
     }
     const CarState& a = ring_[static_cast<std::size_t>(i)].state;
     const CarState& b = ring_[static_cast<std::size_t>(i + 1)].state;
-    if (b.reset) {
-        // Recolocado: sin mezclar. Se sigue a `a` hasta el paso de `b`, y entonces salta.
+    if (a.reset_count != b.reset_count) {
+        // Recolocado entre los dos (cuenten los paquetes perdidos que cuenten): sin mezclar. Se
+        // sigue a `a` hasta el paso de `b`, y entonces salta.
         out = extrapolate(a, target - static_cast<double>(a.step));
+        extra = extra_of(a);
         return true;
     }
-    const double t = (target - static_cast<double>(a.step)) / static_cast<double>(b.step - a.step);
-    out = blend(a, b, rmath::clamp(t, 0.0, 1.0));
+    const double t = rmath::clamp(
+        (target - static_cast<double>(a.step)) / static_cast<double>(b.step - a.step), 0.0, 1.0);
+    out = blend(a, b, t);
+    extra = extra_of(t < 0.5 ? a : b);
+    extra.steer =
+        static_cast<float>(static_cast<double>(a.steer) +
+                           (static_cast<double>(b.steer) - static_cast<double>(a.steer)) * t);
     return true;
 }
 
