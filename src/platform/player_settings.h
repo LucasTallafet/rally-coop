@@ -94,6 +94,17 @@ int next_volume_pct(int volume_pct);
 // cualquier reloj monótono.
 inline constexpr std::int64_t kSettingsSaveDelayNs = 500'000'000;
 
+// Quién es esta instancia de rally.exe. Las dos corren junto al mismo exe y comparten ajustes.txt:
+// el juego (Host) lo escribe; la ventana del copiloto (--copiloto, lote 3 §2.8) lo lee, si acaso,
+// pero nunca lo escribe.
+enum class InstanceRole : std::uint8_t { Host, Copilot };
+
+// Guarda ajustes.txt (`path`, UTF-8) de golpe (io::write_file_atomic). Con el papel de copiloto no
+// escribe nada y devuelve false con `error` vacío; si el host no puede escribir, false con el
+// motivo en `error`.
+bool save_settings_file(const std::string& path, const PlayerSettings& settings, InstanceRole role,
+                        std::string& error);
+
 class SettingsSaver {
 public:
     void changed(std::int64_t now_ns);

@@ -178,6 +178,11 @@ void PerfCounter::draw(const FramePacer& pacer, const FixedStepClock& clock, boo
     } else {
         overlay.text(Layer::Perf, x, y, "audio: sin dispositivo", kDim);
     }
+    if (network_ != nullptr) {
+        // La fila 17, vacía sin copiloto.
+        next();
+        draw_ms_row(overlay, "CPU red", *network_, x, y);
+    }
     draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_enabled, x + g.graph_border,
                      top + g.graph_top + g.graph_border, overlay);
 }

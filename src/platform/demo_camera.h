@@ -17,6 +17,9 @@ public:
 
     void handle_keys(DemoContext& ctx, FramePacer& pacer, PerfCounter& perf) override;
     void begin_frame(DemoContext& ctx, const DemoFrame& frame) override;
+    // La cámara del fotograma (ctx.frame_camera) según ctx.view, ctx.poses.drawn_car y ctx.mode.
+    // La usa también la ventana del copiloto (platform/copilot_app), que no tiene partes.
+    void update(DemoContext& ctx);
 };
 
 } // namespace rally::platform

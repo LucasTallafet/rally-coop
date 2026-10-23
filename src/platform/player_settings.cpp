@@ -1,8 +1,11 @@
 #include "platform/player_settings.h"
 
+#include "io/atomic_file.h"
+
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <filesystem>
 #include <system_error>
 
 namespace rally::platform {
@@ -269,6 +272,16 @@ int next_sensitivity_pct(int sensitivity_pct, int dir) {
                step;
     }
     return std::clamp(next, kSteerSensitivityMinPct, kSteerSensitivityMaxPct);
+}
+
+bool save_settings_file(const std::string& path, const PlayerSettings& settings, InstanceRole role,
+                        std::string& error) {
+    error.clear();
+    if (role == InstanceRole::Copilot) {
+        return false;
+    }
+    return io::write_file_atomic(std::filesystem::path(std::u8string(path.begin(), path.end())),
+                                 format_settings(settings), error);
 }
 
 void SettingsSaver::changed(std::int64_t now_ns) {

@@ -15,6 +15,8 @@ add_library(rally_loop STATIC
     car_feedback.cpp
     car_synth.cpp
     cockpit.cpp
+    copilot_args.cpp
+    copilot_keys.cpp
     demo_actions_keys.cpp
     demo_camera_keys.cpp
     demo_driver_feel_keys.cpp
@@ -40,9 +42,13 @@ add_library(rally_loop STATIC
     surface_feel.cpp
     telemetry_history.cpp
     ui_text.cpp
+    wheel_spin.cpp
     window_keys.cpp
 )
 target_include_directories(rally_loop PUBLIC ${PROJECT_SOURCE_DIR}/src)
+# La tecla Z del copiloto pide la red simulada de net/state_buffer.h (sin ENet ni raylib). rally_net
+# se define después de la plataforma: enlazar por nombre vale.
+target_link_libraries(rally_loop PUBLIC rally_net)
 # action_driver (tarea 2.9, parte P) liga la máquina de acciones (rally_game) con el grabador
 # (rally_io); ninguna de las dos usa raylib ni SDL.
 target_link_libraries(rally_loop PRIVATE rally_sim rally_game rally_io rally_warnings)
@@ -54,6 +60,7 @@ target_link_libraries(rally_loop PRIVATE rally_sim rally_game rally_io rally_war
 add_library(rally_platform STATIC
     audio_output.cpp
     cockpit_draw.cpp
+    copilot_app.cpp
     demo_camera.cpp
     demo_driver_feel.cpp
     demo_measure.cpp
@@ -75,6 +82,7 @@ add_library(rally_platform STATIC
     perf_counter.cpp
     process_memory.cpp
     recording_session.cpp
+    scene_draw.cpp
     screenshot.cpp
     telemetry_graphs.cpp
     window.cpp
@@ -83,6 +91,6 @@ add_library(rally_platform STATIC
 )
 target_include_directories(rally_platform PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_platform
-    PUBLIC raylib rally_loop rally_io rally_game rally_sim
+    PUBLIC raylib rally_loop rally_io rally_game rally_sim rally_net
     PRIVATE rally_warnings SDL3::SDL3 user32 winmm
 )

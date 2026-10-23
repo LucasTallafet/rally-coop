@@ -1,5 +1,6 @@
 #include "platform/key_tables.h"
 
+#include "platform/copilot_keys.h"
 #include "platform/demo_actions_keys.h"
 #include "platform/demo_camera_keys.h"
 #include "platform/demo_driver_feel_keys.h"
@@ -16,7 +17,7 @@ namespace {
 
 constexpr const KeyTable* kTables[] = {
     &kDriveKeys,  &kWorldKeys,   &kZoneModeKeys, &kCameraKeys,  &kDriverFeelKeys,
-    &kScreenKeys, &kMeasureKeys, &kWindowKeys,   &kActionsKeys,
+    &kScreenKeys, &kMeasureKeys, &kWindowKeys,   &kActionsKeys, &kCopilotKeys,
 };
 
 } // namespace

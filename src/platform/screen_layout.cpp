@@ -1,11 +1,13 @@
 #include "platform/screen_layout.h"
 
+#include "platform/copilot_keys.h"
 #include "platform/frame_history.h"
 #include "platform/ui_text.h"
 
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace rally::platform {
 
@@ -46,6 +48,21 @@ constexpr std::string_view kDebugSamples[] = {
     "interpolación: sí   pantalla: completa sin bordes",
     "registro: fotogramas_888.csv",
     "pasos en el fotograma: 88   alpha: 8.88",
+};
+// Ventana del copiloto (ScreenKind::Copilot): el estado de la conexión, F3 con sus líneas y F1,
+// que es el mismo contador del juego (sus filas de simulación salen «n/d»). El indicador y el
+// panel de F3 se recortan con "..." si un texto real es más largo.
+constexpr std::string_view kCopilotIndicatorSamples[] = {"sin conexión, reintentando"};
+constexpr std::string_view kCopilotDebugSamples[] = {
+    "DEPURACIÓN (F3)",
+    "estado: sin conexión, reintentando",
+    "RTT: 888.8 ms   estados: 8888888",
+    "perdidos: 8888888   tardíos: 8888888",
+    "retardo: 888.8 ms   extrapola: sí",
+    "paso del host: 88888888   mundo: 888",
+    "zona: no coincide con la del conductor",
+    "red simulada: mala (250 ± 80 ms, 20 %)",
+    "cámara: toda la zona",
 };
 constexpr std::string_view kPerfSamples[] = {
     "RENDIMIENTO (F1)   8888.8 fps",
@@ -322,8 +339,27 @@ HelpGrid help_grid(std::span<const KeyBinding> table, const UiMetrics& m, int ma
     return grid;
 }
 
-ScreenLayout layout_screen(int width, int height) {
+std::span<const KeyBinding> help_table(ScreenKind kind) {
+    if (kind == ScreenKind::Copilot) {
+        return copilot_help_table();
+    }
+    // La del juego: sin las teclas que valen solo en otra ventana (Z, del copiloto).
+    static const std::vector<KeyBinding> rows = [] {
+        std::vector<KeyBinding> game;
+        for (const KeyBinding& b : key_table()) {
+            if ((b.contexts & kContextAll) != 0) {
+                game.push_back(b);
+            }
+        }
+        return game;
+    }();
+    return rows;
+}
+
+ScreenLayout layout_screen(int width, int height, ScreenKind kind) {
+    const bool copilot = kind == ScreenKind::Copilot;
     ScreenLayout layout;
+    layout.kind = kind;
     layout.width = width;
     layout.height = height;
     layout.m = ui_metrics(height);
@@ -341,22 +377,30 @@ ScreenLayout layout_screen(int width, int height) {
     perf.y = m.margin;
 
     UiRect& graphs = at(Layer::Graphs);
-    graphs.w = layout.graphs.plot_width + 2 * m.padding;
-    graphs.h = graphs_content_height(m, layout.graphs) + 2 * m.padding;
-    graphs.x = perf.x - m.gap - graphs.w;
-    graphs.y = m.margin;
+    if (!copilot) {
+        graphs.w = layout.graphs.plot_width + 2 * m.padding;
+        graphs.h = graphs_content_height(m, layout.graphs) + 2 * m.padding;
+        graphs.x = perf.x - m.gap - graphs.w;
+        graphs.y = m.margin;
+    }
 
     UiRect& debug = at(Layer::Debug);
     debug.x = m.margin;
     debug.y = m.margin;
-    debug.w = graphs.x - m.gap - debug.x;
-    debug.h = debug_content_height(m) + 2 * m.padding;
+    if (copilot) {
+        debug.w = perf.x - m.gap - debug.x;
+        debug.h = static_cast<int>(std::size(kCopilotDebugSamples)) * m.line + 2 * m.padding;
+    } else {
+        debug.w = graphs.x - m.gap - debug.x;
+        debug.h = debug_content_height(m) + 2 * m.padding;
+    }
 
     // Abajo: el indicador a la izquierda y el aviso de la ayuda a la derecha; encima, los
-    // mensajes.
+    // mensajes. En el copiloto, el indicador es una línea de texto normal que ocupa hasta el aviso.
     UiRect& indicator = at(Layer::Indicator);
-    indicator.w = samples_width(kIndicatorSamples, m.big_font);
-    indicator.h = m.big_line;
+    indicator.w = copilot ? samples_width(kCopilotIndicatorSamples, m.font)
+                          : samples_width(kIndicatorSamples, m.big_font);
+    indicator.h = copilot ? m.line : m.big_line;
     indicator.x = m.margin;
     indicator.y = height - m.margin - indicator.h;
 
@@ -365,6 +409,9 @@ ScreenLayout layout_screen(int width, int height) {
     hint.h = m.line;
     hint.x = width - m.margin - hint.w;
     hint.y = indicator.bottom() - hint.h;
+    if (copilot) {
+        indicator.w = hint.x - m.gap - indicator.x;
+    }
 
     UiRect& messages = at(Layer::Messages);
     messages.x = m.margin;
@@ -380,7 +427,10 @@ ScreenLayout layout_screen(int width, int height) {
     help.w = width - 2 * m.margin;
     help.h = messages.y - m.gap / 2 - help.y;
     layout.help =
-        help_grid(key_table(), m, (help.h - 2 * m.padding) / m.line, help.w - 2 * m.padding);
+        help_grid(help_table(kind), m, (help.h - 2 * m.padding) / m.line, help.w - 2 * m.padding);
+    if (copilot) {
+        return layout; // sin anillo de acciones
+    }
 
     // El anillo, centrado, con su centro al 62 % del alto: la línea de debajo y el anillo caben
     // sobre los mensajes y bajo los paneles de arriba (lo comprueban los tests de este archivo).
@@ -396,14 +446,17 @@ ScreenLayout layout_screen(int width, int height) {
     return layout;
 }
 
-std::span<const std::string_view> layer_samples(Layer layer) {
+std::span<const std::string_view> layer_samples(Layer layer, ScreenKind kind) {
+    const bool copilot = kind == ScreenKind::Copilot;
     switch (layer) {
     case Layer::Indicator:
-        return kIndicatorSamples;
+        return copilot ? std::span<const std::string_view>(kCopilotIndicatorSamples)
+                       : std::span<const std::string_view>(kIndicatorSamples);
     case Layer::HelpHint:
         return kHelpHintSamples;
     case Layer::Debug:
-        return kDebugSamples;
+        return copilot ? std::span<const std::string_view>(kCopilotDebugSamples)
+                       : std::span<const std::string_view>(kDebugSamples);
     case Layer::Perf:
         return kPerfSamples;
     case Layer::ActionRing:
@@ -419,13 +472,19 @@ std::span<const std::string_view> layer_samples(Layer layer) {
 
 int layer_content_width(Layer layer, const ScreenLayout& layout) {
     const UiMetrics& m = layout.m;
+    const bool copilot = layout.kind == ScreenKind::Copilot;
+    if (copilot && (layer == Layer::Graphs || layer == Layer::ActionRing)) {
+        return 0; // no existen en esta pantalla
+    }
     switch (layer) {
     case Layer::Indicator:
-        return samples_width(kIndicatorSamples, m.big_font);
+        return copilot ? samples_width(kCopilotIndicatorSamples, m.font)
+                       : samples_width(kIndicatorSamples, m.big_font);
     case Layer::HelpHint:
         return samples_width(kHelpHintSamples, m.font);
     case Layer::Debug:
-        return std::max(samples_width(kDebugSamples, m.font), axis_bars_width(m));
+        return copilot ? samples_width(kCopilotDebugSamples, m.font)
+                       : std::max(samples_width(kDebugSamples, m.font), axis_bars_width(m));
     case Layer::Perf:
         return perf_content_width(layout.perf, m);
     case Layer::ActionRing:

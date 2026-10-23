@@ -9,6 +9,7 @@ rally_add_test_executable(rally_tests_platform
     test_car_feedback.cpp
     test_car_synth.cpp
     test_cockpit.cpp
+    test_copilot.cpp
     test_fixed_step_clock.cpp
     test_forest_layout.cpp
     test_frame_history.cpp

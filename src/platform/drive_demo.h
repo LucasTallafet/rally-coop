@@ -83,6 +83,10 @@ public:
     // bloque C del protocolo de la 2.10). En el modo a ciegas tampoco se dice.
     void set_hide_config(bool hide) { ctx_.mode.hide_config = hide; }
 
+    // El juego hace de host de la red (lote 3): escucha en 127.0.0.1. El juego normal lo llama al
+    // arrancar; --golden y --bench-* no.
+    void start_host() { world_.start_host(ctx_); }
+
     // --bench-zone y --bench-road (demo_measure).
     void start_zone_bench(bool road = false);
     bool zone_bench_done() const { return measure_.zone_bench_done(); }

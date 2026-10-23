@@ -61,6 +61,7 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | F1 | Contador de rendimiento: CPU, GPU, draw calls, memoria y gráfica de fotogramas |
 | T | Gráficas de la telemetría: últimos 10 s, por páginas: 1 · manejo (beta, guiñada, velocidad y entradas aplicadas), 2 · tren motriz, 3 · suspensión (carga y compresión por rueda) y ocultas; las páginas sin canales se saltan; en el modo a ciegas no hace nada |
 | O | Recinto a 20 km del origen: y de vuelta |
+| Z | Red simulada: no / media / mala: solo en la ventana del copiloto (rally.exe --copiloto): media son 100 ± 30 ms con un 5 % de pérdida y mala, 250 ± 80 ms con un 20 %; solo afecta a los estados que recibe |
 | B | Bosque de medida (recinto): escena de medida del bosque, por turnos: apagado, uno a uno, DrawMeshInstanced y persistente |
 | J | Dibujar en float del mundo: depuración del render relativo |
 | F | Monitor / 30 fps: a la frecuencia del monitor o a 30 fps |
