@@ -30,9 +30,10 @@ public:
 
     // Tras los pasos de un fotograma; `step` = pasos desde el último build(). Manda un estado si
     // el paso cruza un múltiplo de 8 (el primero tras set_world, siempre). `reset_since_last`:
-    // el coche se recolocó desde el último estado (se acumula hasta el siguiente envío). Solo
-    // lee `world`, que tiene que tener la telemetría encendida (el juego la enciende en cada
-    // reset()); sin copiloto aceptado no lee nada.
+    // el coche se recolocó desde la última llamada; suma 1 al contador que viaja en todos los
+    // estados (módulo 256), se envíe o no un estado en este paso. Solo lee `world`, que tiene que
+    // tener la telemetría encendida (el juego la enciende en cada reset()); sin copiloto aceptado
+    // no lee nada.
     void after_steps(const sim::SimWorld& world, std::uint32_t step, bool reset_since_last);
 
     // Una vez por fotograma: acepta, responde y recibe.

@@ -11,6 +11,7 @@ constexpr double kSqrt2 = 1.4142135623730951;
 constexpr double kQuatScale = 32767.0 * kSqrt2;
 constexpr double kRpmPerRadS = 9.549296585513721; // 60 / 2π
 constexpr std::uint8_t kAirSurface = 255;
+constexpr float kPaPerBar = 1.0e5f;
 
 class Writer {
 public:
@@ -73,7 +74,7 @@ std::int16_t to_cm_s(float v) {
 } // namespace
 
 CarState car_state_from(const sim::SimWorld& world, std::uint32_t step, std::uint8_t generation,
-                        bool reset) {
+                        std::uint8_t reset_count) {
     RALLY_CHECK(world.has_car(), "net: car_state_from sin coche");
     RALLY_CHECK(world.telemetry_enabled(), "net: car_state_from necesita la telemetría encendida");
     const sim::BodyPose pose = world.car_pose();
@@ -99,7 +100,9 @@ CarState car_state_from(const sim::SimWorld& world, std::uint32_t step, std::uin
     }
     s.gear = tel.gear;
     s.rpm = tel.engine_omega * static_cast<float>(kRpmPerRadS);
-    s.reset = reset;
+    s.steer = tel.steer;
+    s.boost_bar = tel.boost / kPaPerBar;
+    s.reset_count = reset_count;
     return s;
 }
 
@@ -151,8 +154,12 @@ void encode(const CarState& state, std::span<std::uint8_t, kCarStateBytes> out) 
     }
     w.u8(static_cast<std::uint8_t>(state.gear));
     w.u16(static_cast<std::uint16_t>(round_clamped(static_cast<double>(state.rpm), 0.0, 65535.0)));
-    w.u8(state.reset ? 1 : 0);
-    RALLY_CHECK(w.size() == kCarStateBytes, "net: el estado del coche no mide 47 B");
+    w.i16(static_cast<std::int16_t>(
+        round_clamped(static_cast<double>(state.steer) * 32767.0, -32767.0, 32767.0)));
+    w.u8(static_cast<std::uint8_t>(
+        round_clamped(static_cast<double>(state.boost_bar) * 100.0, 0.0, 255.0)));
+    w.u8(state.reset_count);
+    RALLY_CHECK(w.size() == kCarStateBytes, "net: el estado del coche no mide 50 B");
 }
 
 bool decode(std::span<const std::uint8_t> in, CarState& out) {
@@ -204,7 +211,9 @@ bool decode(std::span<const std::uint8_t> in, CarState& out) {
     }
     s.gear = static_cast<std::int8_t>(r.u8());
     s.rpm = static_cast<float>(r.u16());
-    s.reset = (r.u8() & 1) != 0;
+    s.steer = static_cast<float>(r.i16() / 32767.0);
+    s.boost_bar = static_cast<float>(r.u8() / 100.0);
+    s.reset_count = r.u8();
     out = s;
     return true;
 }

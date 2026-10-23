@@ -188,11 +188,12 @@ TEST_CASE("net_buffer: a reset state jumps exactly, without mixing") {
     CarState a = line_state(0, 10.0, 3);
     CarState b = line_state(8, 10.0, 3);
     b.x = 500.0; // recolocado lejos
-    b.reset = true;
+    b.reset_count = 1;
     b.vx = 0.0f;
     CarState c = line_state(16, 0.0, 3);
     c.x = 500.0;
     c.vx = 0.0f;
+    c.reset_count = 1;
     // Llegadas a la hora exacta de cada paso: offset = 0, objetivo = now·240 − 24.
     buffer.push(a, 0.0);
     buffer.push(b, 8.0 / 240.0);
@@ -216,7 +217,7 @@ TEST_CASE("net_buffer: a reset state jumps exactly, without mixing") {
     gap.reset(3);
     CarState far = line_state(48, 0.0, 3);
     far.x = 500.0;
-    far.reset = true;
+    far.reset_count = 1;
     gap.push(a, 0.0);
     gap.push(far, 48.0 / 240.0);
     REQUIRE(gap.sample((30.0 + 24.0) / 240.0, pose)); // 30 pasos tras a, más de 24
@@ -362,7 +363,7 @@ TEST_CASE("net_buffer: push, sample and stats do not allocate") {
     for (int i = 0; i < 10000; ++i) {
         const std::uint32_t step = static_cast<std::uint32_t>(i) * 8u;
         CarState s = line_state(step, 20.0);
-        s.reset = (i % 997) == 0;
+        s.reset_count = static_cast<std::uint8_t>(i / 997);
         buffer.push(s, step / 240.0);
         const double now = step / 240.0 + 0.01;
         if (buffer.sample(now, pose)) {

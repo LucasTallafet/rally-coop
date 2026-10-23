@@ -17,6 +17,18 @@ struct Pose {
     double qx = 0, qy = 0, qz = 0, qw = 1;
 };
 
+// Lo demás del estado a la hora del objetivo (salpicadero y volante del copiloto): la dirección
+// interpolada, el resto del estado más cercano. Con un recolocado en medio, todo del estado que
+// se está mostrando (no se mezcla ni se adelanta).
+struct SampledState {
+    float steer = 0;
+    float boost_bar = 0;
+    std::int8_t gear = 0;
+    float rpm = 0;
+    std::array<std::int8_t, 4> surface{{-1, -1, -1, -1}};
+    std::array<float, 4> compression{};
+};
+
 struct BufferStats {
     std::uint64_t received = 0; // estados aceptados
     std::uint64_t missing = 0;  // pasos de cadencia (paso / 8) que el host no mandó o se perdieron
@@ -39,6 +51,7 @@ public:
     void push(const CarState& state, double arrival_s);
     // false si aún no hay ningún estado.
     bool sample(double now_s, Pose& out) const;
+    bool sample(double now_s, Pose& out, SampledState& extra) const;
     BufferStats stats(double now_s) const;
     // Paso del estado más nuevo (0 si no hay).
     std::uint32_t newest_step() const;

@@ -37,7 +37,7 @@ struct Host::Impl {
     std::uint8_t generation = 0;
 
     std::int64_t last_index = -1;
-    bool pending_reset = false;
+    std::uint8_t reset_count = 0; // recolocaciones desde el último mundo enviado
     std::uint64_t sent = 0;
     std::uint64_t received = 0;
 
@@ -50,7 +50,7 @@ struct Host::Impl {
         info.car_text = car_text;
         send_reliable(active, encode_world(info));
         last_index = -1;
-        pending_reset = false;
+        reset_count = 0;
     }
 
     void reject(ENetPeer* peer, const std::string& reason) {
@@ -84,7 +84,6 @@ struct Host::Impl {
         reply.accepted = true;
         send_reliable(peer, encode_reply(reply));
         last_index = -1;
-        pending_reset = false;
         if (has_world) {
             send_world();
         }
@@ -155,13 +154,14 @@ void Host::after_steps(const sim::SimWorld& world, std::uint32_t step, bool rese
     if (s.active == nullptr || !s.has_world) {
         return;
     }
+    if (reset_since_last) {
+        ++s.reset_count; // también en un paso que la cadencia no envía: el contador lo lleva
+    }
     const std::int64_t index = step / static_cast<std::uint32_t>(kStateEverySteps);
     if (s.last_index >= 0 && index <= s.last_index) {
-        s.pending_reset = s.pending_reset || reset_since_last;
         return;
     }
-    const CarState state =
-        car_state_from(world, step, s.generation, s.pending_reset || reset_since_last);
+    const CarState state = car_state_from(world, step, s.generation, s.reset_count);
     std::array<std::uint8_t, kCarStateBytes> bytes{};
     encode(state, bytes);
     // Sin secuencia: un estado que llega tarde y desordenado todavía sirve (el búfer ordena y
@@ -177,7 +177,6 @@ void Host::after_steps(const sim::SimWorld& world, std::uint32_t step, bool rese
         ++s.sent;
     }
     s.last_index = index;
-    s.pending_reset = false;
 }
 
 void Host::service() {

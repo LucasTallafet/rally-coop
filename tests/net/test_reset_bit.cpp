@@ -1,5 +1,5 @@
-// El bit de recolocado de Host::after_steps llega por ENet tal como se pidió. Un cliente ENet
-// crudo guarda los estados decodificados (el Copilot solo deja pasar la pose).
+// El contador de recolocaciones de Host::after_steps llega por ENet tal como se pidió. Un cliente
+// ENet crudo guarda los estados decodificados (el Copilot solo deja pasar la pose).
 
 #include "car_worlds.h"
 #include "net/car_state.h"
@@ -108,31 +108,61 @@ TEST_CASE("net_reset: the recolocated bit of after_steps reaches the client") {
     }
     REQUIRE(host.copilot_connected());
 
-    SUBCASE("reset_since_last = true goes out as reset, and only once") {
-        host.after_steps(world, 8, true);
-        REQUIRE(wait_for(1));
-        host.after_steps(world, 16, false);
-        REQUIRE(wait_for(2));
-        CHECK(client.states[0].step == 8);
-        CHECK(client.states[0].reset);
+    SUBCASE("reset_since_last = true adds 1 and the counter stays in the next states") {
+        host.after_steps(world, 8, false);
+        host.after_steps(world, 16, true);
+        host.after_steps(world, 24, false);
+        host.after_steps(world, 32, false);
+        REQUIRE(wait_for(4));
+        CHECK(client.states[0].reset_count == 0);
         CHECK(client.states[1].step == 16);
-        CHECK_FALSE(client.states[1].reset);
+        CHECK(client.states[1].reset_count == 1);
+        CHECK(client.states[2].reset_count == 1);
+        CHECK(client.states[3].reset_count == 1);
     }
 
-    SUBCASE("a reset in a step skipped by the cadence goes with the next state sent") {
+    SUBCASE("two resets in steps skipped by the cadence count 2") {
         host.after_steps(world, 8, false); // índice 1: se envía
         REQUIRE(wait_for(1));
-        host.after_steps(world, 12, true); // mismo índice: no se envía, el recolocado se guarda
-        host.after_steps(world, 15, false);
-        host.after_steps(world, 16, false); // índice 2: lleva el recolocado
+        host.after_steps(world, 12, true); // mismo índice: no se envía, pero cuenta
+        host.after_steps(world, 15, true);
+        host.after_steps(world, 16, false); // índice 2: lleva 2
         REQUIRE(wait_for(2));
-        host.after_steps(world, 24, false); // índice 3: ya no
+        host.after_steps(world, 24, false);
         REQUIRE(wait_for(3));
-        CHECK(client.states[0].step == 8);
-        CHECK_FALSE(client.states[0].reset);
+        CHECK(client.states[0].reset_count == 0);
         CHECK(client.states[1].step == 16);
-        CHECK(client.states[1].reset);
-        CHECK(client.states[2].step == 24);
-        CHECK_FALSE(client.states[2].reset);
+        CHECK(client.states[1].reset_count == 2);
+        CHECK(client.states[2].reset_count == 2);
+    }
+
+    SUBCASE("the counter wraps from 255 to 0") {
+        for (int i = 0; i < 255; ++i) {
+            host.after_steps(world, 4, true); // índice 0: solo la primera vez envía
+        }
+        host.after_steps(world, 8, false);
+        host.after_steps(world, 12, true); // la 256: vuelve a 0
+        host.after_steps(world, 16, false);
+        REQUIRE(wait_for(3));
+        CHECK(client.states[0].reset_count == 1);
+        CHECK(client.states[1].reset_count == 255);
+        CHECK(client.states[2].reset_count == 0);
+    }
+
+    SUBCASE("a new world starts the counter at 0") {
+        host.after_steps(world, 8, true);
+        REQUIRE(wait_for(1));
+        CHECK(client.states[0].reset_count == 1);
+        host.set_world("mundo2", "coche", 1);
+        host.after_steps(world, 8, false);
+        const double end = wall_seconds() + 5.0;
+        while (wall_seconds() < end && client.states.size() < 2) {
+            host.service();
+            client.service();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        REQUIRE(client.states.size() >= 2);
+        CHECK(client.states[1].reset_count == 0);
+        CHECK(client.states[1].generation != client.states[0].generation);
     }
 }
