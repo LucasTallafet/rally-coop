@@ -41,7 +41,16 @@ public:
     void begin(int screen_width, int screen_height);
     const ScreenLayout& layout() const { return layout_; }
     const UiMetrics& metrics() const { return layout_.m; }
-    const UiRect& rect(Layer layer) const { return layout_.rect(layer); }
+    // El sitio de la capa en este fotograma: el del diseño, salvo el panel de depuración, que
+    // se ajusta a su contenido (set_debug_rect) dentro del área máxima del diseño.
+    const UiRect& rect(Layer layer) const {
+        return layer == Layer::Debug && debug_rect_set_ ? debug_rect_ : layout_.rect(layer);
+    }
+    // Solo vale en este fotograma: begin() lo borra. El diseño no se toca.
+    void set_debug_rect(const UiRect& r) {
+        debug_rect_ = r;
+        debug_rect_set_ = true;
+    }
     // Esquina de arriba a la izquierda del contenido (dentro del relleno).
     int content_x(Layer layer) const;
     int content_y(Layer layer) const;
@@ -73,6 +82,8 @@ private:
 
     ScreenKind kind_ = ScreenKind::Game;
     ScreenLayout layout_;
+    UiRect debug_rect_;
+    bool debug_rect_set_ = false;
     std::array<Entry, static_cast<std::size_t>(Message::Count)> messages_{};
     std::array<bool, kLayerCount> overflow_{}; // en este fotograma
     std::array<bool, kLayerCount> reported_{}; // ya avisada (el aviso se queda)

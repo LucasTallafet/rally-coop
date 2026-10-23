@@ -78,6 +78,7 @@ add_library(rally_platform STATIC
     gl_probe.cpp
     input.cpp
     keys_raylib.cpp
+    debug_panel.cpp
     overlay.cpp
     perf_counter.cpp
     process_memory.cpp

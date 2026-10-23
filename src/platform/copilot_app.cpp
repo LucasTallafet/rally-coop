@@ -4,6 +4,7 @@
 #include "net/copilot.h"
 #include "platform/camera_space.h"
 #include "platform/copilot_keys.h"
+#include "platform/debug_panel.h"
 #include "platform/demo_camera.h"
 #include "platform/demo_camera_keys.h"
 #include "platform/demo_common.h"
@@ -104,7 +105,7 @@ private:
             ctx_.view = ctx_.view == 1 ? 2 : 1; // persecución / toda la zona (o fija en el recinto)
         }
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
-            debug_visible_ = !debug_visible_;
+            debug_.press();
         }
         if (action_pressed(action(ScreenAction::Help), kCopilotKeyContext)) {
             const int pages = ctx_.overlay.layout().help.pages;
@@ -253,7 +254,7 @@ private:
         if (help_page_ >= 0) {
             draw_help();
         } else {
-            if (debug_visible_) {
+            if (debug_.visible()) {
                 draw_debug(now_s);
             }
             perf.draw(pacer, clock, false, GetScreenWidth(), GetScreenHeight(), overlay);
@@ -291,18 +292,13 @@ private:
     }
 
     void draw_debug(double now_s) {
-        Overlay& overlay = ctx_.overlay;
-        const UiMetrics& m = overlay.metrics();
-        overlay.panel(Layer::Debug, kPanelBackground);
-        const int x = overlay.content_x(Layer::Debug);
-        int y = overlay.content_y(Layer::Debug);
-        const auto line = [&](const char* text, Color color = kText) {
-            overlay.text_fit(Layer::Debug, x, y, text, color);
-            y += m.line;
+        DebugText text;
+        const auto line = [&text](const std::string& s, Color color = kText) {
+            text.add(s, color);
         };
         const net::LinkStats link = net_.stats();
         const net::BufferStats buffer = net_.buffer().stats(now_s);
-        line("DEPURACIÓN (F3)", kTitle);
+        text.block();
         line(TextFormat("estado: %s", std::string(net_.status()).c_str()));
         line(TextFormat("RTT: %.1f ms   estados: %llu", link.rtt_s * 1000.0,
                         static_cast<unsigned long long>(link.received)));
@@ -311,16 +307,19 @@ private:
                         static_cast<unsigned long long>(buffer.late)));
         line(TextFormat("retardo: %.1f ms   extrapola: %s", buffer.delay_s * 1000.0,
                         buffer.extrapolating ? "sí" : "no"));
+        text.block();
         line(TextFormat("paso del host: %u   mundo: %d", buffer.host_step,
                         world_ ? static_cast<int>(generation_) : -1));
         line(!world_         ? "zona: sin mundo"
              : zone_matches_ ? "zona: coincide con la del conductor"
                              : "zona: no coincide con la del conductor",
              zone_matches_ || !world_ ? kText : kError);
+        text.block();
         line(TextFormat("red simulada: %s", std::string(simulated_net_name(level_)).c_str()));
         line(TextFormat("cámara: %s", ctx_.view == 1   ? "persecución"
                                       : ctx_.mode.zone ? "toda la zona"
                                                        : "fija"));
+        debug_.draw(ctx_.overlay, text, now_s);
     }
 
     DemoContext ctx_;
@@ -333,7 +332,7 @@ private:
     std::uint8_t generation_ = 0;
     bool zone_matches_ = true;
     bool have_last_car_ = false;
-    bool debug_visible_ = false;
+    DebugPanel debug_;
     int help_page_ = -1;
     SimulatedNet level_ = SimulatedNet::Off;
 };

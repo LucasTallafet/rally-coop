@@ -175,6 +175,43 @@ struct ScreenLayout {
 std::span<const KeyBinding> help_table(ScreenKind kind);
 ScreenLayout layout_screen(int width, int height, ScreenKind kind = ScreenKind::Game);
 
+// Panel de depuración (F3) a la medida. El rectángulo de Layer::Debug en ScreenLayout es siempre
+// el área máxima (no cambia con el contenido); el panel que se dibuja es un rectángulo de esa área
+// que sale de las líneas de ese fotograma (debug_panel_rect). Las líneas se agrupan en bloques que
+// no se parten: si no caben en el alto del área, se reparten en páginas (F3: 1, 2, ... y oculto).
+struct DebugBlock {
+    int lines = 0; // líneas del bloque (la fila de las barras de los ejes cuenta como una)
+    int width = 0; // ancho en px de la más ancha
+};
+struct DebugPage {
+    int first_block = 0;
+    int block_count = 0;
+    int lines = 0; // con el título; ningún bloque se dibuja más allá de lines - 1
+    int width = 0; // del contenido (la línea más ancha, el título incluido)
+};
+struct DebugPlan {
+    int capacity = 0; // líneas que caben en el área, con el título
+    std::vector<DebugPage> pages;
+};
+// "DEPURACIÓN (F3)" con una página y "DEPURACIÓN (F3 1/2)" con varias (page desde 0).
+std::string debug_title(int page, int pages);
+// Reparto voraz por bloques enteros; un bloque más largo que una página vacía se recorta.
+DebugPlan plan_debug(std::span<const DebugBlock> blocks, const ScreenLayout& layout);
+// El panel de esa página: alto exacto (líneas × línea + 2 × relleno), ancho = contenido + 2 ×
+// relleno, ambos dentro del área máxima.
+UiRect debug_panel_rect(const ScreenLayout& layout, int lines, int content_width);
+// Histéresis de presentación del ancho (no de la simulación): crece al instante y baja como mucho
+// una vez por segundo. El tiempo llega como argumento.
+class WidthHold {
+public:
+    int update(int wanted, double now_s);
+    void reset() { *this = WidthHold(); }
+
+private:
+    int held_ = 0;
+    double changed_s_ = -1.0e9;
+};
+
 // Líneas de peor caso que cada capa tiene que poder mostrar dentro de su rectángulo (menos el
 // relleno). La ayuda y las gráficas se miden con help_grid y graph_header; los mensajes se
 // recortan con "..." al dibujar. Las mismas cifras que dibujan overlay.cpp, perf_counter.cpp y

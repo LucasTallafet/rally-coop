@@ -20,6 +20,8 @@ inline constexpr Color kStrong{250, 200, 90, 255};
 inline constexpr Color kError{255, 110, 90, 255};
 inline constexpr Color kUnavailable{105, 110, 120, 255}; // ayuda: teclas que no valen aquí
 inline constexpr Color kPanelBackground{20, 22, 26, 215};
+// F3, más transparente (la mitad de opacidad; valor de partida, lo juzga Lucas).
+inline constexpr Color kDebugBackground{20, 22, 26, 107};
 // Duración de los mensajes que no son errores persistentes.
 inline constexpr std::int64_t kShortMessageNs = 5'000'000'000;
 inline constexpr std::int64_t kSettingsMessageNs = 10'000'000'000;
