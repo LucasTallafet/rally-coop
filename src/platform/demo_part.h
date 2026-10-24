@@ -151,8 +151,14 @@ struct DemoContext {
     std::optional<std::pair<Vec3d, Vec3d>> camera_override;
 
     // Cámara (demo_camera; K vuelve al ojo).
-    int view = 0;             // Tab: 0 ojo del conductor, 1 persecución, 2 fija o toda la zona
+    int view =
+        0; // Tab: 0 ojo del conductor (copiloto: asiento), 1 persecución, 2 fija o toda la zona
     bool world_float = false; // J: dibujo en float del mundo en vez de relativo
+    // Ventana del copiloto (copilot_app): la vista 0 es el asiento derecho, con su giro (rad, > 0
+    // a la izquierda) hacia el salpicadero. No sirve camera_override: fija "arriba" al vertical
+    // del mundo y el asiento tiene que alabear con el coche.
+    bool copilot_seat = false;
+    double copilot_look_yaw = 0.0;
     FrameCamera frame_camera;
 
     // Fotograma (demo_world): se interpola si no hay pausa y la interpolación está activa.

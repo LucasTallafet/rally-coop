@@ -1,6 +1,7 @@
 #include "platform/demo_camera.h"
 
 #include "platform/camera_space.h"
+#include "platform/copilot_view.h"
 #include "platform/demo_camera_keys.h"
 #include "platform/demo_common.h"
 #include "platform/keys_raylib.h"
@@ -37,7 +38,7 @@ Vector3 to_vector(const Vec3f& v) { return Vector3{v.x, v.y, v.z}; }
 void DemoCamera::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounter& /*perf*/) {
     const std::uint8_t context = ctx.frame_key_context;
     if (action_pressed(action(CameraAction::Camera), context)) {
-        ctx.view = (ctx.view + 1) % 3;
+        ctx.view = next_camera_view(ctx.view);
     }
     if (action_pressed(action(CameraAction::HeadMotion), context)) {
         ctx.settings.head_motion = !ctx.settings.head_motion;
@@ -96,7 +97,12 @@ void DemoCamera::update(DemoContext& ctx) {
         Vec3d local = driver_eye(ctx.car, ctx.settings.seat);
         Vec3d look{0.0, 0.0, -1.0};
         Vec3d head_up{0.0, 1.0, 0.0};
-        if (ctx.head) {
+        if (ctx.copilot_seat) {
+            // Copiloto (platform/copilot_view): el ojo reflejado, sin asiento del jugador ni
+            // cabeza; solo el giro hacia el salpicadero mientras se mantiene la tecla.
+            local = copilot_eye(ctx.car);
+            look = {-std::sin(ctx.copilot_look_yaw), 0.0, -std::cos(ctx.copilot_look_yaw)};
+        } else if (ctx.head) {
             const HeadOffset& h = *ctx.head;
             local = {local.x + h.right, local.y + h.up, local.z - h.forward};
             // Cabeceo alrededor de x (> 0 mira arriba) y alabeo alrededor de la vista (> 0 la
