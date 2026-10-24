@@ -3,7 +3,9 @@
 #include "io/recording.h"
 #include "net/copilot.h"
 #include "platform/camera_space.h"
+#include "platform/cockpit_draw.h"
 #include "platform/copilot_keys.h"
+#include "platform/copilot_view.h"
 #include "platform/debug_panel.h"
 #include "platform/demo_camera.h"
 #include "platform/demo_camera_keys.h"
@@ -32,6 +34,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace rally::platform {
 
@@ -69,7 +72,7 @@ class CopilotApp {
 public:
     explicit CopilotApp(const CopilotArgs& args) {
         ctx_.overlay.set_kind(ScreenKind::Copilot);
-        ctx_.view = 1; // persecución por defecto
+        ctx_.copilot_seat = true; // vista 0: el asiento derecho, la de arranque
         rlSetClipPlanes(DemoCamera::kNearPlane, DemoCamera::kFarPlane);
         start_ns_ = now_ns();
         std::string error;
@@ -83,7 +86,7 @@ public:
     bool update_and_draw(PerfCounter& perf, const FramePacer& pacer, const FixedStepClock& clock) {
         // Un solo reloj por fotograma para el servicio, la muestra y las estadísticas.
         const double now_s = static_cast<double>(now_ns() - start_ns_) * 1e-9;
-        handle_keys(perf);
+        handle_keys(perf, now_s);
         net_.service(now_s);
         if (const std::optional<net::WorldInfo> info = net_.take_world()) {
             build_world(*info);
@@ -100,10 +103,15 @@ public:
     }
 
 private:
-    void handle_keys(PerfCounter& perf) {
+    void handle_keys(PerfCounter& perf, double now_s) {
         if (action_pressed(action(CameraAction::Camera), kCopilotKeyContext)) {
-            ctx_.view = ctx_.view == 1 ? 2 : 1; // persecución / toda la zona (o fija en el recinto)
+            ctx_.view = next_camera_view(ctx_.view); // asiento / persecución / zona (o fija)
         }
+        // B mantenida: la cabeza gira al salpicadero (solo se nota con la cámara del asiento).
+        const double dt_s = std::clamp(now_s - last_key_s_, 0.0, 0.1);
+        last_key_s_ = now_s;
+        look_ = look_step(look_, action_down(action(CopilotAction::LookAtDash)), dt_s);
+        ctx_.copilot_look_yaw = look_yaw(look_);
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
             debug_.press();
         }
@@ -172,6 +180,8 @@ private:
         }
         p.drawn_car = to_pose(world->car_pose());
         have_last_car_ = false;
+        extra_ = net::SampledState{}; // el volante del mundo anterior no se queda
+        cockpit_ = build_cockpit(car.car);
         generation_ = info.generation;
         world_ = std::move(world);
     }
@@ -183,7 +193,7 @@ private:
             return;
         }
         net::Pose sample;
-        if (!net_.buffer().sample(now_s, sample)) {
+        if (!net_.buffer().sample(now_s, sample, extra_)) {
             return;
         }
         Pose& car = ctx_.poses.drawn_car;
@@ -223,6 +233,14 @@ private:
         }
         if (ctx_.desc.car) {
             draw_car(p.drawn_car, ctx_.car, p.drawn_wheels, origin);
+        }
+        if (ctx_.view == 0 && !cockpit_.empty()) {
+            // Interior del conductor con lo que llega por la red: volante y pantalla.
+            const CopilotCockpit c = copilot_cockpit(extra_, ctx_.car);
+            cockpit_frame_ = cockpit_;
+            append_steering_wheel(cockpit_frame_, ctx_.car, c.wheel_angle);
+            append_display(cockpit_frame_, ctx_.car, c.display);
+            draw_cockpit(cockpit_frame_, p.drawn_car, origin);
         }
     }
 
@@ -316,7 +334,8 @@ private:
              zone_matches_ || !world_ ? kText : kError);
         text.block();
         line(TextFormat("red simulada: %s", std::string(simulated_net_name(level_)).c_str()));
-        line(TextFormat("cámara: %s", ctx_.view == 1   ? "persecución"
+        line(TextFormat("cámara: %s", ctx_.view == 0   ? "asiento"
+                                      : ctx_.view == 1 ? "persecución"
                                       : ctx_.mode.zone ? "toda la zona"
                                                        : "fija"));
         debug_.draw(ctx_.overlay, text, now_s);
@@ -332,6 +351,11 @@ private:
     std::uint8_t generation_ = 0;
     bool zone_matches_ = true;
     bool have_last_car_ = false;
+    net::SampledState extra_;
+    std::vector<CockpitTri> cockpit_;       // interior fijo, al construir el mundo
+    std::vector<CockpitTri> cockpit_frame_; // el del fotograma (se reutiliza)
+    double look_ = 0.0;                     // B mantenida: 0 al frente, 1 al salpicadero
+    double last_key_s_ = 0.0;
     DebugPanel debug_;
     int help_page_ = -1;
     SimulatedNet level_ = SimulatedNet::Off;

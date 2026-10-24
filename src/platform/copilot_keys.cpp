@@ -13,6 +13,18 @@ namespace {
 constexpr std::uint8_t a(CopilotAction action) { return static_cast<std::uint8_t>(action); }
 
 constexpr KeyBinding kRows[] = {
+    {a(CopilotAction::LookAtDash),
+     {chord(Key::B), {}},
+     kNoAction,
+     {},
+     PadControl::None,
+     kContextCopilot,
+     KeyBlock::CameraSeat,
+     25,
+     "Mirar al salpicadero: mantener",
+     "solo en la ventana del copiloto (rally.exe --copiloto): mientras se mantiene, la cabeza "
+     "gira 25° a la izquierda hacia el volante y la pantalla del salpicadero; al soltar vuelve; "
+     "solo con la cámara del asiento"},
     {a(CopilotAction::SimulatedNet),
      {chord(Key::Z), {}},
      kNoAction,
@@ -32,17 +44,17 @@ bool same_action(const KeyBinding& b, ActionRef ref) {
 
 std::vector<KeyBinding> make_help_table() {
     const ActionRef wanted[] = {
-        action(CameraAction::Camera),       action(ScreenAction::DebugPanel),
-        action(ScreenAction::Perf),         action(ScreenAction::Help),
-        action(WindowAction::Fullscreen),   action(WindowAction::Exit),
-        action(CopilotAction::SimulatedNet)};
+        action(CameraAction::Camera),        action(ScreenAction::DebugPanel),
+        action(ScreenAction::Perf),          action(ScreenAction::Help),
+        action(WindowAction::Fullscreen),    action(WindowAction::Exit),
+        action(CopilotAction::SimulatedNet), action(CopilotAction::LookAtDash)};
     std::vector<KeyBinding> rows;
     for (const KeyBinding& b : key_table()) {
         for (const ActionRef& ref : wanted) {
             if (same_action(b, ref)) {
                 KeyBinding row = b;
                 if (same_action(b, action(CameraAction::Camera))) {
-                    row.text = "Cámara: persecución / toda la zona";
+                    row.text = "Cámara: asiento / persecución / toda la zona";
                 }
                 rows.push_back(row);
             }

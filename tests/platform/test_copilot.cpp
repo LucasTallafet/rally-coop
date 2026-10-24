@@ -137,9 +137,9 @@ TEST_CASE("copilot keys: Z is free in every context and only fires in the copilo
     CHECK(uses == 1);
 }
 
-TEST_CASE("copilot keys: the copilot help shows only its seven keys") {
+TEST_CASE("copilot keys: the copilot help shows only its eight keys") {
     const std::span<const KeyBinding> table = copilot_help_table();
-    REQUIRE(table.size() == 7);
+    REQUIRE(table.size() == 8);
     std::vector<Key> keys;
     for (const KeyBinding& b : table) {
         keys.push_back(b.keys[0].key);
@@ -147,7 +147,8 @@ TEST_CASE("copilot keys: the copilot help shows only its seven keys") {
         CHECK(in_default_font(binding_label_short(b)));
         CHECK(in_default_font(b.text));
     }
-    for (const Key key : {Key::Z, Key::Tab, Key::F1, Key::F3, Key::H, Key::F11, Key::Escape}) {
+    for (const Key key :
+         {Key::Z, Key::B, Key::Tab, Key::F1, Key::F3, Key::H, Key::F11, Key::Escape}) {
         CHECK(std::count(keys.begin(), keys.end(), key) == 1);
     }
 }

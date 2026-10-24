@@ -32,6 +32,7 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | --- | --- |
 | Tab | Cámara: ojo del conductor (el del archivo del coche más el asiento), persecución y fija (recinto) o toda la zona, por turnos |
 | F9 | Movimiento de la cabeza: sí / no: el ojo se mueve con las aceleraciones del coche (solo la cámara del ojo); se guarda en ajustes.txt |
+| B | Mirar al salpicadero: mantener: solo en la ventana del copiloto (rally.exe --copiloto): mientras se mantiene, la cabeza gira 25° a la izquierda hacia el volante y la pantalla del salpicadero; al soltar vuelve; solo con la cámara del asiento |
 | Re Pág/Av Pág | Asiento: arriba / abajo: 1 cm por pulsación, se repite al mantener; solo la vista del ojo, no la simulación ni la grabación; límite ± 15 cm en cada eje; se guarda en ajustes.txt junto al exe |
 | Inicio/Fin | Asiento: adelante / atrás |
 | Insert/Supr | Asiento: a los lados: derecha / izquierda |

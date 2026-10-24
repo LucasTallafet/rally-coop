@@ -25,4 +25,6 @@ Pose attach(const Pose& body, const Vec3d& local_offset) {
     return out;
 }
 
+int next_camera_view(int view) { return (view + 1) % 3; }
+
 } // namespace rally::platform
