@@ -174,7 +174,7 @@ TEST_CASE("copilot seat: the dash shows the received gear, rpm and boost") {
     CHECK(n.display.boost_fraction == 0.0f);
 }
 
-TEST_CASE("copilot seat: B is the held look, only in the copilot window; Tab names the seat") {
+TEST_CASE("copilot seat: B is the held look, only in the copilot window, and Tab names the seat") {
     const ActionRef b = action(CopilotAction::LookAtDash);
     CHECK(chords_for(b)[0].key == Key::B);
     CHECK(contexts_for(b) == kContextCopilot);
