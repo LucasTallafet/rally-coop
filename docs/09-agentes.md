@@ -52,7 +52,7 @@ Las definiciones están en `.claude/agents/`. **El director** es la sesión prin
 | `carril-herramientas` | `tools/` | Su copia, sus rutas | Sonnet |
 | `verificador` | Release y Debug, ctest, rendimiento; comprueba que cada test nuevo mide lo que dice (lo rompe y lo restaura). Nunca es el autor | Solo dentro de `.claude/worktrees/`, sin commits; termina con la copia limpia | Sonnet |
 | `revisor-determinismo` | Reglas de reproducibilidad (§5, paso 7) | Solo lectura | Opus, esfuerzo alto |
-| `integrador` | Fusiona en `integracion`, regenera lo generado, aplica las propuestas de documentos y los mensajes del consultor, junta los fragmentos de progreso, escribe la prueba del lote y lo cierra tras la promoción | Lo suyo de §4, los documentos del consultor cuando trae su mensaje (nunca `.claude/**`, `tools/ci/**` y `tests/ci/**`), y `mensajes/**` de la copia principal | Sonnet |
+| `integrador` | Fusiona en `integracion`, regenera lo generado, aplica las propuestas de documentos y los mensajes del consultor, junta los fragmentos de progreso, escribe la prueba del lote y lo cierra tras la promoción | Lo suyo de §4, los documentos del consultor cuando trae su mensaje (nunca `.claude/**`, `tools/ci/**` y `tests/ci/**`), y `mensajes/**` de la copia principal; siempre en la copia principal, nunca en una copia de trabajo | Sonnet |
 
 **Uso del plan Pro.** El uso es uno solo para claude.ai (el consultor incluido) y para Claude Code, y Opus gasta bastante más que Sonnet.
 - `mensajes/lote-<N>/estado.md` apunta lo que da `/status` antes y después de cada paso del lote.
@@ -101,6 +101,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    - **Un carril o el verificador con la raíz en la copia principal** (comparada con `CLAUDE_PROJECT_DIR` y con la carpeta padre de `git rev-parse --git-common-dir`) no escribe nada: si su copia de trabajo no se hubiera creado, escribiría en `integracion` sin que nadie lo notara.
    - **Dónde se crean las copias:** Claude Code las crea en `.claude/worktrees/` de la copia principal de git (la carpeta padre de `git rev-parse --git-common-dir`), no en la carpeta en la que se abrió la sesión. Con el director en la copia principal, las dos son la misma; en una sesión abierta en otra copia (el ensayo de la P1b), no. Por eso el hook acepta como carpeta de copias `.claude/worktrees/` de `CLAUDE_PROJECT_DIR` y la de esa carpeta padre.
    - **El verificador:** si su raíz es una copia de una de esas dos carpetas, solo escribe en esa copia; si no, en cualquiera de ellas. Nunca en la principal.
+   - **El integrador** escribe siempre en la copia principal, sea cual sea su carpeta de trabajo (el `cwd` de la llamada): nunca en una copia de `.claude/worktrees/`. En el lote 3, con el `cwd` en la copia de un carril, `prueba-2.md` acabó en el `mensajes/` de esa copia.
 
    `RALLY_SESION` solo la pone Lucas al lanzar Claude Code (por ejemplo, `$env:RALLY_SESION = "juego"; claude`, para una sesión manual en la copia de un carril). El hook hereda el entorno de Claude Code; un agente no puede cambiarlo desde su consola.
 2. **Comprobación de propiedad en la integración** (`tools/ci/propiedad.ps1`). Es la que decide: antes de cada fusión, cruza `git diff --name-only integracion...<rama>` con `propiedad.json` y rechaza la fusión si la rama toca rutas que no son de su carril, haya escrito con la herramienta que haya escrito (Bash, `clang-format -i` o un generador incluidos).
@@ -158,7 +159,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
     - Lo que cambia el diseño o necesita diagnóstico va al consultor.
 11. **Promoción y cierre.**
     - Lucas promueve con `tools/ci/promover.ps1` (§6): empuja `integracion`, `master` y las ramas del lote en una sola orden.
-    - El integrador cierra el lote: fragmentos a `progreso.md`; antes de quitar cada copia, su `mensajes/` a `mensajes/lote-<N>/<tarea>/` de la copia principal (los `mensajes/` de las copias no tienen seguimiento: al borrar la copia se pierden); limpieza de las copias, y lista de documentos cambiados.
+    - El integrador cierra el lote: fragmentos a `progreso.md` (las filas del registro, en «Registro de sesiones»; nunca en «Por fase»); antes de quitar cada copia, su `mensajes/` a `mensajes/lote-<N>/<tarea>/` de la copia principal (los `mensajes/` de las copias no tienen seguimiento: al borrar la copia se pierden); limpieza de las copias, y lista de documentos cambiados.
     - El consultor sube al proyecto los documentos cambiados, leídos de `master`.
 
 ## 6. Comprobaciones automáticas
@@ -166,7 +167,8 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
 - **`tools/ci/comprobar.ps1 [-Debug] [-SinFormato]`:**
   - hace: clang-format, configurar, compilar y ctest;
   - acaba con una línea de resumen: tests, huella, reservas, hash de la telemetría y `kSimVersion`;
-  - si falla, sale con un código distinto de 0.
+  - si falla, sale con un código distinto de 0;
+  - si fallan tests, añade sus nombres (con la fecha, el preset, la rama y el commit) a `mensajes/comprobar-fallos.log` de la copia y guarda una copia del log de ctest. Ese `mensajes/` pasa a `mensajes/lote-<N>/<tarea>/` al cerrar el lote, así que un fallo intermitente no se pierde.
 - **Límite de compilaciones dentro de `comprobar.ps1`.** Dos plazas, hechas con dos mutex con nombre de Windows (`Local\RallyBuild0` y `Local\RallyBuild1`).
   - **No es un semáforo:** un semáforo no tiene dueño, y la plaza de un proceso muerto se pierde. Un mutex abandonado pasa al siguiente que espera.
   - **`AbandonedMutexException` cuenta como plaza conseguida.**

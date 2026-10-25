@@ -28,11 +28,12 @@ Cada jugador tiene una mitad de la información y ninguno puede terminar el tram
 
 | Rol | Qué ve | Qué controla | Cómo se comunica |
 | --- | --- | --- | --- |
-| Conductor | Vista en primera persona por la luna; señales solo en peligros graves; pantalla de notas en el salpicadero | Volante, acelerador, freno, freno de mano, cambio (automático o secuencial), recolocar | Voz |
-| Copiloto | Tablet con mapa, perfil de altura y cinta de ruta; vista por la luna desde el asiento derecho; la pantalla del salpicadero si levanta la vista | Tablet, cursor, dial de notas, dial de distancias, borrar notas; limpiaparabrisas [post-1.0] | Voz, dial o ambos |
+| Conductor | Vista en primera persona por la luna; señales solo en peligros graves; pantalla de notas en el salpicadero | Volante, acelerador, freno, freno de mano, cambio (automático o secuencial), recolocar, mirar | Voz |
+| Copiloto | Tablet con mapa, perfil de altura y cinta de ruta; vista por la luna desde el asiento derecho; la pantalla del salpicadero si levanta la vista | Tablet, cursor, dial de notas, dial de distancias, borrar notas, mirar; limpiaparabrisas [post-1.0] | Voz, dial o ambos |
 
 - La tablet da unos 8–10 s de anticipación. Muestra la geometría de la carretera, nunca la nota de una curva: valorarla es la habilidad del copiloto.
 - El juego es online entre 2 PCs. La voz va por Discord al principio y por una llamada integrada en el juego más adelante (ver `02-arquitectura.md`).
+- **Mirar con la cabeza.** Los dos giran la cabeza sin cambiar el campo de visión; al soltar el stick, vuelve al frente. El conductor mira con el stick derecho y, si conduce con teclado, también con el ratón (con la dirección por ratón, el ratón es el volante). El copiloto mira con el stick derecho o con el ratón; mientras usa la tablet (abre un dial o mueve el cursor o el puntero), la cabeza se queda donde miraba y sigue desde ahí al terminar.
 
 ## 3. Sesión de juego
 
@@ -81,16 +82,16 @@ Las notas se definen por velocidad de paso en unas condiciones de referencia, gr
 - La nota se ancla a un punto de la carretera (su distancia `s` a lo largo del trazado), no a un momento. Aparece en el sitio correcto aunque la red vaya con retraso.
 - El cursor puede ir a **cualquier punto** de la carretera, no solo a las curvas que el juego considera importantes. Así se puede cantar, por ejemplo, un quiebro suave sobre una cresta ("6 derecha sobre cresta").
 - Por defecto apunta al siguiente cambio de dirección sin nota por delante del coche. Al enviar una nota, salta al siguiente. Si el coche pasa el cursor, salta al siguiente por delante del coche.
-- Los botones de hombro saltan al cambio de dirección siguiente o anterior. Mantener un hombro desliza el cursor a lo largo de la carretera, más rápido cuanto más tiempo se mantiene. Con ratón, un clic en cualquier punto de la carretera coloca el cursor ahí.
+- La cruceta salta al cambio de dirección siguiente (arriba) o anterior (abajo). Mantenerla desliza el cursor a lo largo de la carretera, más rápido cuanto más tiempo se mantiene. Con ratón, un clic en cualquier punto de la carretera coloca el cursor ahí (con el puntero fuera, §2).
 
 ### 5.3 Diales
 
 **Dial principal (14 posiciones).** Mitad izquierda para curvas a la izquierda y mitad derecha para las de la derecha, del 6 arriba a la H abajo. El centro cancela.
 
-- **Mando:** dos gestos con el stick izquierdo tras pulsar el botón del dial: un golpe a izquierda o derecha elige el lado, que se muestra en grande; después, una rueda de 7 notas con el 6 arriba y la H abajo. Sin pulsar el botón, el stick nunca elige lado.
+- **Mando:** mantener R1 abre las curvas a la derecha y L1 las de la izquierda, con el lado en grande: una rueda de 7 notas en el stick izquierdo, con el 6 arriba y la H abajo, la misma para los dos lados. Soltar el hombro confirma la nota a la que apunta el stick; con el stick en el centro, cancela. Sin hombro, el stick nunca elige nota.
 - **Ratón:** mantener el botón, apuntar a la flecha y soltar.
 
-**Dial secundario (8 posiciones).** Se abre con el stick derecho. Añade información a la última nota o coloca un peligro solo.
+**Dial secundario (8 posiciones).** Añade información a la última nota o coloca un peligro solo. **Mando:** mantener el gatillo derecho abre su rueda en el stick izquierdo; soltar el gatillo confirma, como las distancias con el izquierdo. Con ratón, se decide en la fase 3.
 
 | Tipo | Opciones |
 | --- | --- |
@@ -205,7 +206,7 @@ El manejo es realista: física de simulación estándar, sin atajos arcade. El p
 
 - La ayuda actúa a partir de unos 30 km/h. Entre 15 y 30 km/h se mezcla de forma suave con el giro completo. Por debajo de 15 km/h, parado y marcha atrás, el stick a fondo da el giro completo. Umbrales provisionales hasta la fase 2.
 
-**Mando del conductor:** stick izquierdo = dirección; gatillos = acelerador y freno; un botón = freno de mano; hombros = subir y bajar marcha; un botón = recolocar. Vibración según superficie y deslizamiento. Todo reasignable. **Teclado:** el giro crece poco a poco mientras se mantiene la tecla y vuelve solo al centro.
+**Mando del conductor:** stick izquierdo = dirección; gatillos = acelerador y freno; un botón = freno de mano; hombros = subir y bajar marcha; un botón = recolocar; stick derecho = mirar (§2). Vibración según superficie y deslizamiento. Todo reasignable. **Teclado:** el giro crece poco a poco mientras se mantiene la tecla y vuelve solo al centro.
 
 ### 7.2 Cambio de marchas
 

@@ -20,12 +20,14 @@ La 1.0 son las fases 1 a 6 (la fase 0 se omitió): el juego cooperativo completo
 | 3 · Corte vertical | Tramo a mano, seguimiento, tablet, diales, panel, red local, registro de notas | 51–85 |
 | 4 · Generador | Analizador, generador, validador con piloto IA, puntuación, dos pasadas | 50–90 |
 | 5 · Entre casas | Red real, cambio de host, resumen, menús | 20–40 |
-| 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido; medida en GTX 1060 | 50–90 |
-| **Total 1.0** | | **~251–439** |
+| 6 · Calidad visual y sonora | Interior, sombras, vegetación, partículas, sonido, objetos que se rompen; medida en GTX 1060 | 62–110 |
+| **Total 1.0** | | **~263–459** |
 
 Revisado al cerrar la fase 1 (2026-10-02): el código de infraestructura se comprime mucho con Claude Code; las horas de ajuste jugando, pruebas con otra persona, Blender, sonido y datos reales no. Se revisa de nuevo al cerrar la fase 2.
 
 Revisado el 2026-10-14: desde la P1b, el desarrollo va por lotes en paralelo (`09-agentes.md`). La infraestructura de la fase 3 que no depende del ajuste del coche empieza durante la 2.10, sin tocar la carretera de prueba de la 2.6b, con la que se mide el criterio de la fase 2. Se vuelve a estimar al cerrar la fase 2.
+
+Revisado el 2026-10-25: los objetos con física que se rompen (vallas, postes, conos) entran en la 1.0, en la fase 6 (+12–20 h).
 
 ## Fase 0 · Pruebas del concepto (~30 h)
 
@@ -115,9 +117,9 @@ Conexión por Tailscale con medida de la variación de latencia y búfer de inte
 
 **Terminado cuando:** se juega una sesión completa de dos pasadas entre dos casas sin tirones visibles, el cambio de host no se nota, cada nota aparece en su sitio y el resumen muestra dónde se perdió el tiempo.
 
-## Fase 6 · Calidad visual y sonora (~50–90 h)
+## Fase 6 · Calidad visual y sonora (~62–110 h)
 
-Interior del coche modelado en Blender; sombras en 3 cascadas; vegetación y masas de bosque; shaders de superficie; partículas de polvo y grava; sonido de motor por capas y mezcla por canales; ajustes gráficos; medida en GTX 1060 o RX 580. Ajuste de ritmo de fotogramas: frecuencia del monitor ÷ N (p. ej. 72 fps en 144 Hz) además del modo de 30, para equipos que no sostienen la frecuencia del monitor.
+Interior del coche modelado en Blender; sombras en 3 cascadas; vegetación y masas de bosque; shaders de superficie; partículas de polvo y grava; sonido de motor por capas y mezcla por canales; objetos con física que se rompen (vallas, postes, conos), creados al construir el mundo y con su estado enviado por el host (`02` §7); ajustes gráficos; medida en GTX 1060 o RX 580. Ajuste de ritmo de fotogramas: frecuencia del monitor ÷ N (p. ej. 72 fps en 144 Hz) además del modo de 30, para equipos que no sostienen la frecuencia del monitor.
 
 **Terminado cuando:** 1080p a 60 fps estables en el equipo mínimo en el caso más caro, y el juego se ve y suena como queréis enseñarlo. **Aquí termina la 1.0.**
 

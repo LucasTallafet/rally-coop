@@ -56,9 +56,10 @@ Versión final de trabajo · 1 de octubre de 2026
 | Giro del mapa en horquillas | Se prueba la tangente frente a un punto 30–50 m por delante | Provisional hasta la fase 3 |
 | Cinta de ruta | Marca cambios de dirección de más de unos 5° con criterio solo geométrico | Provisional hasta la fase 3 |
 | Notas en la tablet | No se dibujan; solo en la pantalla del salpicadero | Provisional hasta la fase 3 |
-| Cursor | Libre sobre todo el trazado; salta entre cambios de dirección o se desliza | Provisional hasta la fase 3 |
+| Cursor | Libre sobre todo el trazado; salta entre cambios de dirección con la cruceta o se desliza | Provisional hasta la fase 3 |
 | Escala de notas | De 6 a H por velocidad de paso en grava seca | Provisional hasta la fase 3 |
-| Diales | Principal de 14 (dos gestos con mando), secundario de 8, distancias de 8 en el gatillo izquierdo | Provisional hasta la fase 3 |
+| Diales | Principal de 14 (R1 y L1 abren cada lado, con una rueda de 7 notas), secundario de 8 en el gatillo derecho, distancias de 8 en el gatillo izquierdo | Provisional hasta la fase 3 |
+| Mirar | Cabeza con el stick derecho; con ratón el copiloto y el conductor que conduce con teclado; se congela mientras el copiloto usa la tablet; sin cambiar el campo de visión | Provisional hasta la fase 3 |
 | Panel del conductor | Curva · distancia · curva; solo lo que pone el copiloto | Provisional hasta la fase 3 |
 | Notas | El juego nunca las corrige, filtra ni une; borrar última o vaciar cola | Cerrada |
 | Densidad de curvas | Máximo fijado con las notas por minuto medidas en la fase 3 | Provisional hasta la fase 3 |
@@ -79,6 +80,7 @@ Versión final de trabajo · 1 de octubre de 2026
 | Coche de la 1.0 | Diseño propio inspirado en el Peugeot 205 T16 Evo 1 (Grupo B, 4×4 con motor central, turbo con retardo real); potencia ajustable hasta ~Evo 2 en el archivo del coche; sin nitro ni ayudas artificiales | Provisional hasta la fase 2 (pruebas de manejo) |
 | Configuraciones de prueba | 205 T16, tipo Quattro S1, tipo Escort Mk2 y tipo Delta Integrale, como archivos de datos del mismo modelo | Provisional hasta la fase 2 |
 | Superficies | Asfalto, grava, tierra, nieve y arena en la 1.0; barro después | Cerrada |
+| Objetos con física | Los que se rompen (vallas, postes, conos) en la 1.0 (fase 6): creados al construir el mundo y con su propio estado desde el host; las cajas del recinto no se sincronizan (depuración) | Provisional hasta la fase 6 |
 
 ## Cambios
 
@@ -139,3 +141,8 @@ Versión final de trabajo · 1 de octubre de 2026
 | 2026-10-22 | Trazado (formato) | Sin formato de archivo | Formato de tramo 1 (`.stage`): planta con rectas, arcos y clotoides de radio con signo; alzado por PIV con curvas verticales parabólicas; peralte, semianchos y superficie por `s`. Solo el esqueleto: la irregularidad, los arcenes y el terreno llegan con el formato 2 y siguientes | Lote 3: base del seguimiento y de la tablet (lote 4) |
 | 2026-10-22 | Forma de desarrollo (lotes) | `verificador` y `revisor-determinismo` a la vez; tareas de arreglo sin carril en el lote; `tests/net/` y `data/stages/` sin dueño | En serie; el director nombra cada arreglo con su carril en el lote antes de lanzarlo; `tests/net/**` del carril juego y `data/stages/**` del carril sim | Lote 1: choque LNK1104 y `propiedad.ps1` sin carril para `telemetria-columnas` y `anillo-ayuda` |
 | 2026-10-23 | Red (sincronía) | Solo el estado del coche, sin regla para lo demás | Todo lo que se mueve en la pantalla del copiloto llega del host; el copiloto nunca simula. En la 1.0 solo el coche es dinámico; los objetos con física de la fase 8 llevan su propio estado. El recolocado viaja como un contador, no como un bit | Prueba del lote 3: con K, en el recinto, cada jugador veía las cajas sueltas en un sitio distinto; y un recolocado cuyo paquete se perdía cruzaba el mapa en el copiloto |
+| 2026-10-25 | Mirar con la cabeza | La cámara miraba siempre al frente (en el copiloto, 25° con la tecla B, que no funcionaba) | Conductor: stick derecho y, conduciendo con teclado, ratón. Copiloto: stick derecho o ratón; mientras usa la tablet, la cabeza se queda donde miraba. Sin cambiar el campo de visión; al soltar el stick, vuelve al frente. Sustituye a la tecla B | Lucas, tras la prueba del lote 3 |
+| 2026-10-25 | Diales y cursor | Dial principal con un golpe de lado tras pulsar su botón; dial secundario en el stick derecho; saltos del cursor en los hombros | R1 o L1 abren el dial principal ya con su lado; el secundario, manteniendo el gatillo derecho (soltar confirma); los saltos del cursor, en la cruceta | El stick derecho pasa a mirar (Lucas, 2026-10-25) |
+| 2026-10-25 | Objetos con física (alcance de la 1.0) | Solo el coche es dinámico en la 1.0 | Objetos que se rompen (vallas, postes, conos) en la fase 6: creados al construir el mundo, cada uno con su estado enviado por el host | Lucas, 2026-10-25 |
+| 2026-10-25 | Estimación 1.0 | ~251–439 h | ~263–459 h (fase 6: 62–110 h) | Objetos con física (+12–20 h) |
+| 2026-10-25 | Forma de desarrollo (barreras) | El integrador escribía en `mensajes/` de la copia en la que estaba su carpeta de trabajo; `comprobar.ps1` no guardaba qué tests fallaban | El integrador solo escribe en la copia principal, sea cual sea su carpeta de trabajo; `comprobar.ps1` apunta los tests que fallan en `mensajes/comprobar-fallos.log` | Lote 3: `prueba-2.md` acabó en la copia de un carril, y un test intermitente quedó sin identificar |
