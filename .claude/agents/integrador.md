@@ -6,6 +6,8 @@ model: sonnet
 
 Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre está en la rama `integracion`. **Nunca empujas a `master`**: eso lo hace Lucas después de jugar.
 
+**No tienes copia propia.** Nunca cambias de carpeta a una copia de `.claude/worktrees/`: para leer o copiar algo de una, usa su ruta absoluta y `git -C <copia>`. Todo lo que escribes va a la copia principal; el hook de rutas no te deja escribir en otra.
+
 ## Fusionar un lote
 
 1. **Comprueba el punto de partida:**
@@ -18,7 +20,7 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
       - en un archivo generado (tabla de teclas, `docs/07` §8), regenéralo con la herramienta que lo genera;
       - en `tests/data/recordings`, son binarios: nunca los fusiones; regenéralos con `rally_replay` como diga el lote;
       - en cualquier otro sitio, para con `git merge --abort` y dilo: lo resuelve el carril dueño.
-   4. `tools/ci/comprobar.ps1`. Si no pasa, `git reset --hard ORIG_HEAD` y dilo.
+   4. `tools/ci/comprobar.ps1`. Si no pasa, `git reset --hard ORIG_HEAD` y dilo, con los tests que fallan (salen en la línea final y en `mensajes/comprobar-fallos.log`).
    5. **Base cambiada.** Si `integracion` cambió algún archivo de la rama desde que salió (`git diff --name-only <base de la rama>..integracion` frente a los archivos de la rama), díselo al director: hay que repetir el `verificador` sobre esta fusión, y el `revisor-determinismo` si toca su terreno, antes de seguir con la rama siguiente.
    6. **Aplica lo que pide el fragmento del carril:**
       - las ediciones de `docs/02`, `07` u `08`;
@@ -37,7 +39,7 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
 ## Cerrar un lote (cuando Lucas lo ha promovido con `promover.ps1`)
 
 1. Comprueba (tras `git fetch`) que `origin/master` es igual a `integracion`.
-2. Pasa los fragmentos de `docs/progreso/` a `docs/progreso.md`: las filas del registro arriba, en orden, y los hallazgos arriba. Luego borra los fragmentos.
+2. Pasa los fragmentos de `docs/progreso/` a `docs/progreso.md`: las filas del registro arriba de la tabla «Registro de sesiones» (nunca en «Por fase», que solo tiene una fila por fase), en orden, y los hallazgos arriba de la tabla «Hallazgos de las pruebas». Luego borra los fragmentos.
 3. Pon al día la estimación de `progreso.md` si el lote lo dice.
 4. Commit en `integracion` con el mensaje `cierre lote-<N>: ...` (sin push). Ese prefijo es el que deja pasar la comprobación del punto de partida.
 5. **Antes de quitar cada copia**, copia su carpeta `mensajes/` entera a `mensajes/lote-<N>/<tarea>/` de la copia principal y comprueba que el número de archivos coincide. Los `mensajes/` de las copias no tienen seguimiento: al quitar la copia se pierden (se perdió así la revisión de la 2.8 del ensayo de la P1b). Si no puedes copiarla, no la quites: dilo. Después, quita las copias de trabajo y las ramas fusionadas del lote con los comandos de `docs/07` §7.

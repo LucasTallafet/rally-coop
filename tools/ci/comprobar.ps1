@@ -9,6 +9,9 @@ límite de dos compilaciones a la vez en el PC.
 2. Con una plaza de compilación: cmake --preset, cmake --build --preset y ctest --preset.
 3. Una línea final con los tests, la huella, las reservas de Jolt, el hash de la telemetría y
    kSimVersion, sacados de las líneas RALLY_SUMMARY de los tests.
+4. Si fallan tests: sus nombres en pantalla y en la línea final, una copia del log de ctest con la
+   fecha (build\<preset>\comprobar-ctest-<fecha>.log) y una entrada en mensajes\comprobar-fallos.log
+   de esta copia.
 
 Plazas: dos mutex con nombre (Local\RallyBuild0 y Local\RallyBuild1), tomados y soltados en el
 hilo del script. Un mutex abandonado (su proceso murió) cuenta como plaza conseguida. No es un
@@ -209,6 +212,47 @@ function Ejecutar([IntPtr]$job, [string]$orden, [string]$log) {
     }
 }
 
+# Nombres de los tests que fallan, de la lista final de ctest («The following tests FAILED:» y una
+# línea «  12 - nombre (Failed)» por test). Vacío si ctest no llegó a escribirla.
+function Get-TestsFallidos([string]$salida) {
+    $nombres = New-Object 'System.Collections.Generic.List[string]'
+    $i = $salida.IndexOf('The following tests FAILED:')
+    if ($i -ge 0) {
+        foreach ($l in @($salida.Substring($i) -split "`r?`n" | Select-Object -Skip 1)) {
+            if ($l -match '^\s*\d+\s+-\s+(.+?)\s+\(([^)]*)\)\s*$') {
+                $nombres.Add(('{0} ({1})' -f $Matches[1], $Matches[2]))
+            } elseif ($l.Trim() -ne '') {
+                break
+            }
+        }
+    }
+    return ,$nombres.ToArray()
+}
+
+# Deja constancia de un fallo de tests: una copia del log de ctest con la fecha y una entrada en
+# mensajes/comprobar-fallos.log de esta copia (mensajes/ no tiene seguimiento; al cerrar el lote,
+# el integrador lo pasa a mensajes/lote-<N>/<tarea>/). Si no puede, avisa y sigue: no tapa el
+# fallo de los tests.
+function Add-RegistroFallo([string]$resumen, [string[]]$nombres) {
+    try {
+        $ahora = Get-Date
+        $copiaLog = Join-Path $build ('comprobar-ctest-{0:yyyyMMdd-HHmmss}.log' -f $ahora)
+        Copy-Item -LiteralPath $ctestLog -Destination $copiaLog
+        $rama = & { $ErrorActionPreference = 'Continue'; & git -C $raiz rev-parse --abbrev-ref HEAD 2>$null }
+        $commit = & { $ErrorActionPreference = 'Continue'; & git -C $raiz rev-parse --short HEAD 2>$null }
+        $lineas = New-Object 'System.Collections.Generic.List[string]'
+        $lineas.Add(('{0:yyyy-MM-dd HH:mm:ss} · {1} · {2} {3} · {4}' -f $ahora, $preset, $rama, $commit, $resumen))
+        if ($nombres.Count -eq 0) { $lineas.Add('  (sin nombres: ctest no llegó a su lista; mira el log)') }
+        foreach ($n in $nombres) { $lineas.Add("  $n") }
+        $lineas.Add("  log: $copiaLog")
+        $carpeta = Join-Path $raiz 'mensajes'
+        New-Item -ItemType Directory -Force -Path $carpeta | Out-Null
+        Add-Content -LiteralPath (Join-Path $carpeta 'comprobar-fallos.log') -Value $lineas.ToArray() -Encoding UTF8
+    } catch {
+        Write-Host "aviso: no se pudo apuntar el fallo en mensajes/comprobar-fallos.log: $_"
+    }
+}
+
 # --- 1. Formato -----------------------------------------------------------------------------
 if (-not $SinFormato) {
     # El del PATH o, si no está, el del paquete de pip (pip --user no siempre deja Scripts en el
@@ -326,6 +370,15 @@ $faltan = @('huella', 'reservas_jolt', 'telemetria', 'sim_version') | Where-Obje
 $linea = 'tests {0}/{1} · huella {2} · reservas Jolt {3} · telemetría {4} · kSimVersion {5} · {6} · plaza {7}' -f
     ($total - [Math]::Max($fallidos, 0)), $total, $valores['huella'], $valores['reservas_jolt'], $valores['telemetria'],
     $valores['sim_version'], $preset, $plaza
-if ($codigoTests -ne 0 -or $fallidos -ne 0) { Terminar 1 "tests: $linea" }
+if ($codigoTests -ne 0 -or $fallidos -ne 0) {
+    $nombres = @(Get-TestsFallidos $texto)
+    if ($nombres.Count -gt 0) {
+        Write-Host 'tests que fallan:'
+        foreach ($n in $nombres) { Write-Host "  $n" }
+    }
+    Add-RegistroFallo $linea $nombres
+    $lista = if ($nombres.Count -gt 0) { ' · fallan: ' + ($nombres -join ', ') } else { '' }
+    Terminar 1 ("tests: $linea" + $lista)
+}
 if (@($faltan).Count -gt 0) { Terminar 1 ("resumen sin {0}: $linea" -f ($faltan -join ', ')) }
 Terminar 0 $linea

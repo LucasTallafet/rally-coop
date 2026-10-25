@@ -179,6 +179,23 @@ def tests_hook():
         esperar("integrador ruta absoluta con unidad en minúscula", 0,
                 lanzar([], entrada(principal, variantes_de_unidad(os.path.join(principal, "docs", "progreso.md"))[0],
                                    "integrador"), env))
+        # El integrador escribe siempre en la copia principal, sea cual sea su cwd.
+        esperar("integrador con cwd en una copia: mensajes de la principal, absoluta", 0,
+                lanzar([], entrada(w1, os.path.join(principal, "mensajes", "lote-9", "prueba.md"), "integrador"), env))
+        esperar("integrador con cwd en una copia: mensajes relativa (cae en la copia)", 2,
+                lanzar([], entrada(w1, "mensajes/lote-9/prueba.md", "integrador"), env))
+        esperar("integrador con cwd en una copia: documento de la principal", 0,
+                lanzar([], entrada(w1, os.path.join(principal, "docs", "02-arquitectura.md"), "integrador"), env))
+        esperar("integrador con cwd en la principal: mensajes de una copia", 2,
+                lanzar([], entrada(principal, os.path.join(w1, "mensajes", "x.md"), "integrador"), env))
+        esperar("integrador con cwd en la principal: progreso de una copia", 2,
+                lanzar([], entrada(principal, os.path.join(w1, "docs", "progreso.md"), "integrador"), env))
+        puente = os.path.join(principal, "puente")
+        hecho = subprocess.run(["cmd", "/c", "mklink", "/J", puente, w1], capture_output=True) if os.name == "nt" else None
+        if hecho is not None and hecho.returncode == 0:
+            esperar("integrador a través de una unión a una copia", 2,
+                    lanzar([], entrada(principal, os.path.join(puente, "mensajes", "x.md"), "integrador"), env))
+            os.rmdir(puente)
 
         # Verificador: en su copia; nunca en la principal ni en otra copia.
         esperar("verificador en su copia", 0, lanzar([], entrada(w1, "src/sim/car.cpp", "verificador"), env))
@@ -244,6 +261,8 @@ def tests_hook():
         esperar("RALLY_SESION=juego en la principal", 2,
                 lanzar([], entrada(principal, "src/game/a.cpp"), con_rol("juego")), "copia principal")
         esperar("RALLY_SESION=integrador", 0, lanzar([], entrada(principal, "docs/02-arquitectura.md"), con_rol("integrador")))
+        esperar("RALLY_SESION=integrador con cwd en una copia: mensajes de la principal", 0,
+                lanzar([], entrada(w1, os.path.join(principal, "mensajes", "lote-9", "prueba.md")), con_rol("integrador")))
         esperar("RALLY_SESION=integrador barreras", 2,
                 lanzar([], entrada(principal, "tools/ci/pre-push"), con_rol("integrador")))
         esperar("RALLY_SESION=libre", 0, lanzar([], entrada(principal, ".claude/hooks/rutas.py"), con_rol("libre")))

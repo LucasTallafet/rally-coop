@@ -8,6 +8,7 @@ Quién escribe:
 - un subagente (campo agent_type): su rol según "agentes" de propiedad.json; otro tipo, nada;
 - la sesión principal (sin agent_type): el rol de la variable RALLY_SESION (un carril,
   "integrador" o "libre"); sin ella, solo mensajes/ de la copia principal.
+- el integrador (agente o RALLY_SESION=integrador) escribe siempre en la copia principal, sea cual sea su cwd.
 
 Raíz de la copia en la que se escribe: git rev-parse --show-toplevel del campo cwd. Copia
 principal: CLAUDE_PROJECT_DIR (la carpeta del proyecto de la sesión). Carpetas de copias de
@@ -209,14 +210,23 @@ def comprobar(entrada, prop):
             bloquear(f"solo su copia de trabajo ({' o '.join(zonas)})")
         return
 
-    rel = relativa(ruta, raiz)
     if rol == "integrador":
-        if rel is not None and (coincide("mensajes/**", rel) or puede_integrador(prop, rel)):
-            return
+        # Siempre en la copia principal, sea cual sea su cwd: no tiene copia propia (lote 3: con el
+        # cwd en la copia de un carril, prueba-2.md acabó en el mensajes/ de esa copia). Nunca en
+        # .claude/worktrees/.
+        for p in sorted({principal, principal_comun(proyecto)}):
+            rel_p = relativa(ruta, p)
+            if rel_p is None or relativa(ruta, os.path.join(p, ".claude", "worktrees")) is not None:
+                continue
+            if coincide("mensajes/**", rel_p) or puede_integrador(prop, rel_p):
+                return
         bloquear(
             "sus rutas de .claude/hooks/propiedad.json, los documentos del consultor (no "
-            ".claude/, tools/ci/ ni tests/ci/) y mensajes/ de su copia"
+            ".claude/, tools/ci/ ni tests/ci/) y mensajes/, siempre en la copia principal "
+            f"({proyecto}), nunca en una copia de .claude/worktrees/"
         )
+
+    rel = relativa(ruta, raiz)
 
     # Un carril (agente o sesión manual con RALLY_SESION).
     if rel is not None and (coincide("mensajes/**", rel) or puede_carril(prop, rol, rel)):
