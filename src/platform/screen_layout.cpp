@@ -286,6 +286,8 @@ int debug_text_width(std::string_view text, int font_size) {
     for (char& c : measured) {
         if (c >= '0' && c <= '9') {
             c = '8';
+        } else if (c == '-') {
+            c = '+'; // el signo más ancho: un par que cambia de signo no mueve el panel
         }
     }
     return text_width(measured, font_size);

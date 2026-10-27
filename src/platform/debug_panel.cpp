@@ -4,6 +4,7 @@
 #include "platform/ui_text.h"
 
 #include <algorithm>
+#include <string>
 
 namespace rally::platform {
 
