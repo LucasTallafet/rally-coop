@@ -171,12 +171,15 @@ Segundo `PhysicsSystem` en coordenadas del coche, al que se le aplican como fuer
 
 Coordenadas del trazado: `s` (distancia a lo largo de la carretera) y `t` (desplazamiento lateral).
 
-- **Incremental en cada paso:** se busca solo en la ventana de `s_prev − 20 m` a `s_prev + v·Δt + 20 m`. Proyección exacta en rectas y arcos; 2–3 iteraciones de Newton en clotoides. Así dos lazadas de una horquilla que pasan a pocos metros nunca compiten.
-- **Índice espacial** (celdas de 10 m con los intervalos de `s` que pasan por cada una): solo para adquirir la posición al empezar, tras una recolocación o tras un vuelo largo.
-- **En carretera** mientras `|t|` es menor que medio ancho de calzada más el arcén. El punto de recolocación solo avanza en carretera.
-- **Atajo:** al volver a la carretera, si la ganancia de `s` supera en más de 30 m a lo recorrido fuera, se recoloca en el punto de salida.
+- **Incremental en cada paso:** se busca solo en la ventana de `s_prev − 20 m` a `s_prev + d + 20 m` (d, lo que se ha movido el origen del coche en planta). Proyección exacta en rectas y arcos (los de más de π se parten al cargar) y, en clotoides, Newton protegido por bisección desde los mínimos de unas muestras del eje a ≤ 0,5 m (`sim/stage_track.h`, `StageTrack::project`). Así dos lazadas de una horquilla que pasan a pocos metros nunca compiten. Si el mínimo cae en un borde de la ventana que no es un extremo del tramo, se adquiere con el índice.
+- **Prolongaciones:** recta de 20 m antes de s = 0 y de 150 m tras la meta, con el rumbo, la pendiente, el peralte, los semianchos y la superficie de cada extremo. Fuera de [−20, L + 150], `s` se queda en el extremo y el coche no está en carretera.
+- **Índice espacial** (celdas de 10 m en planta, en un vector ordenado, con los intervalos de `s` del eje a menos de 60 m de cada celda y, aparte, los que pasan a menos del núcleo más ancho): para adquirir la posición (al salir de la ventana, tras un vuelo largo) y, fuera de la carretera, para ver en cada paso si el coche ha vuelto a la calzada de cualquier pasada (`on_any_road`, que mira cada mínimo local, no solo el eje más cercano).
+- **En carretera** mientras el pie es perpendicular y `|t|` ≤ semiancho de ese lado + 1 m de arcén. La altura no cuenta. El punto de recolocación (`reset_s`) es el máximo de `s` en los pasos en carretera.
+- **Atajo:** al volver a la carretera de cualquier pasada en `s_ret`, si `s_ret − exit_s` supera en más de 30 m a lo recorrido fuera desde `exit_s` (la `s` del último paso en carretera), se recoloca en `exit_s` y cuenta un atajo. Si no, sigue desde `s_ret` (cortar por la cuneta, o caer a una pasada anterior, vale).
+- **Pasada:** empieza con `reset_s` > 0,10 m; un parcial al pasar cada múltiplo de 1000 m de `reset_s` que quede a ≥ 200 m de la meta, y la meta al llegar a L. Un atajo no cuenta parciales ni meta. La simulación cuenta pasos, recolocaciones y atajos; la penalización la aplica quien enseña el tiempo.
+- **Al cargar** (`StageTrack::build`), error «s = …: …» si la malla se plegaría en una curva (|R| ≤ semiancho interior + arcén + 0,5 m) o si los núcleos de dos puntos con |Δs| > 50 m quedan a menos de 1,5 m.
 - Todo lo que necesita "dónde está el coche" lee `s` y `t`: giro del mapa, microrrelieve, notas, puntuación por curva, recolocación.
-- **Tests:** un tramo real con lazadas, recorrido a 10, 50 y 120 km/h, sin saltos ni retrocesos de `s`; y una bajada en línea recta de una lazada a la siguiente, que debe detectarse como atajo.
+- **Tests** (`tests/sim/test_stage_track.cpp`): `lazadas.stage` recorrido a 10, 50 y 120 km/h por el eje y a ±2 m, sin saltos ni retrocesos de `s`; la línea recta de una lazada a la siguiente es un atajo y la vuelta a una pasada anterior no; un corte de curva 0,5 m por debajo del margen vale y 0,5 m por encima no.
 
 ## 6. Tramos
 
