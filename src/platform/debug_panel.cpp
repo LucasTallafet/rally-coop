@@ -19,8 +19,8 @@ DebugDrawn DebugPanel::draw(Overlay& overlay, const DebugText& text, double now_
         block.lines = text.block_size(b);
         for (int i = 0; i < block.lines; ++i) {
             const DebugText::Line& line = lines[static_cast<std::size_t>(text.block_first(b) + i)];
-            block.width = std::max(block.width,
-                                   line.bars ? axis_bars_width(m) : text_width(line.text, m.font));
+            block.width = std::max(block.width, line.bars ? axis_bars_width(m)
+                                                          : debug_text_width(line.text, m.font));
         }
     }
     // overlay.layout() es el área máxima; el rectángulo propio de este fotograma aún no está
