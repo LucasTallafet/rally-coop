@@ -18,8 +18,8 @@ constexpr KeyBinding kRows[] = {
      KeyBlock::Debug,
      10,
      "Panel de depuración",
-     "mando, entradas, impacto, coche, grabación, zona, cámara, asiento y ritmo de fotogramas; en "
-     "el modo a ciegas, sin superficie ni configuración"},
+     "por páginas (F3: página 1, 2... y oculto): mando, entradas, impacto, coche, grabación, zona, "
+     "cámara, asiento y ritmo de fotogramas; en el modo a ciegas, sin superficie ni configuración"},
     {a(ScreenAction::Perf),
      {chord(Key::F1), {}},
      kNoAction,

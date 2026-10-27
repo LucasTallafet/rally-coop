@@ -193,6 +193,14 @@ struct DebugPlan {
     int capacity = 0; // líneas que caben en el área, con el título
     std::vector<DebugPage> pages;
 };
+// Ancho mínimo del contenido del panel, en caracteres «8» de la fuente del momento (escala con la
+// resolución). El panel sigue a la medida por encima de él. Nunca pasa del área del panel.
+inline constexpr int kDebugMinChars = 56;
+int debug_min_content_width(const ScreenLayout& layout);
+// Ancho con el que se mide una línea del panel: el del texto con cada cifra cambiada por «8»
+// (la regla de las muestras de peor caso); el «-» se mide como «+», que es más ancho. Se dibuja el
+// texto real; solo cambia la medida.
+int debug_text_width(std::string_view text, int font_size);
 // "DEPURACIÓN (F3)" con una página y "DEPURACIÓN (F3 1/2)" con varias (page desde 0).
 std::string debug_title(int page, int pages);
 // Reparto voraz por bloques enteros; un bloque más largo que una página vacía se recorta.

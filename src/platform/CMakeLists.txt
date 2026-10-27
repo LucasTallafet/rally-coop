@@ -18,6 +18,7 @@ add_library(rally_loop STATIC
     copilot_args.cpp
     copilot_keys.cpp
     copilot_view.cpp
+    debug_lines.cpp
     demo_actions_keys.cpp
     demo_camera_keys.cpp
     demo_driver_feel_keys.cpp

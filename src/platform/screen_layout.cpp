@@ -274,6 +274,25 @@ std::string debug_title(int page, int pages) {
     return "DEPURACIÓN (F3 " + std::to_string(page + 1) + "/" + std::to_string(pages) + ")";
 }
 
+int debug_min_content_width(const ScreenLayout& layout) {
+    const int wanted =
+        text_width(std::string(static_cast<std::size_t>(kDebugMinChars), '8'), layout.m.font);
+    // En una ventana más pequeña que las de diseño (el copiloto a 640x360) no cabe: el área manda.
+    return std::min(wanted, layout.rect(Layer::Debug).w - 2 * layout.m.padding);
+}
+
+int debug_text_width(std::string_view text, int font_size) {
+    std::string measured(text);
+    for (char& c : measured) {
+        if (c >= '0' && c <= '9') {
+            c = '8';
+        } else if (c == '-') {
+            c = '+'; // el signo más ancho: un par que cambia de signo no mueve el panel
+        }
+    }
+    return text_width(measured, font_size);
+}
+
 DebugPlan plan_debug(std::span<const DebugBlock> blocks, const ScreenLayout& layout) {
     DebugPlan plan;
     const UiRect& area = layout.rect(Layer::Debug);
@@ -307,7 +326,8 @@ DebugPlan plan_debug(std::span<const DebugBlock> blocks, const ScreenLayout& lay
     const int pages = static_cast<int>(plan.pages.size());
     for (int i = 0; i < pages; ++i) {
         DebugPage& p = plan.pages[static_cast<std::size_t>(i)];
-        p.width = std::max(p.width, text_width(debug_title(i, pages), layout.m.font));
+        p.width = std::max({p.width, text_width(debug_title(i, pages), layout.m.font),
+                            debug_min_content_width(layout)});
     }
     return plan;
 }
@@ -540,8 +560,10 @@ int layer_content_width(Layer layer, const ScreenLayout& layout) {
     case Layer::HelpHint:
         return samples_width(kHelpHintSamples, m.font);
     case Layer::Debug:
-        return copilot ? samples_width(kCopilotDebugSamples, m.font)
-                       : std::max(samples_width(kDebugSamples, m.font), axis_bars_width(m));
+        return std::max(debug_min_content_width(layout),
+                        copilot
+                            ? samples_width(kCopilotDebugSamples, m.font)
+                            : std::max(samples_width(kDebugSamples, m.font), axis_bars_width(m)));
     case Layer::Perf:
         return perf_content_width(layout.perf, m);
     case Layer::ActionRing:

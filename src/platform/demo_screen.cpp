@@ -2,6 +2,7 @@
 
 #include "platform/action_driver.h"
 #include "platform/audio_output.h"
+#include "platform/debug_lines.h"
 #include "platform/debug_panel.h"
 #include "platform/demo_common.h"
 #include "platform/demo_screen_keys.h"
@@ -328,22 +329,8 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     }
     {
         const sim::DrivetrainOutput& d = ctx.world->car_controller().drivetrain();
-        line_fit(TextFormat(
-            "motor: %.0f rpm, %.2f bar, %.0f N·m (acel. %.2f); embrague %s%s, desliz. %.1f rad/s, "
-            "%.0f N·m",
-            static_cast<double>(d.engine_omega) * 30.0 / 3.14159265358979323846,
-            static_cast<double>(d.boost) * 1.0e-5, static_cast<double>(d.engine_torque),
-            static_cast<double>(d.throttle),
-            d.clutch == sim::ClutchMode::Closed ? "cerrado" : "arranque",
-            d.clutch_open ? " (abierto)" : "", static_cast<double>(d.clutch_slip),
-            static_cast<double>(d.clutch_torque)));
-        line_fit(TextFormat(
-            "ejes: %.0f / %.0f N·m; central Δω %.2f rad/s, visco %.0f N·m; autobl. %.0f / %.0f "
-            "N·m; LCP %d%s",
-            static_cast<double>(d.axle_torque[0]), static_cast<double>(d.axle_torque[1]),
-            static_cast<double>(d.center_slip), static_cast<double>(d.viscous_torque),
-            static_cast<double>(d.lsd_torque[0]), static_cast<double>(d.lsd_torque[1]),
-            d.lcp_iterations, d.lcp_failures > 0 ? " SIN CONVERGER" : ""));
+        line_fit(debug_motor_line(d));
+        line_fit(debug_axles_line(d));
     }
 
     // Zona: a ciegas no se dice la superficie ni la configuración.

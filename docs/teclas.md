@@ -58,7 +58,7 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 
 | Tecla / mando | Acción |
 | --- | --- |
-| F3 | Panel de depuración: mando, entradas, impacto, coche, grabación, zona, cámara, asiento y ritmo de fotogramas; en el modo a ciegas, sin superficie ni configuración |
+| F3 | Panel de depuración: por páginas (F3: página 1, 2... y oculto): mando, entradas, impacto, coche, grabación, zona, cámara, asiento y ritmo de fotogramas; en el modo a ciegas, sin superficie ni configuración |
 | F1 | Contador de rendimiento: CPU, GPU, draw calls, memoria y gráfica de fotogramas |
 | T | Gráficas de la telemetría: últimos 10 s, por páginas: 1 · manejo (beta, guiñada, velocidad y entradas aplicadas), 2 · tren motriz, 3 · suspensión (carga y compresión por rueda) y ocultas; las páginas sin canales se saltan; en el modo a ciegas no hace nada |
 | O | Recinto a 20 km del origen: y de vuelta |

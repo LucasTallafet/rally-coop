@@ -382,11 +382,11 @@ TEST_CASE("screen_layout: F3 pages hold whole blocks, show every line once and n
                 shown += body;
                 CHECK(p.lines == body + 1);
                 CHECK(p.lines <= plan.capacity);
-                // El ancho es el de la línea más ancha (o el título, si es más ancho).
+                // El ancho es el de la línea más ancha, el título o el mínimo.
                 const int title = text_width(
                     debug_title(static_cast<int>(i), static_cast<int>(plan.pages.size())),
                     layout.m.font);
-                CHECK(p.width == std::max(widest, title));
+                CHECK(p.width == std::max({widest, title, debug_min_content_width(layout)}));
                 const UiRect r = debug_panel_rect(layout, p.lines, p.width);
                 CHECK(r.w == p.width + 2 * layout.m.padding);
                 CHECK(contains(area, r));
@@ -413,12 +413,18 @@ TEST_CASE("screen_layout: the F3 title shows the page only when there are severa
 TEST_CASE("screen_layout: the F3 width is the widest line, the axis bars row included") {
     const ScreenLayout layout = layout_screen(1920, 1080);
     const int bars = axis_bars_width(layout.m);
-    const std::vector<DebugBlock> blocks = {{3, 100}, {1, bars}, {2, 150}};
+    const int wide = debug_min_content_width(layout) + 10;
+    const std::vector<DebugBlock> blocks = {{3, 100}, {1, wide}, {2, 150}};
     const DebugPlan plan = plan_debug(blocks, layout);
     REQUIRE(plan.pages.size() == 1);
-    CHECK(plan.pages[0].width == bars);
+    CHECK(plan.pages[0].width == wide);
+    CHECK(wide > bars);
     CHECK(debug_panel_rect(layout, plan.pages[0].lines, plan.pages[0].width).w ==
-          bars + 2 * layout.m.padding);
+          wide + 2 * layout.m.padding);
+    // La fila de las barras cuenta con su ancho si es la más ancha.
+    const std::vector<DebugBlock> only_bars = {{1, bars}};
+    CHECK(plan_debug(only_bars, layout).pages[0].width ==
+          std::max(bars, debug_min_content_width(layout)));
 }
 
 TEST_CASE("screen_layout: F3 area ends above the ring only where the ring is under it") {
@@ -447,4 +453,90 @@ TEST_CASE("screen_layout: the F3 width grows at once and drops at most once per 
     CHECK(hold.update(100, 2.3) == 100);
     CHECK(hold.update(500, 2.4) == 500);
     CHECK(hold.update(500, 9.0) == 500);
+}
+
+TEST_CASE("screen_layout: F3 measures every digit as an 8, so changing figures do not move it") {
+    const int font = 20;
+    CHECK(debug_text_width("v 12.3 km/h", font) == debug_text_width("v 99.9 km/h", font));
+    CHECK(debug_text_width("v 12.3 km/h", font) == text_width("v 88.8 km/h", font));
+    // Una cifra que gana un dígito sí crece.
+    CHECK(debug_text_width("v 123.4 km/h", font) > debug_text_width("v 12.3 km/h", font));
+    // Cada cifra del 0 al 9 en cada posición.
+    const std::string base = "paso 00000 t 0.00 s";
+    const int expected = debug_text_width(base, font);
+    for (std::size_t at = 0; at < base.size(); ++at) {
+        if (base[at] < '0' || base[at] > '9') {
+            continue;
+        }
+        for (char d = '0'; d <= '9'; ++d) {
+            std::string line = base;
+            line[at] = d;
+            INFO(line);
+            CHECK(debug_text_width(line, font) == expected);
+        }
+    }
+    // Lo que no es cifra se mide tal cual.
+    CHECK(debug_text_width("iiii", font) == text_width("iiii", font));
+    // El panel entero no cambia de ancho con las cifras.
+    for (const DebugCase& c : kDebugCases) {
+        const ScreenLayout layout = layout_screen(c.res.width, c.res.height, c.kind);
+        const std::string wide_line(70, 'w');
+        const auto plan_width = [&](const std::string& tail) {
+            const std::vector<DebugBlock> blocks = {
+                {1, debug_text_width(wide_line + tail, layout.m.font)}};
+            return plan_debug(blocks, layout).pages[0].width;
+        };
+        CHECK(plan_width(" 12.3") == plan_width(" 99.9"));
+        CHECK(plan_width(" 11111") == plan_width(" 98765"));
+    }
+}
+
+namespace {
+int page_width(const std::vector<DebugBlock>& blocks, const ScreenLayout& layout) {
+    return plan_debug(blocks, layout).pages[0].width;
+}
+} // namespace
+
+TEST_CASE("screen_layout: the F3 panel is at least the minimum and grows past it") {
+    for (const DebugCase& c : kDebugCases) {
+        const ScreenLayout layout = layout_screen(c.res.width, c.res.height, c.kind);
+        const int minimum = debug_min_content_width(layout);
+        INFO(c.res.width, "x", c.res.height);
+        if (c.res.width >= 1280) {
+            CHECK(minimum == text_width(std::string(kDebugMinChars, '8'), layout.m.font));
+        }
+        CHECK(page_width({{1, 10}, {2, minimum - 1}}, layout) == minimum);
+        CHECK(page_width({}, layout) == minimum);
+        CHECK(page_width({{1, minimum}}, layout) == minimum);
+        CHECK(page_width({{1, minimum + 25}, {1, 10}}, layout) == minimum + 25);
+    }
+    // WidthHold sigue igual por encima del mínimo: sube al instante y baja una vez por segundo.
+    const ScreenLayout layout = layout_screen(1360, 768);
+    const int minimum = debug_min_content_width(layout);
+    WidthHold hold;
+    const auto width = [&](int line, double now) {
+        return hold.update(page_width({{1, line}}, layout), now);
+    };
+    CHECK(width(10, 0.0) == minimum);
+    CHECK(width(minimum + 60, 0.1) == minimum + 60);
+    CHECK(width(10, 0.5) == minimum + 60);
+    CHECK(width(10, 1.2) == minimum);
+}
+
+TEST_CASE("screen_layout: the F3 minimum fits every area and is at most 60 percent at 1360x768") {
+    for (const DebugCase& c : kDebugCases) {
+        const ScreenLayout layout = layout_screen(c.res.width, c.res.height, c.kind);
+        const UiRect& area = layout.rect(Layer::Debug);
+        INFO(c.res.width, "x", c.res.height);
+        const int wanted = text_width(std::string(kDebugMinChars, '8'), layout.m.font);
+        CHECK(debug_min_content_width(layout) + 2 * layout.m.padding <= area.w);
+        if (c.res.width >= 1280) {
+            // Cabe sin recortarse: es el mínimo que se pidió.
+            CHECK(wanted + 2 * layout.m.padding <= area.w);
+            CHECK(debug_min_content_width(layout) == wanted);
+        }
+    }
+    const ScreenLayout game = layout_screen(1360, 768);
+    CHECK((debug_min_content_width(game) + 2 * game.m.padding) * 100 <=
+          60 * game.rect(Layer::Debug).w);
 }
