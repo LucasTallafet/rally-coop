@@ -724,6 +724,23 @@ std::vector<double> StageAxis::breaks() const {
     return out;
 }
 
+void StageAxis::surface_change_near(double s, double& s_break, Surface& before,
+                                    Surface& after) const {
+    s_break = std::numeric_limits<double>::infinity();
+    before = surface_.front().surface;
+    after = before;
+    double best = std::numeric_limits<double>::infinity();
+    for (std::size_t j = 1; j < surface_.size(); ++j) {
+        const double d = rmath::abs(surface_[j].s - s);
+        if (d < best) {
+            best = d;
+            s_break = surface_[j].s;
+            before = surface_[j - 1].surface;
+            after = surface_[j].surface;
+        }
+    }
+}
+
 std::uint64_t StageAxis::hash() const {
     Fnv1a64 hash;
     hash.add_u32(static_cast<std::uint32_t>(kStageFormatVersion));

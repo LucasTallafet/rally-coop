@@ -3,6 +3,8 @@
 #include "sim/check.h"
 #include "sim/layers.h"
 #include "sim/rmath.h"
+#include "sim/stage_ground.h"
+#include "sim/stage_track.h"
 #include "sim/steer_assist.h"
 #include "sim/test_zone.h"
 
@@ -78,6 +80,8 @@ double ReliefSource::height(MicroRelief relief, Surface surface, double x, doubl
         return zone != nullptr ? zone->micro_height(x, z) : 0.0;
     case MicroRelief::Noise:
         return noise != nullptr ? noise->surface_noise(surface, x, z) : 0.0;
+    case MicroRelief::Stage:
+        return 0.0;
     }
     return 0.0;
 }
@@ -854,12 +858,31 @@ bool CarWheelTester::Collide(JPH::PhysicsSystem& system, const JPH::VehicleConst
         const JPH::Vec3 right = rotation * JPH::Vec3(1.0f, 0.0f, 0.0f);
         const float half_length = 0.5f * controller_.car().footprint_length;
         double sum = 0.0;
-        for (int a = -1; a <= 1; ++a) {
-            for (int b = -1; b <= 1; ++b) {
-                const JPH::Vec3 offset = forward * (static_cast<float>(a) * half_length) +
-                                         right * (static_cast<float>(b) * half_width);
-                sum += relief_.height(material->relief(), surface, center.GetX() + offset.GetX(),
-                                      center.GetZ() + offset.GetZ());
+        if (material->relief() == MicroRelief::Stage) {
+            // Tramo: una proyección por rueda y paso; las muestras, con su desplazamiento.
+            const StageReliefFrame frame =
+                stage_relief_frame(*relief_.stage, relief_.run->s, center.GetX(), center.GetZ());
+            for (int a = -1; a <= 1; ++a) {
+                for (int b = -1; b <= 1; ++b) {
+                    const JPH::Vec3 offset = forward * (static_cast<float>(a) * half_length) +
+                                             right * (static_cast<float>(b) * half_width);
+                    const double ox = offset.GetX();
+                    const double oz = offset.GetZ();
+                    sum += stage_relief_height(frame, *relief_.noise,
+                                               frame.s + ox * frame.tx + oz * frame.tz,
+                                               frame.t - ox * frame.tz + oz * frame.tx,
+                                               center.GetX() + ox, center.GetZ() + oz);
+                }
+            }
+        } else {
+            for (int a = -1; a <= 1; ++a) {
+                for (int b = -1; b <= 1; ++b) {
+                    const JPH::Vec3 offset = forward * (static_cast<float>(a) * half_length) +
+                                             right * (static_cast<float>(b) * half_width);
+                    sum +=
+                        relief_.height(material->relief(), surface, center.GetX() + offset.GetX(),
+                                       center.GetZ() + offset.GetZ());
+                }
             }
         }
         h = sum / 9.0;

@@ -36,6 +36,50 @@ constexpr Variant kVariants[] = {
     {"R 0,75", StageGroundVariant::GridOnly, 0.75, rally::sim::StageGroundKind::GridOnly},
 };
 
+struct PassCost {
+    double mean = 0.0;
+    double p99 = 0.0;
+};
+
+PassCost summarize(std::vector<double>& ms) {
+    PassCost out;
+    for (const double m : ms) {
+        out.mean += m;
+    }
+    out.mean /= static_cast<double>(ms.size());
+    std::sort(ms.begin(), ms.end());
+    out.p99 = ms[ms.size() * 99 / 100];
+    return out;
+}
+
+// Referencia en las mismas condiciones del PC: una pasada de la carretera de la 2.6b
+// (tests/data/recordings/road_run.rrec). Con ella se fijó el presupuesto de §2.6 (0,048 y 0,077
+// ms) y con ella se compara el tramo en la misma ejecución, alternando (respuesta del consultor,
+// §4: tramo / carretera ≤ 1,25 en la media y en el p99).
+PassCost road_pass() {
+    static const rally::io::Recording recording = [] {
+        std::string bytes;
+        std::string error;
+        RALLY_CHECK(
+            rally::io::read_file(RALLY_TEST_DATA_DIR "/recordings/road_run.rrec", bytes, error),
+            "rally_stage_measure: no se puede leer road_run.rrec");
+        return rally::io::parse(bytes).recording;
+    }();
+    rally::sim::SimWorld world;
+    std::string error;
+    RALLY_CHECK(rally::io::build_world(recording, world, error),
+                "rally_stage_measure: no se puede construir road_run.rrec");
+    std::vector<double> ms;
+    for (const rally::io::InputRun& run : recording.runs) {
+        for (std::uint32_t i = 0; i < run.count; ++i) {
+            const auto t0 = Clock::now();
+            world.step(run.input);
+            const auto t1 = Clock::now();
+            ms.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
+        }
+    }
+    return summarize(ms);
+}
 rally::sim::WorldDesc stage_world(const std::string& text, StageGroundVariant variant,
                                   const rally::sim::StageTrack& track, double s, float speed) {
     rally::sim::WorldDesc desc;
@@ -102,7 +146,13 @@ void measure(const char* stage_name, const std::string& text, double start_s, do
         double final_s = 0.0;
         int resets = 0;
         int shortcuts = 0;
+        std::vector<double> road_means;
+        std::vector<double> road_p99s;
         for (int pass = 0; pass < 3; ++pass) {
+            // Alternando: una pasada de la carretera de la 2.6b antes de cada una del tramo.
+            const PassCost road = road_pass();
+            road_means.push_back(road.mean);
+            road_p99s.push_back(road.p99);
             const rally::sim::WorldDesc desc =
                 stage_world(text, v.variant, track, start_s, static_cast<float>(50.0 / 3.6));
             rally::sim::SimWorld world;
@@ -154,56 +204,58 @@ void measure(const char* stage_name, const std::string& text, double start_s, do
         std::printf("        pasadas: media %.4f / %.4f / %.4f ms; p99 %.4f / %.4f / %.4f ms\n",
                     mean_runs[0], mean_runs[1], mean_runs[2], p99_runs[0], p99_runs[1],
                     p99_runs[2]);
+        std::sort(road_means.begin(), road_means.end());
+        std::sort(road_p99s.begin(), road_p99s.end());
+        std::printf("        carretera de la 2.6b alternada: media %.4f ms, p99 %.4f ms; tramo / "
+                    "carretera: "
+                    "media x%.2f, p99 x%.2f (límite x1,25)\n",
+                    road_means[1], road_p99s[1], means[1] / road_means[1], p99s[1] / road_p99s[1]);
     }
-}
-
-// Referencia en las mismas condiciones del PC: la pasada grabada por la carretera de la 2.6b
-// (tests/data/recordings/road_run.rrec), tres veces; media y p99 de cada una. Los presupuestos de
-// §2.6 se fijaron con ella (0,048 y 0,077 ms).
-void road_reference() {
-    std::string bytes;
-    std::string error;
-    if (!rally::io::read_file(RALLY_TEST_DATA_DIR "/recordings/road_run.rrec", bytes, error)) {
-        std::printf("referencia: %s\n", error.c_str());
-        return;
-    }
-    const rally::io::ParseResult parsed = rally::io::parse(bytes);
-    std::printf("\ncarretera de la 2.6b (road_run.rrec):");
-    for (int pass = 0; pass < 3; ++pass) {
-        rally::sim::SimWorld world;
-        if (!rally::io::build_world(parsed.recording, world, error)) {
-            std::printf(" %s\n", error.c_str());
-            return;
-        }
-        std::vector<double> ms;
-        for (const rally::io::InputRun& run : parsed.recording.runs) {
-            for (std::uint32_t i = 0; i < run.count; ++i) {
-                const auto t0 = Clock::now();
-                world.step(run.input);
-                const auto t1 = Clock::now();
-                ms.push_back(std::chrono::duration<double, std::milli>(t1 - t0).count());
-            }
-        }
-        double mean = 0.0;
-        for (const double m : ms) {
-            mean += m;
-        }
-        mean /= static_cast<double>(ms.size());
-        std::sort(ms.begin(), ms.end());
-        std::printf(" media %.4f ms, p99 %.4f ms;", mean, ms[ms.size() * 99 / 100]);
-    }
-    std::printf("\n");
 }
 
 } // namespace
 
+// Coste del microrrelieve del tramo por rueda: el marco (una proyección) y las 9 muestras.
+void relief_cost() {
+    rally::sim::StageTrack track;
+    rally::sim::StageTrack::build(rally::tests::lazadas_stage_text(), track);
+    const rally::sim::TestZone noise;
+    constexpr int kCalls = 200'000;
+    double sum = 0.0;
+    const auto t0 = Clock::now();
+    for (int i = 0; i < kCalls; ++i) {
+        const double s = 1100.0 * static_cast<double>(i) / kCalls;
+        const rally::sim::StagePose p = track.pose(s);
+        const rally::sim::StageReliefFrame f =
+            rally::sim::stage_relief_frame(track, s, p.x + 0.7, p.z + 0.3);
+        sum += f.t;
+    }
+    const auto t1 = Clock::now();
+    for (int i = 0; i < kCalls; ++i) {
+        const double s = 1100.0 * static_cast<double>(i) / kCalls;
+        const rally::sim::StagePose p = track.pose(s);
+        sum += p.x;
+    }
+    const auto t2 = Clock::now();
+    rally::sim::StageReliefFrame f;
+    f.half_left = 3.0;
+    f.half_right = 3.0;
+    f.surface_break = 1e18;
+    for (int i = 0; i < kCalls; ++i) {
+        sum += rally::sim::stage_relief_height(f, noise, 10.0, 0.5 + 1e-5 * i, 1.0 * i, 2.0);
+    }
+    const auto t3 = Clock::now();
+    const double frame_us =
+        std::chrono::duration<double, std::micro>((t1 - t0) - (t2 - t1)).count();
+    std::printf("microrrelieve: marco %.3f µs, una muestra %.3f µs (%g)\n", frame_us / kCalls,
+                std::chrono::duration<double, std::micro>(t3 - t2).count() / kCalls, sum);
+}
+
 int main() {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     const rally::sim::JoltRuntime runtime;
-    road_reference();
+    relief_cost();
     measure("lazadas.stage", rally::tests::lazadas_stage_text(), 0.0, 1150.0);
-    road_reference();
     measure("sintético 30 km", rally::tests::synthetic_stage_30km(), 1000.0, 4000.0);
-    road_reference();
     return 0;
 }

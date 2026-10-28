@@ -44,7 +44,7 @@ constexpr JPH::uint kGroundBlockSize = 4;
 constexpr JPH::uint kGroundBitsPerSample = 8;
 
 // Baldosas del tramo: bloques de 4 × 4 y los bits por muestra que dejan el error de altura de
-// Jolt por debajo de esto (m): el terreno va 2 cm bajo el núcleo y no puede asomar.
+// Jolt por debajo de esto (m): el terreno va 5 mm bajo el núcleo y no puede asomar.
 constexpr float kStageTileMaxError = 0.001f;
 
 // Aborta con el error de Jolt si no pudo crear una forma del tramo.
@@ -59,11 +59,12 @@ void require_shape(const JPH::ShapeSettings::ShapeResult& result, const char* wh
 // Forma del suelo del tramo: un compuesto estático con la malla del núcleo (si la hay) y, en un
 // compuesto anidado, las baldosas, en ese orden. Anidadas, los bits del SubShapeID son 1 + el
 // máximo de la malla y de las baldosas, no su suma: así cabe un tramo de 30 km. Cada forma lleva
-// sus SurfaceMaterial con el microrrelieve de las losas.
+// sus SurfaceMaterial con el microrrelieve del tramo (MicroRelief::Stage: las bandas de las losas,
+// mezcladas en los bordes).
 JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground) {
     JPH::PhysicsMaterialList materials;
     for (int s = 0; s < kSurfaceCount; ++s) {
-        materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), MicroRelief::Noise));
+        materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), MicroRelief::Stage));
     }
     JPH::StaticCompoundShapeSettings compound;
     JPH::StaticCompoundShapeSettings tiles;
@@ -342,7 +343,9 @@ void SimWorld::build(const WorldDesc& desc) {
         const StageGround ground = StageGround::build(
             *w.stage, stage_cell(desc.stage_variant),
             desc.stage_variant == StageGroundVariant::GridOnly ? StageGroundKind::GridOnly
-                                                               : StageGroundKind::Design);
+                                                               : StageGroundKind::Design,
+            desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
+                                                                : StageMeshDensity{});
         w.stage_ground_hash = ground.hash();
         const JPH::Ref<JPH::Shape> shape = stage_shape(ground);
         JPH::Shape::VisitedShapes visited;
@@ -354,7 +357,7 @@ void SimWorld::build(const WorldDesc& desc) {
         RALLY_CHECK(body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
         w.stage_body = body->GetID();
         batch.push_back(w.stage_body);
-        // Las bandas de h de las superficies (MicroRelief::Noise).
+        // Las bandas de h de las superficies (MicroRelief::Stage las mezcla en los bordes).
         w.noise = std::make_unique<TestZone>();
     }
     w.bodies.reserve(desc.bodies.size());
@@ -404,8 +407,11 @@ void SimWorld::build(const WorldDesc& desc) {
             make_car_constraint(*car_body, desc.car_data, -w.system.GetGravity().GetY(), desc.aids,
                                 desc.explicit_wheels);
         w.car_controller = static_cast<CarController*>(w.car_constraint->GetController());
-        w.car_tester = new CarWheelTester(
-            layers::kMoving, ReliefSource{w.zone.get(), w.noise.get()}, *w.car_controller);
+        w.car_tester =
+            new CarWheelTester(layers::kMoving,
+                               ReliefSource{w.zone.get(), w.noise.get(), w.stage.get(),
+                                            w.stage_run ? &w.stage_run->state() : nullptr},
+                               *w.car_controller);
         w.car_constraint->SetVehicleCollisionTester(w.car_tester);
         w.car_controller->set_rolling(desc.car_spawn.speed);
         if (desc.car_spawn.gear != kSpawnGearBySpeed) {
@@ -480,6 +486,10 @@ void SimWorld::step(const SimInput& input) {
     bool moved = reset_pressed; // recolocado en este paso (botón o atajo)
     if (w.car_controller != nullptr) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
+        if (w.stage_run) {
+            // El único sitio que cuenta el paso de la pasada, con botón o sin él.
+            w.stage_run->begin_step();
+        }
         if (reset_pressed) {
             w.reset_car();
             w.last_impact = 0.0f;

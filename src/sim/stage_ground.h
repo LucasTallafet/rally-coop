@@ -30,7 +30,7 @@ namespace rally::sim {
 //   cercano). Si todos los pesos son 0 (el centro de un arco), la altura del pie más cercano.
 //   Solo tienen colisión las muestras a menos de kStageStripCollision del eje.
 
-inline constexpr double kStageTerrainDrop = 0.02;  // terreno bajo el plano del núcleo y del borde
+inline constexpr double kStageTerrainDrop = 0.005; // terreno bajo el plano del núcleo y del borde
 inline constexpr double kStageMeshMaxStep = 2.0;   // paso máximo entre secciones (m)
 inline constexpr double kStageChordPlan = 0.01;    // error de cuerda en planta (m)
 inline constexpr double kStageChordHeight = 0.002; // error de cuerda y alabeo en alzado (m)
@@ -51,8 +51,17 @@ inline constexpr double kStageCell = 0.75; // celda de la rejilla del diseño (m
 inline constexpr float kStageNoCollision = std::numeric_limits<float>::max();
 inline constexpr int kStageSectionVertices = 5;
 
+// Densidad de la malla del núcleo. La del juego son las constantes de arriba; la referencia del
+// criterio 3 en curva (respuesta del consultor a tramo-fisica, §2) es 4 veces más densa.
+struct StageMeshDensity {
+    double max_step = kStageMeshMaxStep;
+    double chord_plan = kStageChordPlan;
+    double chord_height = kStageChordHeight;
+};
+inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005};
+
 // Design: núcleo en malla y terreno en baldosas (§2.6). GridOnly: todo en rejilla, el núcleo con
-// su superficie por celda y sin bajar 2 cm; solo para la medida R de la parte A.
+// su superficie por celda y sin bajada; solo para la medida R de la parte A.
 enum class StageGroundKind : std::uint8_t { Design, GridOnly };
 
 // Vértice respecto al origen del suelo (StageGround::origin_*).
@@ -83,11 +92,45 @@ struct StageTile {
     std::vector<std::uint8_t> surfaces;
 };
 
+class TestZone;
+
+// --- Microrrelieve del tramo (MicroRelief::Stage; respuesta del consultor a tramo-fisica, §1.1) --
+//
+// La h de cada superficie es su banda de ruido (TestZone::surface_noise, en x, z del mundo), como
+// en las losas de los tests, pero mezclada linealmente en una franja de kStageReliefBlend centrada
+// en cada borde: calzada–arcén en ±semiancho, arcén–terreno en ±(semiancho + arcén) y, a lo largo
+// de s, en cada cambio de [surface]. La rueda proyecta su contacto una vez por paso
+// (stage_relief_frame) y sus 9 muestras de la huella usan esa proyección más su desplazamiento.
+// Sin reservas. El dibujo del lote 5 usa las mismas funciones.
+
+inline constexpr double kStageReliefBlend = 0.5; // anchura de la franja de mezcla (m)
+
+struct StageReliefFrame {
+    double s = 0.0; // proyección del punto en el eje
+    double t = 0.0;
+    double tx = 0.0; // avance del eje en s (sin θ, −cos θ)
+    double tz = -1.0;
+    double half_left = 0.0; // semianchos de la calzada en s
+    double half_right = 0.0;
+    double surface_break = 0.0; // s del cambio de [surface] más cercano (+∞ sin cambios)
+    Surface before = Surface::Gravel;
+    Surface after = Surface::Gravel;
+};
+
+// Marco de (x, z): su proyección local en el eje cerca de s_hint (la circunferencia osculatriz de
+// la pose en s_hint: exacta en rectas y arcos) y, si el punto queda fuera del núcleo de esa pasada
+// y de su franja de mezcla y está en la calzada o el arcén de otra, la de esa.
+StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, double x, double z);
+// h en el punto (x, z) que está en (s, t) del marco.
+double stage_relief_height(const StageReliefFrame& frame, const TestZone& noise, double s, double t,
+                           double x, double z);
+
 class StageGround {
 public:
     // `cell`: celda de la rejilla (m). Reserva memoria y tarda: al cargar.
     static StageGround build(const StageTrack& track, double cell = kStageCell,
-                             StageGroundKind kind = StageGroundKind::Design);
+                             StageGroundKind kind = StageGroundKind::Design,
+                             const StageMeshDensity& density = StageMeshDensity{});
 
     // Origen del suelo: el centro de la caja del eje (con las prolongaciones), redondeado al
     // metro. Los vértices y las alturas van en float respecto a él.

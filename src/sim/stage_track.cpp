@@ -714,7 +714,6 @@ void StageRun::placed(StagePlace why, double s, double x, double z) {
 StageRun::Step StageRun::step(double x, double z) {
     const StageTrack& track = *track_;
     StageRunState& st = state_;
-    ++st.steps;
     const double dx = x - st.last_x;
     const double dz = z - st.last_z;
     const double d = rmath::sqrt(dx * dx + dz * dz);

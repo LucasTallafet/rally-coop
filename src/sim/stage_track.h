@@ -150,12 +150,18 @@ public:
         bool shortcut = false; // atajo: recolocar en reset_s (= exit_s)
         double reset_s = 0.0;  // sin atajo: el punto de recolocación actual
     };
-    // Tras cada paso de física, con el origen del coche en planta (la altura no cuenta). Tras un
-    // Step{true, …}, quien llama recoloca el coche en exit_s y llama a placed(Shortcut, …) antes
-    // del siguiente step: si no, cada paso sobre la otra pasada contaría otro atajo.
+    // Cuenta un paso de física (`steps`). Es el único sitio que cuenta: SimWorld lo llama en
+    // cada paso, antes de step() o, con el botón de recolocar, de placed(Button), así que
+    // `steps` son los pasos desde la construcción y start_step, parciales y meta se miden con
+    // él (respuesta del consultor a tramo-fisica, §3).
+    void begin_step() { ++state_.steps; }
+    // Tras cada paso de física (y su begin_step), con el origen del coche en planta (la altura
+    // no cuenta). Tras un Step{true, …}, quien llama recoloca el coche en exit_s y llama a
+    // placed(Shortcut, …) antes del siguiente step: si no, cada paso sobre la otra pasada
+    // contaría otro atajo.
     Step step(double x, double z);
     // Tras recolocar (botón o atajo) o al construir: s, t = 0, en carretera, last_x/z = (x, z).
-    // Start solo antes del primer step (RALLY_CHECK).
+    // No cuenta pasos. Start solo antes del primer paso (RALLY_CHECK).
     void placed(StagePlace why, double s, double x, double z);
     const StageRunState& state() const { return state_; }
 

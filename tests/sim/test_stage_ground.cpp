@@ -4,6 +4,7 @@
 #include "sim/sim_world.h"
 #include "sim/stage_ground.h"
 #include "sim/stage_track.h"
+#include "sim/test_zone.h"
 #include "stage_driver.h"
 
 #include <doctest/doctest.h>
@@ -32,9 +33,17 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x6921'95d8'ade9'8609ull;
+constexpr std::uint64_t kExpectedStageGroundHash = 0x9494'dcf5'e269'9e5aull;
 
 constexpr double kMm = 1.0e-3;
+
+// En Debug, versiones cortas de las pruebas que recorren todo el tramo (respuesta del consultor a
+// tramo-fisica, §5): bastan para Debug = Release; las cifras son las de Release.
+#ifdef NDEBUG
+constexpr bool kFull = true;
+#else
+constexpr bool kFull = false;
+#endif
 // Diagonal de una celda de 0,75 m.
 constexpr double kCellDiagonal = 0.75 * 1.4142135623730951;
 
@@ -125,6 +134,45 @@ rally::sim::WorldDesc stage_only(const std::string& text) {
     rally::sim::WorldDesc desc;
     desc.stage_text = text;
     return desc;
+}
+
+// Altura del terreno en (x, z) con la triangulación de HeightFieldShape (diagonal de (i, k) a
+// (i + 1, k + 1)), desde las muestras sin cuantizar. NaN sin colisión.
+double terrain_at(const StageGround& g, double x, double z) {
+    const double fx = (x - g.origin_x()) / g.cell();
+    const double fz = (z - g.origin_z()) / g.cell();
+    const auto i = static_cast<std::int64_t>(std::floor(fx));
+    const auto k = static_cast<std::int64_t>(std::floor(fz));
+    const auto floor_div = [](std::int64_t a, std::int64_t b) {
+        return a >= 0 ? a / b : -((-a + b - 1) / b);
+    };
+    const std::int64_t tx = floor_div(i, rally::sim::kStageTileCells);
+    const std::int64_t tz = floor_div(k, rally::sim::kStageTileCells);
+    for (const rally::sim::StageTile& tile : g.tiles()) {
+        if (tile.tx != tx || tile.tz != tz) {
+            continue;
+        }
+        const auto li = static_cast<int>(i - tx * rally::sim::kStageTileCells);
+        const auto lk = static_cast<int>(k - tz * rally::sim::kStageTileCells);
+        constexpr int n = rally::sim::kStageTileSamples;
+        const auto at = [&](int a, int b) {
+            return static_cast<double>(
+                tile.heights[static_cast<std::size_t>((lk + b) * n + li + a)]);
+        };
+        const double h00 = at(0, 0);
+        const double h10 = at(1, 0);
+        const double h01 = at(0, 1);
+        const double h11 = at(1, 1);
+        if (h00 >= 1e30 || h10 >= 1e30 || h01 >= 1e30 || h11 >= 1e30) {
+            return std::nan("");
+        }
+        const double u = fx - static_cast<double>(i);
+        const double v = fz - static_cast<double>(k);
+        const double h = v >= u ? h00 + v * (h01 - h00) + u * (h11 - h01)
+                                : h00 + u * (h10 - h00) + v * (h11 - h10);
+        return h + g.origin_y();
+    }
+    return std::nan("");
 }
 
 // Mayor diferencia de altura entre dos muestras vecinas con colisión.
@@ -323,8 +371,85 @@ TEST_CASE(
     CHECK(wrong == 0);
 }
 
-// --- Criterio 4: terreno
-// ---------------------------------------------------------------------------
+// --- Microrrelieve del tramo (respuesta del consultor §1.1) ---
+
+namespace {
+
+// h en (x, z) con un marco propio (la proyección exacta del punto), como una rueda.
+double relief_at(const StageTrack& track, const rally::sim::TestZone& noise, double s_hint,
+                 double x, double z) {
+    const rally::sim::StageReliefFrame f = rally::sim::stage_relief_frame(track, s_hint, x, z);
+    return rally::sim::stage_relief_height(f, noise, f.s, f.t, x, z);
+}
+
+// La misma h sin mezclar: la banda de la superficie del sitio (lo que hacía MicroRelief::Noise).
+double unblended_at(const StageTrack& track, const rally::sim::TestZone& noise, double s, double t,
+                    double x, double z) {
+    const StagePose p = track.pose(s);
+    const double w = half_width(p, t);
+    const double a = std::abs(t);
+    Surface surface = Surface::Dirt;
+    if (a <= w) {
+        surface = p.surface;
+    } else if (a <= w + kStageShoulderWidth) {
+        surface = Surface::Sand;
+    }
+    return noise.surface_noise(surface, x, z);
+}
+
+} // namespace
+
+TEST_CASE("stage_ground: the micro relief has no step across the road edges and surface changes") {
+    const StageTrack& track = lazadas();
+    const rally::sim::TestZone noise;
+    rally::sim::Pcg32 rng(15, 1000);
+    double blended = 0.0;
+    double raw = 0.0;
+    // 1000 sitios: una recta de cada lado, del eje a 1 m fuera del arcén, cada 1 cm.
+    for (int i = 0; i < (kFull ? 1000 : 100); ++i) {
+        const double s = rand01(rng) * track.axis().length();
+        const StagePose p = track.pose(s);
+        const double side = (i & 1) != 0 ? 1.0 : -1.0;
+        const double end = half_width(p, side) + kStageShoulderWidth + 1.0;
+        double previous = 0.0;
+        double previous_raw = 0.0;
+        for (int k = 0; k * 0.01 <= end; ++k) {
+            const double t = side * k * 0.01;
+            const Point q = at(track, s, t);
+            const double h = relief_at(track, noise, s, q.x, q.z);
+            const double r = unblended_at(track, noise, s, t, q.x, q.z);
+            if (k > 0) {
+                blended = std::max(blended, std::abs(h - previous));
+                raw = std::max(raw, std::abs(r - previous_raw));
+            }
+            previous = h;
+            previous_raw = r;
+        }
+    }
+    // Y a lo largo de s en el cambio de grava a tierra (s = 650), en 50 rectas de la calzada.
+    double along = 0.0;
+    for (int i = 0; i < 50; ++i) {
+        const double t = -2.5 + 5.0 * rand01(rng);
+        double previous = 0.0;
+        for (int k = 0; k <= 200; ++k) {
+            const double s = 649.0 + 0.01 * k;
+            const Point q = at(track, s, t);
+            const double h = relief_at(track, noise, s, q.x, q.z);
+            if (k > 0) {
+                along = std::max(along, std::abs(h - previous));
+            }
+            previous = h;
+        }
+    }
+    MESSAGE("mayor salto de h en 1 cm: ", blended / kMm, " mm cruzando los bordes, ", along / kMm,
+            " mm en el cambio de superficie; sin mezclar, ", raw / kMm, " mm");
+    CHECK(blended <= 1.5 * kMm);
+    CHECK(along <= 1.5 * kMm);
+    // Las rectas ven el salto que la mezcla quita.
+    CHECK(raw > 1.5 * kMm);
+}
+
+// --- Criterio 4: terreno ---
 
 TEST_CASE("stage_ground: every sample is finite and the strip has ground up to 59.4 m and none "
           "past 60.5 m") {
@@ -338,7 +463,14 @@ TEST_CASE("stage_ground: every sample is finite and the strip has ground up to 5
         std::size_t collide = 0;
         double farthest = 0.0;
         double nearest_without = 1e9;
+        std::size_t index = 0;
         for_each_sample(g, [&](double x, double z, double h, bool has) {
+            // En Debug, una muestra de cada 17 (versión corta).
+            if constexpr (!kFull) {
+                if ((index++ % 17) != 0) {
+                    return;
+                }
+            }
             const double d = track.acquire(x, z).distance;
             if (has) {
                 ++collide;
@@ -393,10 +525,11 @@ TEST_CASE("stage_ground: a ray 59 m from the axis hits the ground and one 61 m a
     CHECK(wrong == 0);
 }
 
-TEST_CASE("stage_ground: the terrain is 2 cm under the core and at the edge height past one cell") {
+TEST_CASE(
+    "stage_ground: the terrain is the drop under the core and at the edge height past one cell") {
     const StageTrack& track = lazadas();
     const StageGround& g = lazadas_ground();
-    double under = 0.0;      // |H − (plano − 2 cm)| bajo el núcleo
+    double under = 0.0;      // |H − (plano − bajada)| bajo el núcleo
     double first_cell = 0.0; // |H − borde| en la primera celda (≤ 5 cm)
     double one_cell = 0.0;   // |H − borde| de una celda a la diagonal (también en las lazadas)
     double alone = 0.0;      // |H − borde| hasta 10 m fuera, sin otra pasada a 30 m
@@ -404,9 +537,16 @@ TEST_CASE("stage_ground: the terrain is 2 cm under the core and at the edge heig
     int n_under = 0;
     int n_one = 0;
     int n_alone = 0;
+    std::size_t index = 0;
     for_each_sample(g, [&](double x, double z, double h, bool has) {
         if (!has) {
             return;
+        }
+        // En Debug, una muestra de cada 17 (versión corta).
+        if constexpr (!kFull) {
+            if ((index++ % 17) != 0) {
+                return;
+            }
         }
         StageProjection p;
         if (track.on_any_road(x, z, p)) {
@@ -438,7 +578,7 @@ TEST_CASE("stage_ground: the terrain is 2 cm under the core and at the edge heig
             gap_15 = std::max(gap_15, off);
         }
     });
-    MESSAGE("bajo el núcleo (", n_under, " muestras): ", under / kMm, " mm del plano − 2 cm");
+    MESSAGE("bajo el núcleo (", n_under, " muestras): ", under / kMm, " mm del plano − 5 mm");
     MESSAGE("primera celda: ", first_cell / kMm, " mm del borde; de una celda a la diagonal (",
             n_one, "): ", one_cell / kMm, " mm; solas hasta 10 m (", n_alone, "): ", alone / kMm,
             " mm; a 1,5 m en el hueco de las lazadas: ", gap_15 / kMm, " mm");
@@ -447,6 +587,44 @@ TEST_CASE("stage_ground: the terrain is 2 cm under the core and at the edge heig
     CHECK(first_cell <= 0.05);
     CHECK(one_cell <= kStageTerrainDrop + kMm);
     CHECK(alone <= kStageTerrainDrop + kMm);
+}
+
+TEST_CASE("stage_ground: under the core the grid stays below the mesh") {
+    // Respuesta del consultor §1.2: el terreno baja 5 mm bajo el núcleo; en 10 000 puntos de
+    // los núcleos de lazadas (hasta el borde exterior del arcén), la rejilla queda bajo la malla.
+    const rally::sim::JoltRuntime runtime;
+    const StageTrack& track = lazadas();
+    const StageGround& g = lazadas_ground();
+    rally::sim::SimWorld world;
+    world.build(stage_only(rally::tests::lazadas_stage_text()));
+    world.seal();
+    rally::sim::Pcg32 rng(10'000, 5);
+    double lowest = 1e9;
+    double worst_s = 0.0;
+    double worst_t = 0.0;
+    int above = 0;
+    for (int i = 0; i < (kFull ? 10'000 : 2'000); ++i) {
+        const double s = track.s_begin() + (track.s_end() - track.s_begin()) * rand01(rng);
+        const StagePose p = track.pose(s);
+        const double left = p.half_width_left + kStageShoulderWidth;
+        const double right = p.half_width_right + kStageShoulderWidth;
+        const double t = -left + (left + right) * rand01(rng);
+        const Point q = at(track, s, t);
+        const rally::sim::GroundProbe mesh = world.probe_ground(q.x, q.z);
+        const double terrain = terrain_at(g, q.x, q.z);
+        REQUIRE(mesh.hit);
+        REQUIRE(std::isfinite(terrain));
+        const double margin = mesh.y - terrain;
+        above += margin <= 0.0 ? 1 : 0;
+        if (margin < lowest) {
+            lowest = margin;
+            worst_s = s;
+            worst_t = t;
+        }
+    }
+    MESSAGE("rejilla bajo la malla: margen mínimo ", lowest / kMm, " mm (s = ", worst_s,
+            ", t = ", worst_t, "); puntos con la rejilla encima: ", above);
+    CHECK(above == 0);
 }
 
 TEST_CASE("stage_ground: far from other passes the terrain is flat across at the edge height") {
@@ -486,7 +664,7 @@ TEST_CASE("stage_ground: far from other passes the terrain is flat across at the
         slope = std::max(slope, std::abs(gb.y - ga.y) / 8.0);
     }
     MESSAGE("llano lejos de otras pasadas: a ", worst / kMm,
-            " mm de borde − 2 cm; pendiente "
+            " mm de borde − 5 mm; pendiente "
             "lateral ",
             100.0 * slope, " %");
     CHECK(worst <= 2.0 * kMm);
@@ -586,6 +764,11 @@ TEST_CASE("stage_ground: the terrain is continuous, also where the curvature jum
     // Una función continua: el mayor salto entre muestras vecinas baja con la celda. Un salto de
     // verdad (un pie que muere con peso) no bajaría.
     for (const bool hairpin : {false, true}) {
+        if constexpr (!kFull) {
+            if (!hairpin) {
+                continue; // Debug: solo la horquilla (versión corta)
+            }
+        }
         const StageTrack track =
             load(hairpin ? hairpin_grade_text() : rally::tests::lazadas_stage_text());
         const double coarse = max_neighbour_step(StageGround::build(track, 0.75));

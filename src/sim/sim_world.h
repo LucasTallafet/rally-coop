@@ -60,9 +60,10 @@ struct CarSpawn {
 };
 
 // Suelo del tramo de WorldDesc::stage_text. Design es el del juego (núcleo en malla y terreno en
-// baldosas de 0,75 m, sim/stage_ground.h); los otros dos solo los usa la medida de la parte A de
-// tramo-fisica (tests): baldosas de 1,5 m, y todo en rejilla de 0,75 m con la superficie por celda.
-enum class StageGroundVariant : std::uint8_t { Design, CoarseTiles, GridOnly };
+// baldosas de 0,75 m, sim/stage_ground.h); los demás solo los usan los tests de tramo-fisica: la
+// medida de la parte A (baldosas de 1,5 m, y todo en rejilla de 0,75 m con la superficie por
+// celda) y la referencia del criterio 3 en curva (la malla 4 veces más densa).
+enum class StageGroundVariant : std::uint8_t { Design, CoarseTiles, GridOnly, DenseMesh };
 
 // Descripción del mundo. Primero el suelo y los muros de la zona de pruebas o el suelo del tramo
 // (si los hay), después los cuerpos en el orden de `bodies` y al final el coche: los BodyID

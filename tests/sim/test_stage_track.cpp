@@ -89,6 +89,12 @@ Point at(const StageTrack& track, double s, double t) {
 
 double dist(Point a, Point b) { return std::hypot(a.x - b.x, a.z - b.z); }
 
+// Un paso de la pasada como lo da SimWorld: begin_step() cuenta el paso y step() decide.
+StageRun::Step step_run(StageRun& run, double x, double z) {
+    run.begin_step();
+    return run.step(x, z);
+}
+
 // Lleva el punto por (s, t) de s_from a s_to a `speed` m/s; f(s_real, step) tras cada paso.
 // Devuelve el último Step.
 template <typename F>
@@ -100,7 +106,7 @@ StageRun::Step drive_s(const StageTrack& track, StageRun& run, double s_from, do
     while (s != s_to) {
         s = (ds > 0.0) ? std::min(s + ds, s_to) : std::max(s + ds, s_to);
         const Point p = at(track, s, t);
-        step = run.step(p.x, p.z);
+        step = step_run(run, p.x, p.z);
         f(s, step);
     }
     return step;
@@ -114,7 +120,7 @@ StageRun::Step drive_line(StageRun& run, Point from, Point to, double speed, F&&
     for (int i = 1; i <= steps; ++i) {
         const double u = static_cast<double>(i) / steps;
         const Point p{from.x + (to.x - from.x) * u, from.z + (to.z - from.z) * u};
-        step = run.step(p.x, p.z);
+        step = step_run(run, p.x, p.z);
         if (!f(p, step)) {
             break;
         }
@@ -744,7 +750,7 @@ TEST_CASE("stage_track: reset_s is the furthest s on the road and placed resets 
     const double still = run.state().s;
     const Point p = at(track, 40.0, 1.0);
     for (int i = 0; i < 100; ++i) {
-        run.step(p.x, p.z);
+        step_run(run, p.x, p.z);
     }
     CHECK(run.state().s == still);
     CHECK(run.state().steps == steps + 100);
@@ -789,7 +795,7 @@ TEST_CASE("stage_track: a long jump without placed is acquired again") {
     place(run, track, StagePlace::Start, 90.0);
     drive_s(track, run, 90.0, 100.0, 0.0, 50.0 / 3.6, kNothing);
     const Point far = at(track, 400.0, 1.0);
-    run.step(far.x, far.z);
+    step_run(run, far.x, far.z);
     CHECK(std::abs(run.state().s - 400.0) <= kMm);
     CHECK(run.state().t == doctest::Approx(1.0).epsilon(1e-6));
     CHECK(run.state().on_road);
@@ -973,7 +979,7 @@ TEST_CASE("stage_track: 100000 steps on the road, off it and acquiring do not al
     for (int i = 0; i < 40'000; ++i) {
         s = std::min(s + 50.0 / 3.6 * kDt, track.s_end());
         const Point p = at(track, s, 1.0);
-        sum += run.step(p.x, p.z).reset_s;
+        sum += step_run(run, p.x, p.z).reset_s;
     }
     // Fuera (con atajos y vueltas) y adquiriendo (saltos sin placed).
     s = 0.0;
@@ -984,7 +990,7 @@ TEST_CASE("stage_track: 100000 steps on the road, off it and acquiring do not al
         }
         const double t = (i / 1000) % 2 == 0 ? -7.0 : 9.0;
         const Point p = at(track, s, t);
-        const StageRun::Step step = run.step(p.x, p.z);
+        const StageRun::Step step = step_run(run, p.x, p.z);
         if (step.shortcut) {
             const Point e = at(track, step.reset_s, 0.0);
             run.placed(StagePlace::Shortcut, step.reset_s, e.x, e.z);
@@ -1017,7 +1023,7 @@ double step_cost(const StageTrack& track, double t, int steps) {
             place(run, track, StagePlace::Start, s);
         }
         const Point p = at(track, s, t);
-        sum += run.step(p.x, p.z).reset_s;
+        sum += step_run(run, p.x, p.z).reset_s;
     }
     const auto t1 = std::chrono::steady_clock::now();
     CHECK(sum != 0.0);

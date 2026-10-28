@@ -3,6 +3,7 @@
 #include "sim/check.h"
 #include "sim/fnv1a.h"
 #include "sim/rmath.h"
+#include "sim/test_zone.h"
 
 #include <algorithm>
 #include <bit>
@@ -414,7 +415,7 @@ bool blend(const Acc& a, double& h) {
 
 // s de las secciones del núcleo: en cada marca del eje y, entre dos, n partes iguales con el
 // paso más largo que cumple los errores de cuerda, el alabeo y el paso máximo.
-std::vector<double> section_positions(const StageTrack& track) {
+std::vector<double> section_positions(const StageTrack& track, const StageMeshDensity& density) {
     std::vector<double> marks;
     marks.push_back(track.s_begin());
     for (const double b : track.axis().breaks()) {
@@ -450,21 +451,22 @@ std::vector<double> section_positions(const StageTrack& track) {
             rmath::max(rmath::abs(pb.half_width_left - pa.half_width_left),
                        rmath::abs(pb.half_width_right - pa.half_width_right)) /
             span;
-        double step = kStageMeshMaxStep;
+        double step = density.max_step;
         if (curvature > 0.0) {
             // Sagita de la línea de arcén exterior: Δs²·κ·(1 + κ·e)/8.
-            step = rmath::min(
-                step, rmath::sqrt(8.0 * kStageChordPlan / (curvature * (1.0 + curvature * edge))));
+            step = rmath::min(step, rmath::sqrt(8.0 * density.chord_plan /
+                                                (curvature * (1.0 + curvature * edge))));
         }
         // y'' de cada línea: y'' + 2·peralte'·semiancho' (peralte y semianchos lineales).
         const double line_curvature =
             rmath::abs(pm.vertical_curvature) + 2.0 * bank_rate * width_rate;
         if (line_curvature > 0.0) {
-            step = rmath::min(step, rmath::sqrt(8.0 * kStageChordHeight / line_curvature));
+            step = rmath::min(step, rmath::sqrt(8.0 * density.chord_height / line_curvature));
         }
         // Alabeo en el centro de cada cuadrilátero: Δperalte·ancho/4.
         if (bank_rate > 0.0) {
-            step = rmath::min(step, 4.0 * kStageChordHeight / (bank_rate * rmath::max(half, 1.0)));
+            step =
+                rmath::min(step, 4.0 * density.chord_height / (bank_rate * rmath::max(half, 1.0)));
         }
         const auto n = static_cast<int>(rmath::max(1.0, rmath::ceil(span / step)));
         for (int k = 0; k < n; ++k) {
@@ -477,12 +479,13 @@ std::vector<double> section_positions(const StageTrack& track) {
 
 } // namespace
 
-StageGround StageGround::build(const StageTrack& track, double cell, StageGroundKind kind) {
+StageGround StageGround::build(const StageTrack& track, double cell, StageGroundKind kind,
+                               const StageMeshDensity& density) {
     RALLY_CHECK(cell > 0.0, "StageGround::build: celda no válida");
     StageGround g;
     g.cell_ = cell;
     g.kind_ = kind;
-    const std::vector<double> sections = section_positions(track);
+    const std::vector<double> sections = section_positions(track, density);
 
     // Origen: centro de la caja del eje con las prolongaciones, redondeado al metro.
     {
@@ -678,6 +681,112 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
         e = end;
     }
     return g;
+}
+
+namespace {
+
+// Proyección local de (x, z) en el eje cerca de la pose `p`: exacta en rectas y arcos (la
+// circunferencia osculatriz en `p`) y, en una clotoide, con un error de la curvatura en los
+// pocos metros que hay de la rueda al origen del coche. Sin búsquedas: una pose, una raíz y un
+// atan2 (la proyección por piezas de StageTrack::project costaba 1,6 µs por rueda).
+void local_projection(const StagePose& p, double x, double z, double& s, double& t,
+                      double& heading) {
+    const double tx = rmath::sin(p.heading);
+    const double tz = -rmath::cos(p.heading);
+    // Derecha N = (−T_z, T_x).
+    const double nx = -tz;
+    const double nz = tx;
+    const double dx = x - p.x;
+    const double dz = z - p.z;
+    constexpr double kStraight = 1.0e-9;
+    if (rmath::abs(p.curvature) < kStraight) {
+        s = p.s + dx * tx + dz * tz;
+        t = dx * nx + dz * nz;
+        heading = p.heading;
+        return;
+    }
+    const double r = 1.0 / p.curvature; // con signo: + centro a la derecha
+    const double cx = p.x + r * nx;     // centro de curvatura
+    const double cz = p.z + r * nz;
+    const double ux = x - cx;
+    const double uz = z - cz;
+    const double dist = rmath::sqrt(ux * ux + uz * uz);
+    const double sign = r > 0.0 ? 1.0 : -1.0;
+    // Del centro al eje en `p`: −sign·N; el ángulo avanza hacia T.
+    const double along = ux * tx + uz * tz;
+    const double back = -sign * (ux * nx + uz * nz);
+    const double phi = rmath::atan2(along, back);
+    s = p.s + phi * rmath::abs(r);
+    t = r - sign * dist;
+    heading = p.heading + phi * sign;
+}
+
+} // namespace
+
+StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, double x, double z) {
+    // Proyección local cerca de la s de la pasada (las ruedas están a menos de 1,5 m del origen
+    // del coche, cuya s es s_hint del paso anterior).
+    StagePose pose = track.pose(s_hint);
+    double s = 0.0;
+    double t = 0.0;
+    double heading = 0.0;
+    local_projection(pose, x, z, s, t, heading);
+    s = rmath::clamp(s, track.s_begin(), track.s_end());
+    const double edge =
+        (t >= 0.0 ? pose.half_width_right : pose.half_width_left) + kStageShoulderWidth;
+    if (rmath::abs(t) > edge + 0.5 * kStageReliefBlend) {
+        // Fuera de este núcleo y de su franja: en la calzada o el arcén de otra pasada, la suya.
+        StageProjection other;
+        if (track.on_any_road(x, z, other)) {
+            pose = track.pose(other.s);
+            s = other.s;
+            t = other.t;
+            heading = pose.heading;
+        }
+    }
+    StageReliefFrame f;
+    f.s = s;
+    f.t = t;
+    f.tx = rmath::sin(heading);
+    f.tz = -rmath::cos(heading);
+    f.half_left = pose.half_width_left;
+    f.half_right = pose.half_width_right;
+    track.axis().surface_change_near(s, f.surface_break, f.before, f.after);
+    return f;
+}
+
+double stage_relief_height(const StageReliefFrame& f, const TestZone& noise, double s, double t,
+                           double x, double z) {
+    constexpr double kHalf = 0.5 * kStageReliefBlend;
+    // Banda de la calzada, mezclada a lo largo de s en el cambio de superficie.
+    const auto road = [&]() {
+        const double d = s - f.surface_break;
+        if (rmath::abs(d) < kHalf) {
+            const double u = (d + kHalf) / kStageReliefBlend;
+            return (1.0 - u) * noise.surface_noise(f.before, x, z) +
+                   u * noise.surface_noise(f.after, x, z);
+        }
+        return noise.surface_noise(d < 0.0 ? f.before : f.after, x, z);
+    };
+    const double a = rmath::abs(t);
+    const double w = t >= 0.0 ? f.half_right : f.half_left;
+    const double e = w + kStageShoulderWidth;
+    if (a < w - kHalf) {
+        return road();
+    }
+    if (a < w + kHalf) {
+        const double u = (a - (w - kHalf)) / kStageReliefBlend;
+        return (1.0 - u) * road() + u * noise.surface_noise(Surface::Sand, x, z);
+    }
+    if (a < e - kHalf) {
+        return noise.surface_noise(Surface::Sand, x, z);
+    }
+    if (a < e + kHalf) {
+        const double u = (a - (e - kHalf)) / kStageReliefBlend;
+        return (1.0 - u) * noise.surface_noise(Surface::Sand, x, z) +
+               u * noise.surface_noise(Surface::Dirt, x, z);
+    }
+    return noise.surface_noise(Surface::Dirt, x, z);
 }
 
 std::uint64_t StageGround::hash() const {
