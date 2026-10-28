@@ -134,6 +134,12 @@ struct StageRunState {
 static_assert(std::is_trivial_v<StageRunState> && std::is_standard_layout_v<StageRunState>);
 static_assert(sizeof(StageRunState) == 7 * 8 + 3 * 8 + 3 * 4 + 4 + kMaxSplits * 8);
 
+class Fnv1a64;
+// Añade el estado de la pasada a un hash campo a campo, en el orden de la estructura y sin el
+// relleno: los double por sus bits, los enteros en little-endian, on_road como un byte y las
+// kMaxSplits entradas de split_steps. Es lo que SimWorld::state_hash() pone tras ControlState.
+void hash_stage_run(Fnv1a64& hash, const StageRunState& state);
+
 // La pasada por el tramo: sin Jolt, posiciones de entrada y decisiones de salida. Cuenta pasos:
 // no lee ningún reloj. La penalización de tiempo no es de la simulación.
 class StageRun {

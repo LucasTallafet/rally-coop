@@ -2,6 +2,7 @@
 #include "new_counter.h"
 #include "sim/pcg32.h"
 #include "sim/stage_track.h"
+#include "stage_driver.h"
 
 #include <doctest/doctest.h>
 
@@ -52,18 +53,7 @@ std::string num(double value) {
     return std::string(buffer.data(), r.ptr);
 }
 
-const std::string& lazadas_text() {
-    static const std::string text = [] {
-        std::string bytes;
-        std::string error;
-        const bool ok =
-            rally::io::read_file(RALLY_SOURCE_DIR "/tests/sim/stages/lazadas.stage", bytes, error);
-        INFO(error);
-        REQUIRE(ok);
-        return bytes;
-    }();
-    return text;
-}
+const std::string& lazadas_text() { return rally::tests::lazadas_stage_text(); }
 
 // Tramo llano con la planta `plan` (sin peralte; semianchos `width`).
 std::string stage_text(const std::string& plan, double length, const std::string& width = "3 3") {

@@ -5,6 +5,7 @@
 #include "sim/input_smoothing.h"
 #include "sim/lap_timer.h"
 #include "sim/sim_input.h"
+#include "sim/stage_track.h"
 #include "sim/steer_assist.h"
 #include "sim/surface.h"
 #include "sim/telemetry.h"
@@ -58,9 +59,14 @@ struct CarSpawn {
     std::int8_t gear = kSpawnGearBySpeed;
 };
 
-// Descripción del mundo. Primero el suelo y los muros de la zona de pruebas (si la hay),
-// después los cuerpos en el orden de `bodies` y al final el coche: los BodyID dependen solo
-// de la descripción.
+// Suelo del tramo de WorldDesc::stage_text. Design es el del juego (núcleo en malla y terreno en
+// baldosas de 0,75 m, sim/stage_ground.h); los otros dos solo los usa la medida de la parte A de
+// tramo-fisica (tests): baldosas de 1,5 m, y todo en rejilla de 0,75 m con la superficie por celda.
+enum class StageGroundVariant : std::uint8_t { Design, CoarseTiles, GridOnly };
+
+// Descripción del mundo. Primero el suelo y los muros de la zona de pruebas o el suelo del tramo
+// (si los hay), después los cuerpos en el orden de `bodies` y al final el coche: los BodyID
+// dependen solo de la descripción.
 struct WorldDesc {
     std::vector<BoxDesc> bodies;
     // Coche que mueve SimInput (sim/car_controller.h). Sus datos no van en la descripción
@@ -80,7 +86,20 @@ struct WorldDesc {
     bool test_zone = false;
     Surface blind_surface = Surface::Gravel; // superficie de la pista ciega
     Surface road_surface = Surface::Gravel;  // calzada de la carretera (grava o asfalto)
+    // Tramo (mensajes/lote-4.md §2.5): texto .stage; vacío = sin tramo. Incompatible con
+    // test_zone. build() lo lee con StageTrack::build y aborta si no vale: quien llama lo lee
+    // antes para enseñar el error. El suelo del tramo es un cuerpo estático con la malla del
+    // núcleo y las baldosas del terreno (sim/stage_ground.h). io::serialize_world no lo conoce
+    // todavía (lote 5): el juego no construye mundos con tramo.
+    std::string stage_text;
+    // Solo la medida de la parte A (tests): el suelo del tramo. No se graba.
+    StageGroundVariant stage_variant = StageGroundVariant::Design;
 };
+
+// Salida en el eje del tramo en `s`, apoyada (el origen del coche en la calzada) y mirando en el
+// sentido de la marcha, a `speed` m/s. En un mundo con tramo, build() y la recolocación giran
+// además el coche con la pendiente y el peralte del tramo en ese punto.
+CarSpawn stage_spawn(const StageTrack& track, double s, float speed = 0.0f);
 
 // Lo que hay bajo (x, z) en el suelo de la zona, según Jolt (un rayo vertical).
 struct GroundProbe {
@@ -219,8 +238,20 @@ public:
     // Va en la cabecera de las grabaciones: si cambia, la repetición no compara el hash final.
     std::uint64_t zone_hash() const;
     std::size_t ground_bytes() const;
-    // Rayo vertical contra el suelo de la zona. Solo lee; reserva memoria (fuera del paso).
+    // Rayo vertical contra el suelo de la zona o del tramo. Solo lee; reserva memoria (fuera del
+    // paso).
     GroundProbe probe_ground(double x, double z) const;
+
+    // Tramo del mundo (nullptr sin tramo). Vive lo que el mundo y no se mueve.
+    const StageTrack* stage() const;
+    // Pasada por el tramo (nullptr sin tramo): tras cada paso con coche, StageRun::step con el
+    // origen del coche; recolocar (botón) lleva el coche a stage_spawn(reset_s) y un atajo, a
+    // stage_spawn(exit_s), en el mismo paso.
+    const StageRunState* stage_run() const;
+    // Hash de la geometría de colisión del tramo (StageGround::hash; 0 sin tramo) y memoria de
+    // sus formas de Jolt (GetStatsRecursive).
+    std::uint64_t stage_ground_hash() const;
+    std::size_t stage_ground_bytes() const;
 
     // SaveState completo del PhysicsSystem (con el estado del controlador del coche).
     std::string save_state() const;
@@ -229,8 +260,9 @@ public:
     void restore_state(const std::string& state, const ControlState& controls);
 
     // Hash del estado completo de la simulación: FNV-1a de save_state() seguido de
-    // ControlState y, en la zona, de los cronómetros de la pista ciega y de la carretera (campo
-    // a campo, en little-endian). Es el hash
+    // ControlState y, en la zona, de los cronómetros de la pista ciega y de la carretera o, en
+    // el tramo, de StageRunState (hash_stage_run; campo a campo, en little-endian). restore_state
+    // no restaura los cronómetros ni la pasada. Es el hash
     // final de las grabaciones y la huella de los tests. Reserva memoria: no se llama dentro del
     // paso.
     std::uint64_t state_hash() const;

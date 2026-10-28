@@ -1,0 +1,32 @@
+# Tramo de test «horquilla llana» (tarea tramo-fisica, lote 4): recta de 200 m, horquilla a
+# derechas de R 12 (180° justos, sin clotoides: la curvatura salta en las dos juntas) y recta de
+# vuelta de 200 m, en llano y sin peralte. Los brazos quedan paralelos a 24 m (16 m de terreno
+# entre núcleos): el coche puede cruzar por el terreno de un brazo al otro (atajo conducido) y la
+# rejilla prueba la continuidad del terreno donde la curvatura salta.
+#
+# Salida en (0, 0) mirando al norte; la horquilla gira hacia el este.
+
+format = 1
+name = Horquilla llana (test)
+start_x = 0
+start_z = 0
+start_heading_deg = 0
+start_height = 0
+
+[plan]
+straight 200
+arc 37.699111843077517 12
+straight 200
+
+[profile]
+pvi 0 0 0
+pvi 437.69911184307752 0 0
+
+[bank]
+bank 0 0
+
+[width]
+width 0 3 3
+
+[surface]
+surface 0 gravel

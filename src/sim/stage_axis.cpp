@@ -692,6 +692,38 @@ StagePose StageAxis::pose(double s) const {
     return pose;
 }
 
+std::vector<double> StageAxis::breaks() const {
+    std::vector<double> out;
+    out.push_back(0.0);
+    for (const StagePrimitive& p : prims_) {
+        out.push_back(p.s0);
+    }
+    for (const Pvi& p : pvi_) {
+        if (p.curve_length > 0.0) {
+            out.push_back(p.s - 0.5 * p.curve_length);
+            out.push_back(p.s + 0.5 * p.curve_length);
+        } else {
+            out.push_back(p.s);
+        }
+    }
+    for (const BankPoint& p : bank_) {
+        out.push_back(p.s);
+    }
+    for (const WidthPoint& p : width_) {
+        out.push_back(p.s);
+    }
+    for (const SurfacePoint& p : surface_) {
+        out.push_back(p.s);
+    }
+    out.push_back(length_);
+    for (double& s : out) {
+        s = rmath::clamp(s, 0.0, length_);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
 std::uint64_t StageAxis::hash() const {
     Fnv1a64 hash;
     hash.add_u32(static_cast<std::uint32_t>(kStageFormatVersion));

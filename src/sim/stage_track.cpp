@@ -1,6 +1,7 @@
 #include "sim/stage_track.h"
 
 #include "sim/check.h"
+#include "sim/fnv1a.h"
 #include "sim/rmath.h"
 
 #include <algorithm>
@@ -660,6 +661,26 @@ std::string StageTrack::prepare() {
 }
 
 // --- Pasada --------------------------------------------------------------------------------------
+
+void hash_stage_run(Fnv1a64& hash, const StageRunState& state) {
+    hash.add_f64(state.s);
+    hash.add_f64(state.t);
+    hash.add_f64(state.reset_s);
+    hash.add_f64(state.exit_s);
+    hash.add_f64(state.off_travel);
+    hash.add_f64(state.last_x);
+    hash.add_f64(state.last_z);
+    hash.add_u64(static_cast<std::uint64_t>(state.steps));
+    hash.add_u64(static_cast<std::uint64_t>(state.start_step));
+    hash.add_u64(static_cast<std::uint64_t>(state.finish_step));
+    hash.add_u32(static_cast<std::uint32_t>(state.resets));
+    hash.add_u32(static_cast<std::uint32_t>(state.shortcuts));
+    hash.add_u32(static_cast<std::uint32_t>(state.split_count));
+    hash.add_byte(state.on_road ? 1 : 0);
+    for (const std::int64_t step : state.split_steps) {
+        hash.add_u64(static_cast<std::uint64_t>(step));
+    }
+}
 
 StageRun::StageRun(const StageTrack& track) : track_(&track) {
     std::memset(&state_, 0, sizeof(state_)); // relleno incluido
