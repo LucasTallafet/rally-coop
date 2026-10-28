@@ -11,6 +11,7 @@ namespace rally::platform {
 enum class CameraAction : std::uint8_t {
     Camera,
     HeadMotion,
+    Look,
     SeatUp,
     SeatDown,
     SeatForward,

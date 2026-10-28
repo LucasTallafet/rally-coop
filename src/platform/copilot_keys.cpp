@@ -13,18 +13,6 @@ namespace {
 constexpr std::uint8_t a(CopilotAction action) { return static_cast<std::uint8_t>(action); }
 
 constexpr KeyBinding kRows[] = {
-    {a(CopilotAction::LookAtDash),
-     {chord(Key::B), {}},
-     kNoAction,
-     {},
-     PadControl::None,
-     kContextCopilot,
-     KeyBlock::CameraSeat,
-     25,
-     "Mirar al salpicadero: mantener",
-     "solo en la ventana del copiloto (rally.exe --copiloto): mientras se mantiene, la cabeza "
-     "gira 25° a la izquierda hacia el volante y la pantalla del salpicadero; al soltar vuelve; "
-     "solo con la cámara del asiento"},
     {a(CopilotAction::SimulatedNet),
      {chord(Key::Z), {}},
      kNoAction,
@@ -47,7 +35,7 @@ std::vector<KeyBinding> make_help_table() {
         action(CameraAction::Camera),        action(ScreenAction::DebugPanel),
         action(ScreenAction::Perf),          action(ScreenAction::Help),
         action(WindowAction::Fullscreen),    action(WindowAction::Exit),
-        action(CopilotAction::SimulatedNet), action(CopilotAction::LookAtDash)};
+        action(CopilotAction::SimulatedNet), action(CameraAction::Look)};
     std::vector<KeyBinding> rows;
     for (const KeyBinding& b : key_table()) {
         for (const ActionRef& ref : wanted) {
@@ -55,6 +43,9 @@ std::vector<KeyBinding> make_help_table() {
                 KeyBinding row = b;
                 if (same_action(b, action(CameraAction::Camera))) {
                     row.text = "Cámara: asiento / persecución / toda la zona";
+                }
+                if (same_action(b, action(CameraAction::Look))) {
+                    row.text = "Mirar: stick o ratón (central: al frente)";
                 }
                 rows.push_back(row);
             }

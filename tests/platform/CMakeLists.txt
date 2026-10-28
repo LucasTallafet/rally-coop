@@ -15,6 +15,7 @@ rally_add_test_executable(rally_tests_platform
     test_fixed_step_clock.cpp
     test_forest_layout.cpp
     test_frame_history.cpp
+    test_head_look.cpp
     test_head_motion.cpp
     test_input_shaping.cpp
     test_interpolation.cpp

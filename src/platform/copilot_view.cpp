@@ -18,16 +18,6 @@ Vec3d copilot_eye(const sim::CarData& car) {
     return Vec3d{-eye.x, eye.y, eye.z};
 }
 
-double look_step(double t, bool held, double dt_s) {
-    const double step = dt_s / kLookSeconds;
-    return std::clamp(held ? t + step : t - step, 0.0, 1.0);
-}
-
-double look_yaw(double t) {
-    const double c = std::clamp(t, 0.0, 1.0);
-    return kLookDashYaw * c * c * (3.0 - 2.0 * c);
-}
-
 CopilotCockpit copilot_cockpit(const net::SampledState& state, const sim::CarData& car) {
     CopilotCockpit out;
     out.wheel_angle = steering_wheel_angle(state.steer, car);

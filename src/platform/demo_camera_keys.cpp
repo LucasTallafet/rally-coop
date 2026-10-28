@@ -31,6 +31,19 @@ constexpr KeyBinding kRows[] = {
      "Movimiento de la cabeza",
      "sí / no: el ojo se mueve con las aceleraciones del coche (solo la cámara del ojo); se "
      "guarda en ajustes.txt"},
+    {a(CameraAction::Look),
+     {},
+     kNoAction,
+     {},
+     PadControl::RightStick,
+     kContextAll | kContextCopilot,
+     KeyBlock::CameraSeat,
+     25,
+     "Mirar con la cabeza",
+     "stick derecho, o el ratón (el botón central lo vuelve al frente): el conductor, con la "
+     "dirección por teclado (F7); el copiloto, siempre; hasta 90° a los lados, 15° arriba y "
+     "25° abajo, sin cambiar el campo de visión; solo con la cámara del ojo y con la ventana con "
+     "el foco; al soltar el stick vuelve al frente"},
     {a(CameraAction::SeatUp),
      {chord(Key::PageUp), {}},
      a(CameraAction::SeatDown),

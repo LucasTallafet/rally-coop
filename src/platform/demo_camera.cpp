@@ -4,6 +4,7 @@
 #include "platform/copilot_view.h"
 #include "platform/demo_camera_keys.h"
 #include "platform/demo_common.h"
+#include "platform/head_look.h"
 #include "platform/keys_raylib.h"
 #include "platform/seat.h"
 
@@ -68,7 +69,7 @@ void DemoCamera::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounte
     };
     const std::int64_t now = now_ns();
     for (const SeatKey& key : kSeatKeys) {
-        if (action_pressed_repeat(action(key.action))) {
+        if (action_pressed_repeat(action(key.action), context)) {
             const SeatOffsetCm seat = nudge_seat(ctx.settings.seat, key.axis, key.delta_cm);
             if (!(seat == ctx.settings.seat)) {
                 ctx.settings.seat = seat;
@@ -94,26 +95,16 @@ void DemoCamera::update(DemoContext& ctx) {
         // coche (platform/seat). Dentro de la caja: sus caras quedan de espaldas y no se dibujan.
         // Con F9, la cabeza (platform/head_motion) lo desplaza y lo gira un poco, interpolada
         // con el mismo alpha que la pose del coche (demo_driver_feel).
-        Vec3d local = driver_eye(ctx.car, ctx.settings.seat);
-        Vec3d look{0.0, 0.0, -1.0};
-        Vec3d head_up{0.0, 1.0, 0.0};
-        if (ctx.copilot_seat) {
-            // Copiloto (platform/copilot_view): el ojo reflejado, sin asiento del jugador ni
-            // cabeza; solo el giro hacia el salpicadero mientras se mantiene la tecla.
-            local = copilot_eye(ctx.car);
-            look = {-std::sin(ctx.copilot_look_yaw), 0.0, -std::cos(ctx.copilot_look_yaw)};
-        } else if (ctx.head) {
-            const HeadOffset& h = *ctx.head;
-            local = {local.x + h.right, local.y + h.up, local.z - h.forward};
-            // Cabeceo alrededor de x (> 0 mira arriba) y alabeo alrededor de la vista (> 0 la
-            // parte de arriba de la cabeza a la derecha).
-            const double cp = std::cos(h.pitch);
-            const double sp = std::sin(h.pitch);
-            look = {0.0, sp, -cp};
-            const Vec3d pitched_up{0.0, cp, sp};
-            head_up = {std::sin(h.roll), pitched_up.y * std::cos(h.roll),
-                       pitched_up.z * std::cos(h.roll)};
-        }
+        // Mirar con la cabeza (platform/head_look): primero el giro del cuello y después lo de F9.
+        // El copiloto (platform/copilot_view) usa el ojo reflejado, sin asiento del jugador ni F9.
+        Vec3d local =
+            ctx.copilot_seat ? copilot_eye(ctx.car) : driver_eye(ctx.car, ctx.settings.seat);
+        const HeadOffset* f9 = !ctx.copilot_seat && ctx.head ? &*ctx.head : nullptr;
+        const HeadView view = head_view(ctx.head_look.yaw(), ctx.head_look.pitch(), f9);
+        local = {local.x + view.eye_offset.x, local.y + view.eye_offset.y,
+                 local.z + view.eye_offset.z};
+        const Vec3d look = view.forward;
+        const Vec3d head_up = view.up;
         const Pose head = attach(car, local);
         c.eye = head.position;
         c.forward = rotate(head.rotation, look);

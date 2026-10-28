@@ -1,5 +1,6 @@
 // Vista del copiloto desde el asiento derecho (lote 3, arreglo copiloto-asiento): el ojo, Tab, la
-// mirada al salpicadero con B, el volante y la pantalla con lo que llega por la red.
+// mirada al salpicadero (lote 4: con el stick o el ratón, ya no con B), el volante y la pantalla
+// con lo que llega por la red.
 
 #include "io/recording.h"
 #include "net/car_state.h"
@@ -8,12 +9,16 @@
 #include "platform/cockpit.h"
 #include "platform/copilot_keys.h"
 #include "platform/copilot_view.h"
+#include "platform/demo_camera_keys.h"
+#include "platform/head_look.h"
+#include "platform/head_motion.h"
 #include "platform/keys.h"
 #include "platform/seat.h"
 #include "sim/car_data.h"
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -24,6 +29,7 @@ using namespace rally::platform;
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kNearPlane = 0.05; // DemoCamera::kNearPlane (demo_camera.h incluye raylib)
 
 rally::sim::CarData load_car(const char* name) {
     std::string text;
@@ -82,21 +88,6 @@ TEST_CASE("copilot seat: Tab goes seat, chase, whole zone and back") {
     CHECK(view == 0);
 }
 
-TEST_CASE("copilot seat: the head turns to the dash while B is held and comes back") {
-    CHECK(look_yaw(0.0) == 0.0);
-    CHECK(look_yaw(1.0) == doctest::Approx(kLookDashYaw));
-    CHECK(kLookDashYaw == doctest::Approx(25.0 * kPi / 180.0));
-    double t = look_step(0.0, true, kLookSeconds * 0.5);
-    CHECK(t == doctest::Approx(0.5));
-    CHECK(look_yaw(t) == doctest::Approx(0.5 * kLookDashYaw)); // punto medio de la curva
-    t = look_step(t, true, 1.0);
-    CHECK(t == 1.0);
-    t = look_step(t, false, kLookSeconds * 0.25);
-    CHECK(t == doctest::Approx(0.75));
-    t = look_step(t, false, 1.0);
-    CHECK(t == 0.0);
-}
-
 TEST_CASE("copilot seat: with the head turned the dash and the wheel are in the picture") {
     constexpr double kFovY = 55.0 * kPi / 180.0;
     constexpr double kAspect = 16.0 / 9.0;
@@ -115,12 +106,16 @@ TEST_CASE("copilot seat: with the head turned the dash and the wheel are in the 
             {k.display_ahead, k.display_right + hw, -k.display_below - hh},
             {k.wheel_ahead, 0.0, -k.wheel_center_below},
         };
-        const double yaw = kLookDashYaw;
+        // El stick a unos 50° a la izquierda (50/90 del tope) y el ojo desplazado por el cuello.
+        const double yaw = 50.0 * kDegree;
+        const Vec3d neck = neck_eye_offset(yaw, 0.0);
         for (const P& p : points) {
-            const double right = p.right + dx; // relativo al ojo del copiloto
+            // Relativo al ojo del copiloto, que el cuello ha movido a la izquierda y hacia atrás.
+            const double ahead = p.ahead + neck.z;
+            const double right = p.right + dx - neck.x;
             // Cabeza girada `yaw` a la izquierda: su adelante y su derecha.
-            const double head_ahead = p.ahead * std::cos(yaw) - right * std::sin(yaw);
-            const double head_right = right * std::cos(yaw) + p.ahead * std::sin(yaw);
+            const double head_ahead = ahead * std::cos(yaw) - right * std::sin(yaw);
+            const double head_right = right * std::cos(yaw) + ahead * std::sin(yaw);
             REQUIRE(head_ahead > 0.0);
             const ScreenFraction f = project_from_eye(head_ahead, head_right, p.up, kFovY, kAspect);
             INFO(name, ": x ", f.x, " y ", f.y);
@@ -174,18 +169,50 @@ TEST_CASE("copilot seat: the dash shows the received gear, rpm and boost") {
     CHECK(n.display.boost_fraction == 0.0f);
 }
 
-TEST_CASE("copilot seat: B is the held look, only in the copilot window, and Tab names the seat") {
-    const ActionRef b = action(CopilotAction::LookAtDash);
-    CHECK(chords_for(b)[0].key == Key::B);
-    CHECK(contexts_for(b) == kContextCopilot);
-    CHECK((contexts_for(b) & kCopilotKeyContext) != 0);
+TEST_CASE("copilot seat: B is gone, looking is the Look row, and Tab names the seat") {
+    // La fila de mirar vale en la ventana del copiloto y no lleva tecla; B ya no es del copiloto.
+    const ActionRef look = action(CameraAction::Look);
+    CHECK(pad_for(look) == PadControl::RightStick);
+    CHECK(chords_for(look)[0].key == Key::None);
+    CHECK((contexts_for(look) & kCopilotKeyContext) != 0);
+    CHECK((contexts_for(look) & kContextAll) != 0);
+    for (const KeyBinding& b : key_table()) {
+        if (b.table == &kCopilotKeys) {
+            CHECK(b.keys[0].key != Key::B); // B sigue siendo el bosque de medida del recinto
+        }
+    }
     CHECK(count_key_conflicts(key_table()) == 0);
     bool tab = false;
+    bool mirar = false;
     for (const KeyBinding& row : copilot_help_table()) {
+        CHECK(row.keys[0].key != Key::B);
         if (row.keys[0].key == Key::Tab) {
             tab = true;
             CHECK(std::string(row.text).find("asiento") != std::string::npos);
         }
+        if (row.pad == PadControl::RightStick) {
+            mirar = true;
+            CHECK(std::string(row.text).find("Mirar") != std::string::npos);
+        }
     }
     CHECK(tab);
+    CHECK(mirar);
+}
+
+TEST_CASE("copilot seat: the eye never reaches the door with the seat at its default") {
+    // Holgura lateral mínima del ojo a la cara interior de la puerta con el asiento por defecto, F9
+    // en su límite y la mirada en los topes: tiene que superar el plano cercano (0,05 m).
+    for (const char* name : kCars) {
+        const rally::sim::CarData car = load_car(name);
+        // La puerta izquierda está a door_left a la izquierda del ojo del asiento por defecto.
+        double worst = 1e9;
+        for (const double yaw : {-kLookYawMax, 0.0, kLookYawMax}) {
+            for (const double pitch : {-kLookPitchDown, 0.0, kLookPitchUp}) {
+                const double x = neck_eye_offset(yaw, pitch).x - kHeadLimitRight; // < 0: izquierda
+                worst = std::min(worst, car.cockpit.door_left + x);
+            }
+        }
+        INFO(name, ": holgura ", worst, " m");
+        CHECK(worst >= kNearPlane);
+    }
 }

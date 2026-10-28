@@ -104,6 +104,7 @@ struct KeyChord {
 enum class PadControl : std::uint8_t {
     None,
     LeftStickX,
+    RightStick, // el stick derecho, en los dos ejes (mirar)
     RightTrigger,
     LeftTrigger,
     FaceSouth, // botón de abajo de la cara derecha: A Xbox, Cruz PlayStation, B Nintendo
@@ -179,6 +180,13 @@ std::array<KeyChord, 2> chords_for(ActionRef action,
                                    std::span<const KeyBinding> table = key_table());
 PadControl pad_for(ActionRef action, std::span<const KeyBinding> table = key_table());
 std::uint8_t contexts_for(ActionRef action, std::span<const KeyBinding> table = key_table());
+
+// ¿Vale la acción en el contexto activo? Sí si sus contextos incluyen alguno de los bits de
+// `context`. Una acción que no está en la tabla no vale en ninguno. Es la única comprobación de
+// contexto: platform/keys_raylib la usa en las cuatro consultas de teclas, que reciben siempre el
+// contexto (lote 4: la B del copiloto no se disparaba porque se leía en kContextAll).
+bool action_valid_in(ActionRef action, std::uint8_t context,
+                     std::span<const KeyBinding> table = key_table());
 
 // Pares de (tecla con Alt o sin él) repetidos en contextos que se cruzan.
 int count_key_conflicts(std::span<const KeyBinding> table);

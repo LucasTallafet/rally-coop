@@ -30,6 +30,7 @@ add_library(rally_loop STATIC
     fixed_step_clock.cpp
     forest_layout.cpp
     frame_history.cpp
+    head_look.cpp
     head_motion.cpp
     input_shaping.cpp
     interpolation.cpp
@@ -78,6 +79,7 @@ add_library(rally_platform STATIC
     frame_pacer.cpp
     gamepad.cpp
     gl_probe.cpp
+    cursor_capture.cpp
     input.cpp
     keys_raylib.cpp
     debug_panel.cpp

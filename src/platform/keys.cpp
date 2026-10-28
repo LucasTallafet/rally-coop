@@ -119,6 +119,10 @@ std::uint8_t contexts_for(ActionRef action, std::span<const KeyBinding> table) {
     return b != nullptr ? b->contexts : std::uint8_t{0};
 }
 
+bool action_valid_in(ActionRef action, std::uint8_t context, std::span<const KeyBinding> table) {
+    return (contexts_for(action, table) & context) != 0;
+}
+
 int count_key_conflicts(std::span<const KeyBinding> table) {
     struct Use {
         KeyChord chord;
@@ -174,6 +178,8 @@ std::string_view pad_text_doc(PadControl pad) {
     switch (pad) {
     case PadControl::LeftStickX:
         return "stick izquierdo";
+    case PadControl::RightStick:
+        return "stick derecho";
     case PadControl::RightTrigger:
         return "gatillo derecho";
     case PadControl::LeftTrigger:
@@ -196,6 +202,8 @@ std::string_view pad_text_short(PadControl pad) {
     switch (pad) {
     case PadControl::LeftStickX:
         return "stick izq.";
+    case PadControl::RightStick:
+        return "stick der.";
     case PadControl::RightTrigger:
         return "gatillo der.";
     case PadControl::LeftTrigger:
@@ -217,7 +225,7 @@ std::string_view pad_text_short(PadControl pad) {
 std::string binding_label_doc(const KeyBinding& binding) {
     std::string text = keys_text(binding);
     if (binding.pad != PadControl::None) {
-        text += " · ";
+        text += text.empty() ? "" : " · ";
         text += pad_text_doc(binding.pad);
     }
     return text;
@@ -226,7 +234,7 @@ std::string binding_label_doc(const KeyBinding& binding) {
 std::string binding_label_short(const KeyBinding& binding) {
     std::string text = keys_text(binding, true);
     if (binding.pad != PadControl::None) {
-        text += " · ";
+        text += text.empty() ? "" : " · ";
         text += pad_text_short(binding.pad);
     }
     return text;

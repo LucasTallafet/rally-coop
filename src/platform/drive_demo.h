@@ -59,6 +59,9 @@ public:
     bool mouse_steering() const { return ctx_.settings.steer_device == SteerDevice::Mouse; }
     int mouse_full_lock_px() const { return ctx_.settings.mouse_full_lock_px; }
     bool mouse_capture_allowed() const { return !ctx_.paused; }
+    // Mirar con la cabeza (lote 4): una vez por fotograma tras leer la entrada, solo en el bucle
+    // del juego (nunca en --golden ni en --bench-*: ahí la cabeza se queda al frente).
+    void update_head_look(const HeadLookInput& input) { ctx_.head_look.update(input); }
     // Sensibilidad del stick (ajustes del jugador, teclas 4/5) para DriverInput.
     int steer_sensitivity_pct() const { return ctx_.settings.steer_sensitivity_pct; }
 

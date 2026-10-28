@@ -1,3 +1,4 @@
+#include "platform/head_look.h"
 #include "platform/input_shaping.h"
 #include "sim/sim_input.h"
 
@@ -416,4 +417,91 @@ TEST_CASE("steer sensitivity: the gamepad state carries it, the deadzone and tri
     CHECK_FALSE(idle.update(&drift, 1, 50).active);
     drift.any_button = true;
     CHECK(idle.update(&drift, 1, 150).steer == 0.0f);
+}
+
+TEST_CASE("look stick: radial deadzone 0.15, linear to the rim, each axis by its component") {
+    using rally::platform::kLookDeadzone;
+    using rally::platform::LookStick;
+    using rally::platform::shape_look_stick;
+    CHECK(kLookDeadzone == 0.15f);
+    CHECK(shape_look_stick(0.0f, 0.0f) == LookStick{});
+    // Dentro del círculo, aunque cada eje por sí solo esté cerca de 0,15.
+    CHECK(shape_look_stick(0.14f, 0.05f) == LookStick{});
+    CHECK(shape_look_stick(0.15f, 0.0f) == LookStick{});
+    CHECK(shape_look_stick(-0.1f, 0.1f) == LookStick{});
+    // A fondo en un eje: 1.
+    CHECK(shape_look_stick(1.0f, 0.0f).x == doctest::Approx(1.0f));
+    CHECK(shape_look_stick(0.0f, -1.0f).y == doctest::Approx(-1.0f));
+    // Lineal: a mitad entre la zona muerta y el borde (0,575) da 0,5.
+    CHECK(shape_look_stick(0.575f, 0.0f).x == doctest::Approx(0.5f));
+    CHECK(shape_look_stick(0.0f, -0.575f).y == doctest::Approx(-0.5f));
+    // Diagonal: cada eje según su componente, con el módulo en la misma recta.
+    const float d = 0.575f / std::sqrt(2.0f);
+    const LookStick diagonal = shape_look_stick(d, -d);
+    CHECK(diagonal.x == doctest::Approx(0.5f / std::sqrt(2.0f)));
+    CHECK(diagonal.y == doctest::Approx(-0.5f / std::sqrt(2.0f)));
+    // Un mando de puerta cuadrada (1, 1) se recorta a módulo 1.
+    const LookStick corner = shape_look_stick(1.0f, 1.0f);
+    CHECK(std::hypot(corner.x, corner.y) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("look stick: moving only the right stick makes that pad the active one") {
+    PadTracker tracker;
+    PadReading pads[2] = {pad(11), pad(22)};
+    CHECK_FALSE(tracker.update(pads, 2).active); // nadie se usa
+    pads[0].left_trigger = 0.5f;                 // el 11 se usa
+    CHECK(tracker.update(pads, 2).active);
+    CHECK(tracker.active_id() == 11);
+    pads[0].left_trigger = 0.0f;
+    // El 22 solo mueve el stick derecho, fuera de la zona muerta: pasa a ser el activo.
+    pads[1].right_x = 0.5f;
+    const PadState state = tracker.update(pads, 2);
+    CHECK(tracker.active_id() == 22);
+    CHECK(state.look.x > 0.0f);
+    // Dentro de la zona muerta no roba el mando (deriva de un stick gastado).
+    PadTracker drift;
+    PadReading pair[2] = {pad(1), pad(2)};
+    pair[0].left_trigger = 0.5f;
+    drift.update(pair, 2);
+    pair[0].left_trigger = 0.0f;
+    pair[1].right_x = 0.1f;
+    pair[1].right_y = 0.1f;
+    drift.update(pair, 2);
+    CHECK(drift.active_id() == 1);
+}
+
+TEST_CASE("mouse use: the wheel with mouse steering, the head with keyboard steering") {
+    using rally::platform::mouse_use;
+    using rally::platform::MouseUse;
+    CHECK(mouse_use(true, true, true) == MouseUse::Steer);
+    CHECK(mouse_use(false, true, true) == MouseUse::Look);
+    // Pausa o sin foco: nada, con cualquier dirección.
+    CHECK(mouse_use(true, false, true) == MouseUse::None);
+    CHECK(mouse_use(false, false, true) == MouseUse::None);
+    CHECK(mouse_use(true, true, false) == MouseUse::None);
+    CHECK(mouse_use(false, true, false) == MouseUse::None);
+}
+
+TEST_CASE("mouse use: switching F7 from keyboard to mouse sends the head back to the front") {
+    using rally::platform::HeadLook;
+    using rally::platform::HeadLookInput;
+    using rally::platform::look_recenters_on_switch;
+    using rally::platform::MouseUse;
+    CHECK(look_recenters_on_switch(MouseUse::Look, MouseUse::Steer));
+    CHECK_FALSE(look_recenters_on_switch(MouseUse::Steer, MouseUse::Look));
+    CHECK_FALSE(look_recenters_on_switch(MouseUse::Steer, MouseUse::Steer));
+    CHECK_FALSE(look_recenters_on_switch(MouseUse::Look, MouseUse::Look));
+    CHECK_FALSE(look_recenters_on_switch(MouseUse::None, MouseUse::Steer));
+    // Y con ello, la cabeza que dejó el ratón vuelve al frente.
+    HeadLook look;
+    HeadLookInput moved;
+    moved.mouse_dx_px = -400.0f; // 60° a la izquierda
+    moved.dt_s = 10.0;
+    look.update(moved);
+    CHECK(look.yaw() > 1.0);
+    HeadLookInput back;
+    back.recenter = look_recenters_on_switch(MouseUse::Look, MouseUse::Steer);
+    back.dt_s = 10.0;
+    look.update(back);
+    CHECK(std::abs(look.yaw()) <= 1e-9);
 }

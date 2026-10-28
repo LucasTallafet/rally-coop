@@ -1,5 +1,6 @@
 #include "platform/gamepad.h"
 
+#include "platform/demo_camera_keys.h"
 #include "platform/drive_keys.h"
 #include "platform/keys.h"
 
@@ -18,6 +19,8 @@ SDL_GamepadAxis to_axis(PadControl control) {
     switch (control) {
     case PadControl::LeftStickX:
         return SDL_GAMEPAD_AXIS_LEFTX;
+    case PadControl::RightStick:
+        return SDL_GAMEPAD_AXIS_RIGHTX;
     case PadControl::RightTrigger:
         return SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
     case PadControl::LeftTrigger:
@@ -45,6 +48,8 @@ SDL_GamepadButton to_button(PadControl control) {
 struct PadBindings {
     SDL_GamepadAxis steer = to_axis(pad_for(action(DriveAction::SteerLeft)));
     SDL_GamepadAxis vertical = SDL_GAMEPAD_AXIS_LEFTY; // solo para no tomarlo por dirección
+    SDL_GamepadAxis look_x = to_axis(pad_for(action(CameraAction::Look)));
+    SDL_GamepadAxis look_y = SDL_GAMEPAD_AXIS_RIGHTY; // el otro eje del mismo stick
     SDL_GamepadAxis accelerate = to_axis(pad_for(action(DriveAction::Throttle)));
     SDL_GamepadAxis brake = to_axis(pad_for(action(DriveAction::Brake)));
     SDL_GamepadButton handbrake = to_button(pad_for(action(DriveAction::Handbrake)));
@@ -88,6 +93,9 @@ PadState Gamepads::read(int steer_sensitivity_pct) {
         reading.id = ids[i];
         reading.left_x = axis_value(pad, kDriverPad.steer);
         reading.left_y = axis_value(pad, kDriverPad.vertical);
+        reading.right_x = axis_value(pad, kDriverPad.look_x);
+        // SDL da el stick hacia abajo como positivo; la mirada lo quiere hacia arriba.
+        reading.right_y = -axis_value(pad, kDriverPad.look_y);
         reading.left_trigger = axis_value(pad, kDriverPad.brake);
         reading.right_trigger = axis_value(pad, kDriverPad.accelerate);
         reading.handbrake = button(pad, kDriverPad.handbrake);

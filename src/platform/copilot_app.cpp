@@ -6,6 +6,7 @@
 #include "platform/cockpit_draw.h"
 #include "platform/copilot_keys.h"
 #include "platform/copilot_view.h"
+#include "platform/cursor_capture.h"
 #include "platform/debug_panel.h"
 #include "platform/demo_camera.h"
 #include "platform/demo_camera_keys.h"
@@ -14,6 +15,8 @@
 #include "platform/demo_screen_keys.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_pacer.h"
+#include "platform/gamepad.h"
+#include "platform/input_shaping.h"
 #include "platform/keys_raylib.h"
 #include "platform/perf_counter.h"
 #include "platform/scene_draw.h"
@@ -107,11 +110,7 @@ private:
         if (action_pressed(action(CameraAction::Camera), kCopilotKeyContext)) {
             ctx_.view = next_camera_view(ctx_.view); // asiento / persecución / zona (o fija)
         }
-        // B mantenida: la cabeza gira al salpicadero (solo se nota con la cámara del asiento).
-        const double dt_s = std::clamp(now_s - last_key_s_, 0.0, 0.1);
-        last_key_s_ = now_s;
-        look_ = look_step(look_, action_down(action(CopilotAction::LookAtDash)), dt_s);
-        ctx_.copilot_look_yaw = look_yaw(look_);
+        update_look(now_s);
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
             debug_.press();
         }
@@ -129,6 +128,30 @@ private:
                                      "Z: red simulada " + std::string(simulated_net_name(level_)),
                                      kText, kShortMessageNs);
         }
+    }
+
+    // Mirar con la cabeza (stick derecho del mando y ratón), solo con la ventana con el foco; el
+    // ratón captura el cursor con el foco y lo suelta al perderlo (Alt+Tab). Solo se nota con la
+    // cámara del asiento.
+    void update_look(double now_s) {
+        const bool focused = IsWindowFocused();
+        const PadState pad = gamepads_.read(); // siempre: mantiene al día el mando activo
+        HeadLookInput look;
+        look.dt_s = std::max(0.0, now_s - last_look_s_);
+        last_look_s_ = now_s;
+        if (focused) {
+            look.stick_x = pad.look.x;
+            look.stick_y = pad.look.y;
+        }
+        cursor_.update(mouse_use(false, true, focused) != MouseUse::None);
+        float dx = 0.0f;
+        float dy = 0.0f;
+        if (cursor_.take_delta(dx, dy)) {
+            look.mouse_dx_px = dx;
+            look.mouse_dy_px = dy;
+        }
+        look.recenter = cursor_.captured() && IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
+        ctx_.head_look.update(look);
     }
 
     // Construye el mundo con el mismo código que el host y sin llamar nunca a step.
@@ -354,8 +377,9 @@ private:
     net::SampledState extra_;
     std::vector<CockpitTri> cockpit_;       // interior fijo, al construir el mundo
     std::vector<CockpitTri> cockpit_frame_; // el del fotograma (se reutiliza)
-    double look_ = 0.0;                     // B mantenida: 0 al frente, 1 al salpicadero
-    double last_key_s_ = 0.0;
+    Gamepads gamepads_;
+    CursorCapture cursor_;
+    double last_look_s_ = 0.0;
     DebugPanel debug_;
     int help_page_ = -1;
     SimulatedNet level_ = SimulatedNet::Off;
@@ -376,7 +400,7 @@ int run_copilot(const CopilotArgs& args) {
         const std::int64_t frame_ns = pacer.begin_frame();
         perf.begin_frame(frame_ns, pacer.last_wait_ns());
         perf.record_steps(frame_ns, FrameSteps{});
-        window.handle_keys();
+        window.handle_keys(kCopilotKeyContext);
         app.update_and_draw(perf, pacer, clock);
     }
     return 0;
