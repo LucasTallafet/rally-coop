@@ -137,7 +137,7 @@ TEST_CASE("copilot keys: Z is free in every context and only fires in the copilo
     CHECK(uses == 1);
 }
 
-TEST_CASE("copilot keys: the copilot help shows only its eight keys") {
+TEST_CASE("copilot keys: the copilot help shows only its eight rows, with Look and no B") {
     const std::span<const KeyBinding> table = copilot_help_table();
     REQUIRE(table.size() == 8);
     std::vector<Key> keys;
@@ -147,10 +147,11 @@ TEST_CASE("copilot keys: the copilot help shows only its eight keys") {
         CHECK(in_default_font(binding_label_short(b)));
         CHECK(in_default_font(b.text));
     }
-    for (const Key key :
-         {Key::Z, Key::B, Key::Tab, Key::F1, Key::F3, Key::H, Key::F11, Key::Escape}) {
+    for (const Key key : {Key::Z, Key::Tab, Key::F1, Key::F3, Key::H, Key::F11, Key::Escape}) {
         CHECK(std::count(keys.begin(), keys.end(), key) == 1);
     }
+    CHECK(std::count(keys.begin(), keys.end(), Key::B) == 0);
+    CHECK(std::count(keys.begin(), keys.end(), Key::None) == 1); // la fila de mirar, sin tecla
 }
 
 TEST_CASE("copilot keys: Z cycles the simulated network no, media, mala and back") {

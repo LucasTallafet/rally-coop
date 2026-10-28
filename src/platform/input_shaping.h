@@ -25,6 +25,11 @@ inline constexpr float kTriggerDeadzone = 0.05f;
 inline constexpr float kTriggerAnalogLow = 0.05f;
 inline constexpr float kTriggerAnalogHigh = 0.95f;
 
+// Mirar con el stick derecho (lote 4, mirar-cabeza): zona muerta radial (el módulo del stick, no
+// cada eje) y lineal hasta el tope; a partir de ahí, cada eje según su componente. Arriba es
+// positivo.
+inline constexpr float kLookDeadzone = 0.15f;
+
 // Sensibilidad de la dirección (tarea 2.8): es la linealidad de la curva del stick, no una
 // ganancia. Exponente = kSteerCurveExponent / s con s = pct / 100: a 100 %, la curva de siempre
 // (1,5); a 50 %, 3 (más fina al centro); a 150 %, 1 (lineal). El stick a fondo da el tope con
@@ -40,6 +45,25 @@ float steer_curve_exponent(int sensitivity_pct);
 
 // Eje X del stick en [-1, 1] → dirección en [-1, 1].
 float shape_steer(float x, int sensitivity_pct = kSteerSensitivityDefaultPct);
+// Stick de la mirada: (x, y) crudos en [-1, 1] → (x, y) con forma. Dentro de la zona muerta radial,
+// (0, 0); entre ella y el borde (módulo 1), el módulo crece lineal de 0 a 1 con la misma
+// dirección; el módulo se recorta a 1 (algunos mandos dan 1,4 en la diagonal).
+struct LookStick {
+    float x = 0.0f;
+    float y = 0.0f;
+    bool operator==(const LookStick&) const = default;
+};
+LookStick shape_look_stick(float x, float y);
+// Para qué se usa el ratón en este fotograma (lote 4). Sin capturar (pausa o sin foco): nada.
+// Capturado: con la dirección por ratón (F7) es el volante y no mira; con la dirección por
+// teclado, mira (el conductor). El copiloto lo llama con la dirección por ratón apagada.
+enum class MouseUse : std::uint8_t { None, Steer, Look };
+MouseUse mouse_use(bool mouse_steering, bool capture_allowed, bool focused);
+// Al pasar el conductor de mirar con el ratón (F7 teclado) a conducir con él (F7 ratón), la cabeza
+// que dejó el ratón vuelve al frente: ya no mira y no habría cómo recentrarla. `previous`: el
+// último uso con el cursor capturado.
+bool look_recenters_on_switch(MouseUse previous, MouseUse now);
+
 // Gatillo crudo → [0, 1]. Recorta lo negativo: raylib da -1 hasta el primer movimiento.
 float shape_trigger(float value);
 // [-1, 1] → eje de SimInput, redondeado y recortado.
@@ -52,6 +76,8 @@ struct PadReading {
     std::uint32_t id = 0;       // identificador estable mientras sigue conectado (nunca 0)
     float left_x = 0.0f;        // [-1, 1], derecha positiva
     float left_y = 0.0f;        // [-1, 1]; ni gira ni activa el mando (deriva de sticks gastados)
+    float right_x = 0.0f;       // [-1, 1], derecha positiva: mirar
+    float right_y = 0.0f;       // [-1, 1], arriba positivo (Gamepads invierte el eje de SDL)
     float left_trigger = 0.0f;  // [0, 1] freno (puede llegar < 0 de raylib; se recorta)
     float right_trigger = 0.0f; // [0, 1] acelerador
     bool handbrake = false;
@@ -67,6 +93,7 @@ struct PadState {
     float steer = 0.0f;            // [-1, 1]
     float throttle = 0.0f;         // [0, 1]: gatillo derecho
     float brake = 0.0f;            // [0, 1]: gatillo izquierdo
+    LookStick look;                // stick derecho con forma: mirar (arriba positivo)
     bool throttle_digital = false; // el gatillo derecho solo ha dado 0 o 1
     bool brake_digital = false;    // el izquierdo, igual
     bool handbrake = false;
@@ -75,9 +102,9 @@ struct PadState {
     bool reset = false;
 };
 
-// Mando activo = el último que ha movido un eje por encima de su zona muerta o pulsado un
-// botón; si se desconecta, no hay mando activo (sus ejes pasan a 0 en ese mismo fotograma)
-// hasta que se use otro. Recuerda también, por mando conectado, si sus gatillos son
+// Mando activo = el último que ha movido un eje (también el stick derecho) por encima de su zona
+// muerta o pulsado un botón; si se desconecta, no hay mando activo (sus ejes pasan a 0 en ese mismo
+// fotograma) hasta que se use otro. Recuerda también, por mando conectado, si sus gatillos son
 // analógicos: digitales hasta que den un valor intermedio; al desconectar se olvida.
 class PadTracker {
 public:

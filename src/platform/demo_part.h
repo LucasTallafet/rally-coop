@@ -2,6 +2,7 @@
 
 #include "platform/camera_space.h"
 #include "platform/forest_scene.h"
+#include "platform/head_look.h"
 #include "platform/head_motion.h"
 #include "platform/interpolation.h"
 #include "platform/overlay.h"
@@ -154,11 +155,13 @@ struct DemoContext {
     int view =
         0; // Tab: 0 ojo del conductor (copiloto: asiento), 1 persecución, 2 fija o toda la zona
     bool world_float = false; // J: dibujo en float del mundo en vez de relativo
-    // Ventana del copiloto (copilot_app): la vista 0 es el asiento derecho, con su giro (rad, > 0
-    // a la izquierda) hacia el salpicadero. No sirve camera_override: fija "arriba" al vertical
-    // del mundo y el asiento tiene que alabear con el coche.
+    // Ventana del copiloto (copilot_app): la vista 0 es el asiento derecho. No sirve
+    // camera_override: fija "arriba" al vertical del mundo y el asiento tiene que alabear con el
+    // coche.
     bool copilot_seat = false;
-    double copilot_look_yaw = 0.0;
+    // Mirar con la cabeza (platform/head_look): guiñada y cabeceo de la vista 0, en el conductor
+    // y en el copiloto. Lo actualiza el bucle (main, copilot_app); lo lee la cámara.
+    HeadLook head_look;
     FrameCamera frame_camera;
 
     // Fotograma (demo_world): se interpola si no hay pausa y la interpolación está activa.

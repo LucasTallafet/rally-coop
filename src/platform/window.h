@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace rally::platform {
 
 // Ventana de raylib (backend SDL). Se abre al construir y se cierra al destruir.
@@ -16,8 +18,9 @@ public:
 
     bool should_close() const;
 
-    // Una vez por fotograma, con la entrada del fotograma ya leída.
-    void handle_keys();
+    // Una vez por fotograma, con la entrada del fotograma ya leída. `context`: el de las teclas de
+    // la ventana (kContextAll en el juego; kCopilotKeyContext en la ventana del copiloto).
+    void handle_keys(std::uint8_t context);
 
     void toggle_fullscreen();
 };

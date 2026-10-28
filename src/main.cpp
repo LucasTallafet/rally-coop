@@ -8,6 +8,7 @@
 #include "platform/frame_pacer.h"
 #include "platform/input.h"
 #include "platform/input_shaping.h"
+#include "platform/keys.h"
 #include "platform/perf_counter.h"
 #include "platform/window.h"
 #include "sim/check.h"
@@ -158,13 +159,18 @@ int main(int argc, char** argv) {
         const rally::platform::FrameSteps steps = clock.advance(frame_ns);
         perf.record_steps(frame_ns, steps);
 
-        window.handle_keys();
+        window.handle_keys(rally::platform::kContextAll);
         demo.handle_keys(pacer, perf);
         driver.set_mouse(demo.mouse_steering(), demo.mouse_full_lock_px(),
                          demo.mouse_capture_allowed());
         driver.set_steer_sensitivity(demo.steer_sensitivity_pct());
         // La entrada se lee una vez por fotograma y vale para todos sus pasos.
         const rally::sim::SimInput input = driver.read(steps.count);
+        if (!benchmark) {
+            rally::platform::HeadLookInput look = driver.look();
+            look.dt_s = static_cast<double>(frame_ns) * 1e-9;
+            demo.update_head_look(look);
+        }
         float frame_impact = 0.0f;
         demo.prepare_steps(steps.count);
         for (int i = 0; i < steps.count; ++i) {

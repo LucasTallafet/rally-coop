@@ -1,7 +1,9 @@
 #pragma once
 
 #include "platform/button_latch.h"
+#include "platform/cursor_capture.h"
 #include "platform/gamepad.h"
+#include "platform/head_look.h"
 #include "platform/mouse_steer.h"
 #include "sim/sim_input.h"
 
@@ -25,10 +27,15 @@ public:
     // elegido, la ventana con el foco y la captura permitida, el cursor queda capturado y su
     // desplazamiento horizontal mueve el volante; al soltarlo (pausa, foco perdido, teclado), el
     // volante vuelve al centro. Al capturar se descarta el primer desplazamiento (el salto del
-    // cursor). X o el botón central recentran.
+    // cursor). X o el botón central recentran. Con la dirección por teclado (F7), el cursor se
+    // captura igual y el ratón mira (look()); con la dirección por ratón, el ratón es el volante y
+    // no mira.
     void set_mouse(bool enabled, int full_lock_px, bool capture_allowed);
+    // Mirar con la cabeza (lote 4), tras read(): el stick derecho (solo con la ventana con el
+    // foco), el desplazamiento del ratón y el botón central. dt_s lo pone quien llama.
+    const HeadLookInput& look() const { return look_; }
     bool mouse_enabled() const { return mouse_enabled_; }
-    bool mouse_captured() const { return mouse_captured_; }
+    bool mouse_captured() const { return cursor_.captured(); }
     const MouseSteer& mouse() const { return mouse_; }
     // Sensibilidad de la dirección del stick (tarea 2.8, en %), antes de read(). El ratón y el
     // teclado no la usan.
@@ -42,8 +49,9 @@ private:
     MouseSteer mouse_;
     bool mouse_enabled_ = false;
     bool mouse_capture_allowed_ = false;
-    bool mouse_captured_ = false;
-    bool skip_mouse_delta_ = false;
+    CursorCapture cursor_;
+    HeadLookInput look_;
+    MouseUse last_use_ = MouseUse::None; // el último uso con el cursor capturado
     int mouse_full_lock_px_ = 400;
     int steer_sensitivity_pct_ = kSteerSensitivityDefaultPct;
 };

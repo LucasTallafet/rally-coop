@@ -16,8 +16,8 @@ Window::~Window() { CloseWindow(); }
 
 bool Window::should_close() const { return WindowShouldClose(); }
 
-void Window::handle_keys() {
-    if (action_pressed(action(WindowAction::Fullscreen))) {
+void Window::handle_keys(std::uint8_t context) {
+    if (action_pressed(action(WindowAction::Fullscreen), context)) {
         toggle_fullscreen();
     }
 }

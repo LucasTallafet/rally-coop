@@ -22,6 +22,27 @@ float shape_steer(float x, int sensitivity_pct) {
     return x < 0.0f ? -shaped : shaped;
 }
 
+LookStick shape_look_stick(float x, float y) {
+    const float magnitude = std::sqrt(x * x + y * y);
+    if (!(magnitude > kLookDeadzone)) {
+        return {};
+    }
+    const float shaped = (std::min(magnitude, 1.0f) - kLookDeadzone) / (1.0f - kLookDeadzone);
+    const float scale = shaped / magnitude;
+    return {x * scale, y * scale};
+}
+
+MouseUse mouse_use(bool mouse_steering, bool capture_allowed, bool focused) {
+    if (!capture_allowed || !focused) {
+        return MouseUse::None;
+    }
+    return mouse_steering ? MouseUse::Steer : MouseUse::Look;
+}
+
+bool look_recenters_on_switch(MouseUse previous, MouseUse now) {
+    return previous == MouseUse::Look && now == MouseUse::Steer;
+}
+
 float shape_trigger(float value) {
     const float clamped = std::clamp(value, 0.0f, 1.0f);
     if (clamped <= kTriggerDeadzone) {
@@ -42,10 +63,11 @@ bool intermediate(float trigger) {
 }
 
 // Usado en este fotograma: eje de dirección o gatillo fuera de su zona muerta, o un botón.
-// El eje Y del stick no cuenta: una deriva vertical no roba el mando activo.
+// El eje Y del stick izquierdo no cuenta: una deriva vertical no roba el mando activo.
 bool in_use(const PadReading& pad) {
     return shape_steer(pad.left_x) != 0.0f || shape_trigger(pad.left_trigger) != 0.0f ||
-           shape_trigger(pad.right_trigger) != 0.0f || pad.any_button;
+           shape_trigger(pad.right_trigger) != 0.0f ||
+           shape_look_stick(pad.right_x, pad.right_y) != LookStick{} || pad.any_button;
 }
 
 } // namespace
@@ -97,6 +119,7 @@ PadState PadTracker::update(const PadReading* pads, int count, int steer_sensiti
     const PadReading& pad = pads[active_index];
     state.active = true;
     state.steer = shape_steer(pad.left_x, steer_sensitivity_pct);
+    state.look = shape_look_stick(pad.right_x, pad.right_y);
     state.throttle = shape_trigger(pad.right_trigger);
     state.brake = shape_trigger(pad.left_trigger);
     state.throttle_digital = !known_[active_index].analog_right;

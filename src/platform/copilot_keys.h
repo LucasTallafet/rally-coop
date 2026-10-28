@@ -11,10 +11,11 @@ namespace rally::platform {
 
 // Teclas propias de la ventana del copiloto (rally.exe --copiloto, lote 3 §2.7). Su tabla entra en
 // la de platform/key_tables (docs/teclas.md); su contexto, kContextCopilot, no está en
-// kContextAll: en el juego Z y B no hacen nada y su ayuda (H) no la enseña.
+// kContextAll: en el juego Z no hace nada y su ayuda (H) no la enseña. Mirar con la cabeza no es
+// una tecla del copiloto: es la fila Look de platform/demo_camera_keys, que vale en las dos
+// ventanas.
 enum class CopilotAction : std::uint8_t {
     SimulatedNet,
-    LookAtDash,
     Count,
 };
 
@@ -28,7 +29,8 @@ constexpr ActionRef action(CopilotAction a) {
 // valen en ella (Tab, F1, F3, H, F11 y Esc; las demás no se leen).
 inline constexpr std::uint8_t kCopilotKeyContext = kContextZone | kContextCopilot;
 
-// Las filas que enseña la ayuda (H) del copiloto: sus ocho teclas (Tab con texto propio), Z y B.
+// Las filas que enseña la ayuda (H) del copiloto: sus ocho filas (Tab y Mirar con texto propio) y
+// Z.
 std::span<const KeyBinding> copilot_help_table();
 
 // Red simulada (Z): no, media (100 ± 30 ms, 5 % de pérdida) y mala (250 ± 80 ms, 20 %).

@@ -1,4 +1,6 @@
+#include "platform/copilot_keys.h"
 #include "platform/demo_camera_keys.h"
+#include "platform/demo_screen_keys.h"
 #include "platform/demo_world_keys.h"
 #include "platform/demo_zone_modes_keys.h"
 #include "platform/drive_keys.h"
@@ -114,7 +116,9 @@ TEST_CASE("keys: every action has exactly one row") {
             INFO("acción ", a);
             CHECK(seen[static_cast<std::size_t>(a)] == (a < t->action_count ? 1 : 0));
             if (a < t->action_count) {
-                CHECK(chords_for(ActionRef{t, static_cast<std::uint8_t>(a)})[0].key != Key::None);
+                // Con tecla o con mando (la fila de mirar es solo del stick derecho).
+                const ActionRef ref{t, static_cast<std::uint8_t>(a)};
+                CHECK((chords_for(ref)[0].key != Key::None || pad_for(ref) != PadControl::None));
             }
         }
     }
@@ -218,4 +222,56 @@ TEST_CASE("keys: docs/teclas.md matches the generated table") {
         MESSAGE("tabla generada:\n", generated);
     }
     CHECK(in_doc == generated);
+}
+
+TEST_CASE("keys: every action is valid in its contexts and in no other") {
+    using namespace rally::platform;
+    constexpr std::uint8_t kSingles[] = {kContextZone, kContextBlind, kContextArena,
+                                         kContextCopilot};
+    int checked = 0;
+    for (const KeyBinding& b : key_table()) {
+        for (const std::uint8_t action_index : {b.action, b.pair_action}) {
+            if (action_index == kNoAction) {
+                continue;
+            }
+            const ActionRef ref{b.table, action_index};
+            INFO("tabla ", b.table->name, " acción ", int{action_index});
+            for (const std::uint8_t context : kSingles) {
+                CHECK(action_valid_in(ref, context) == ((b.contexts & context) != 0));
+            }
+            // Cada bit de b.contexts es válido y los contextos que no tiene, no.
+            CHECK(action_valid_in(ref, b.contexts));
+            CHECK_FALSE(action_valid_in(ref, static_cast<std::uint8_t>(~b.contexts & 15)));
+            CHECK_FALSE(action_valid_in(ref, 0));
+            ++checked;
+        }
+    }
+    CHECK(checked > 40);
+    // Una acción que no está en la tabla no vale en ningún contexto.
+    CHECK_FALSE(action_valid_in(ActionRef{}, kContextAll | kContextCopilot));
+}
+
+TEST_CASE("keys: the copilot's own keys fire in the copilot window and not in the game") {
+    using namespace rally::platform;
+    const ActionRef z = action(CopilotAction::SimulatedNet);
+    for (const std::uint8_t game : {kContextZone, kContextBlind, kContextArena, kContextAll}) {
+        CHECK_FALSE(action_valid_in(z, game));
+    }
+    CHECK(action_valid_in(z, kCopilotKeyContext));
+    // Las del juego que la ventana del copiloto lee, en su contexto: Tab, F3, F1, H y F11.
+    for (const ActionRef a : {action(CameraAction::Camera), action(ScreenAction::DebugPanel),
+                              action(ScreenAction::Perf), action(ScreenAction::Help),
+                              action(WindowAction::Fullscreen)}) {
+        CHECK(action_valid_in(a, kCopilotKeyContext));
+        CHECK(action_valid_in(a, kContextZone));
+    }
+    // Mirar con la cabeza vale en las dos ventanas y en todos los contextos del juego.
+    const ActionRef look = action(CameraAction::Look);
+    for (const std::uint8_t c : {kContextZone, kContextBlind, kContextArena, kContextCopilot}) {
+        CHECK(action_valid_in(look, c));
+    }
+    CHECK(pad_for(look) == PadControl::RightStick);
+    CHECK(chords_for(look)[0].key == Key::None);
+    // Las del recinto no valen en el copiloto.
+    CHECK_FALSE(action_valid_in(action(ZoneModeAction::NextTrial), kCopilotKeyContext));
 }
