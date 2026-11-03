@@ -22,18 +22,30 @@ namespace rally::sim {
 //   alabeo del centro de cada cuadrilátero), y ≤ kStageMeshMaxStep.
 // - Terreno del formato 1 (rejilla en baldosas de kStageTileSamples² muestras que comparten las
 //   del borde): cada muestra junta los pies perpendiculares que tiene en el eje (un abanico por
-//   segmento de ≤ 0,5 m y una semicircunferencia en cada extremo). Bajo un núcleo, su plano −
-//   kStageTerrainDrop; fuera, la media de las alturas de los bordes cercanos − kStageTerrainDrop
+//   segmento de ≤ 0,5 m y una semicircunferencia en cada extremo). Fuera de los núcleos, la
+//   media de las alturas de los bordes cercanos − kStageTerrainDrop
 //   con peso c·ψ·φ/d⁸ (d: distancia al borde del núcleo; c = clamp(1 − κ·t, 0, 1), con las dos
 //   curvaturas en una junta donde salta, que se anula donde un pie nace o muere; ψ, que se anula
 //   a kStageFanReach del eje; φ, que se anula si el borde está 16 m más lejos que el más
 //   cercano). Si todos los pesos son 0 (el centro de un arco), la altura del pie más cercano.
-//   En cada celda que cruza el borde de un núcleo (esquinas dentro y fuera), todas sus muestras
-//   toman el plano del arcén prolongado − kStageTerrainDrop: la rejilla queda justo esa bajada
-//   bajo la malla en el borde, también con peralte (segunda respuesta del consultor, §1).
+//   Ese es el terreno natural N. Junto a cada núcleo (tercera respuesta del consultor, §1), con
+//   d la distancia al borde del núcleo (+ fuera, − dentro, también hacia los extremos del
+//   tramo) y S la superficie del eje prolongada con el peralte (y la pendiente más allá de los
+//   extremos), cada muestra toma, sin mirar a qué celda pertenece:
+//     d < −kStageEdgeBand              S − kStageCoreDrop (siempre bajo la malla);
+//     |d| ≤ kStageEdgeBand             B = S − kStageTerrainDrop − e(s) (StageCellError);
+//     kStageEdgeBand < d < +D          B + smoothstep((d − kStageEdgeBand)/D)·(N − B);
+//     más allá                         N;
+//   con D = kStageEdgeBlend. Dentro de un núcleo manda el suyo; fuera de todos, si una muestra
+//   está en la zona de varias pasadas, la menor de sus alturas.
 //   Solo tienen colisión las muestras a menos de kStageStripCollision del eje.
 
 inline constexpr double kStageTerrainDrop = 0.005; // terreno bajo el plano del núcleo y del borde
+inline constexpr double kStageCoreDrop = 0.10;     // rejilla bajo el núcleo, lejos del borde (m)
+inline constexpr double kStageEdgeBand = 1.0607;   // d₁: la diagonal de una celda de 0,75 m (m)
+// D: empalme de la banda al terreno natural (m). 4 m y no 3: con 3 m la ondulación a lo largo
+// de s pasaba de 5 mm (tercera respuesta del consultor, §2).
+inline constexpr double kStageEdgeBlend = 4.0;
 inline constexpr double kStageMeshMaxStep = 2.0;   // paso máximo entre secciones (m)
 inline constexpr double kStageChordPlan = 0.01;    // error de cuerda en planta (m)
 inline constexpr double kStageChordHeight = 0.002; // error de cuerda y alabeo en alzado (m)
@@ -128,6 +140,33 @@ StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, doub
 double stage_relief_height(const StageReliefFrame& frame, const TestZone& noise, double s, double t,
                            double x, double z);
 
+// e(s): cota del error de interpolar S en una celda de la rejilla de kStageCell junto al borde
+// (tercera respuesta del consultor, §1), con el eje: ½·M·R², con M la norma de la hessiana de S
+// en planta (curvatura, su variación, pendiente, curva vertical y rampa del peralte) en la banda
+// del lado del núcleo y R = kStageCell/√2 el radio de la circunferencia circunscrita a medio
+// cuadrado; y, en cada junta del eje donde salta la pendiente de S a lo largo de s (pendiente o
+// rampa de peralte), J·kStageEdgeBand/4. Se muestrea cada kStageCellErrorStep y se suaviza con
+// un máximo en meseta de ±kStageCellErrorPlateau y rampa de kStageCellErrorRamp: continua en s.
+inline constexpr double kStageCellErrorStep = 0.25;
+inline constexpr double kStageCellErrorPlateau = 2.0;
+inline constexpr double kStageCellErrorRamp = 2.0;
+
+class StageCellError {
+public:
+    StageCellError() = default;
+    // Reserva memoria y tarda: al cargar.
+    explicit StageCellError(const StageTrack& track);
+    // e(s), con s en [s_begin, s_end] (fuera, el del extremo). Sin reservas.
+    double at(double s) const;
+    // Sin suavizar, en la muestra más cercana (solo para los tests).
+    double raw_at(double s) const;
+
+private:
+    double s0_ = 0.0;
+    std::vector<double> raw_;
+    std::vector<double> e_;
+};
+
 class StageGround {
 public:
     // `cell`: celda de la rejilla (m). Reserva memoria y tarda: al cargar.
@@ -159,6 +198,11 @@ public:
     // Muestras con colisión que tenían más pies con peso de los que guardan (se quedan los más
     // cercanos a su borde). Si alguna vez no es 0, la media de esas muestras no es continua.
     std::size_t candidate_overflows() const { return candidate_overflows_; }
+    // Diagnóstico (tercera respuesta del consultor, §7, premisa 3): el mayor salto que da la
+    // regla del mínimo de varias pasadas cuando una sale de la zona (m).
+    double zone_jump() const { return zone_jump_; }
+    double zone_jump_x() const { return zone_jump_x_; }
+    double zone_jump_z() const { return zone_jump_z_; }
 
     // FNV-1a de la geometría de colisión: origen, celda, tipo, vértices, triángulos con su
     // superficie y baldosas con sus muestras (y superficies), campo a campo.
@@ -176,6 +220,9 @@ private:
     std::vector<StageTile> tiles_;
     std::size_t nearest_fallbacks_ = 0;
     std::size_t candidate_overflows_ = 0;
+    double zone_jump_ = 0.0;
+    double zone_jump_x_ = 0.0;
+    double zone_jump_z_ = 0.0;
 };
 
 } // namespace rally::sim

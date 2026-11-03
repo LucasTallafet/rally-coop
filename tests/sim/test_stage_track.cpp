@@ -965,6 +965,26 @@ TEST_CASE("stage_track: two arms closer than allowed fail with their s") {
     CHECK(ok.ok);
 }
 
+TEST_CASE(
+    "stage_track: an arc turning a full turn fails with its s and one of 200 degrees passes") {
+    // Tercera respuesta del consultor a tramo-fisica, §4: un arco que gira 360° o más se cierra
+    // sobre sí mismo y se rechaza con su s.
+    constexpr double kPi = 3.14159265358979323846;
+    StageTrack track;
+    const double full = 2.0 * kPi * 30.0;
+    const rally::sim::StageParseResult bad = StageTrack::build(
+        stage_text("straight 50\narc " + num(full) + " 30\nstraight 50\n", 100.0 + full), track);
+    CAPTURE(bad.error);
+    CHECK_FALSE(bad.ok);
+    CHECK(bad.error.rfind("s = 50.00: ", 0) == 0);
+    CHECK(bad.error.find("más de una vuelta") != std::string::npos);
+    const double part = 200.0 / 180.0 * kPi * 30.0;
+    const rally::sim::StageParseResult good = StageTrack::build(
+        stage_text("straight 50\narc " + num(part) + " 30\nstraight 50\n", 100.0 + part), track);
+    INFO(good.error);
+    CHECK(good.ok);
+}
+
 // --- Criterio 10: sin reservas
 // --------------------------------------------------------------------
 

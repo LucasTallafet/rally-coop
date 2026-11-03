@@ -489,6 +489,22 @@ std::string StageTrack::prepare() {
     add_sample(s_end());
     const std::size_t samples = sample_s_.size();
 
+    // Validación 0: ningún arco gira una vuelta o más (tercera respuesta del consultor a
+    // tramo-fisica, §4): se cerraría sobre sí mismo.
+    for (std::size_t i = 0; i < prims.size(); ++i) {
+        const StagePrimitive& prim = prims[i];
+        if (prim.curvature0 != prim.curvature1 || prim.curvature0 == 0.0) {
+            continue;
+        }
+        const double s1 = i + 1 < prims.size() ? prims[i + 1].s0 : length;
+        const double turn = rmath::abs(prim.curvature0) * (s1 - prim.s0);
+        if (turn >= 2.0 * kPi - 1.0e-9) {
+            return fail_at(prim.s0,
+                           "el arco gira " + fixed2(turn * 180.0 / kPi) + "°, más de una vuelta")
+                .error;
+        }
+    }
+
     // Validación 1: la malla no se pliega en ninguna curva.
     for (const Piece& piece : pieces_) {
         if (piece.kind == Piece::Kind::Straight) {

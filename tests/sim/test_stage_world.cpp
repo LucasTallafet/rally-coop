@@ -392,26 +392,34 @@ EdgeRun drive_across(const WorldDesc& desc) {
 }
 
 // Recta (s 20), 8° hacia fuera desde t = 1,5; curva de R 80 (peralte −5 %), recto desde
-// t = −1,5, sale por fuera; y de vuelta desde el terreno, 8° hacia dentro desde t = −7. En Debug,
-// solo la recta, desde t = 2,5 (2 s: sale del arcén igual).
-constexpr const char* kEdgeNames[3] = {"recta", "curva", "vuelta"};
+// t = −1,5, sale por fuera; de vuelta desde el terreno, 8° hacia dentro desde t = −7; y, solo en
+// la parte (A) (tercera respuesta del consultor, §3), por el borde interior de la horquilla de
+// R 6 (s 742, 8 % y −6 %) a 20 km/h, 60° hacia dentro desde t = 2,9. En Debug, la recta desde
+// t = 2,5 y la horquilla (2 s).
+constexpr const char* kEdgeNames[4] = {"recta", "curva", "vuelta", "horquilla"};
 #ifdef NDEBUG
 constexpr int kEdgeCases = 3;
+constexpr int kGeometryCases[] = {0, 1, 2, 3};
 constexpr double kStraightStart = 1.5;
 #else
 constexpr int kEdgeCases = 1;
+constexpr int kGeometryCases[] = {0, 3};
 constexpr double kStraightStart = 2.5;
 #endif
 
 rally::sim::CarSpawn edge_spawn(int c) {
     const StageTrack& track = lazadas();
     const float speed = static_cast<float>(30.0 / 3.6);
-    constexpr double kTurn = 8.0 * 3.14159265358979323846 / 180.0;
+    constexpr double kDegree = 3.14159265358979323846 / 180.0;
+    constexpr double kTurn = 8.0 * kDegree;
     if (c == 0) {
         return spawn_at(track, 20.0, kStraightStart, speed, kTurn);
     }
     if (c == 1) {
         return spawn_at(track, 150.0, -1.5, speed);
+    }
+    if (c == 3) {
+        return spawn_at(track, 742.0, 2.9, static_cast<float>(20.0 / 3.6), 60.0 * kDegree);
     }
     return spawn_at(track, 20.0, -7.0, speed, kTurn);
 }
@@ -421,7 +429,7 @@ rally::sim::CarSpawn edge_spawn(int c) {
 TEST_CASE("stage_world: without micro relief leaving and coming back over the shoulder at 30 kmh") {
     // Segunda respuesta del consultor, §2 (A): la geometría del borde sola, en absoluto.
     const rally::sim::JoltRuntime runtime;
-    for (int c = 0; c < kEdgeCases; ++c) {
+    for (const int c : kGeometryCases) {
         const EdgeRun run = drive_across(
             lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::Design, false));
         MESSAGE("sin microrrelieve, ", std::string(kEdgeNames[c]), ": impacto máximo ",
