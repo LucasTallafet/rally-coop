@@ -390,8 +390,13 @@ private:
         const double d = rmath::max(rmath::sqrt(qx * qx + qz * qz), kMinEdgeDistance);
         acc.min_dist = rmath::min(acc.min_dist, dist);
         if (d < acc.edge_d) {
+            // El plano del núcleo prolongado más allá del extremo: con su peralte y su pendiente
+            // (la del último segmento del abanico), para que la celda que cruza el extremo no
+            // asome.
+            const FanPoint& q = start ? points_[1] : points_[points_.size() - 2];
+            const double grade = (p.y - q.y) / (p.s - q.s);
             acc.edge_d = d;
-            acc.edge_plane_h = p.y + p.bank * t - drop_;
+            acc.edge_plane_h = p.y + grade * along + p.bank * t - drop_;
         }
         add_outside(fade(dist) * edge_weight(d), dist, d, p.y + p.bank * tc - drop_, acc);
     }

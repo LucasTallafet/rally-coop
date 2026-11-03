@@ -33,7 +33,7 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x7754'2c37'f8b2'759full;
+constexpr std::uint64_t kExpectedStageGroundHash = 0x4a04'5e7c'fd8c'cee9ull;
 
 constexpr double kMm = 1.0e-3;
 
@@ -690,11 +690,11 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         }
         (is_low ? low : other)++;
         measure(s, t);
-        // Escalón en el borde: la malla 1 cm dentro frente a la rejilla 1 cm fuera.
-        const Point a = at(track, s, side * (e - 0.01));
-        const Point b = at(track, s, side * (e + 0.01));
-        out.step =
-            std::max(out.step, mesh.probe_ground(a.x, a.z).y - terrain.probe_ground(b.x, b.z).y);
+        // Escalón en el borde: la malla y la rejilla en el mismo punto, 1 mm dentro del borde
+        // (la caída que ve la rueda al salir; a ±1 cm se sumaría la pendiente del peralte).
+        const Point a = at(track, s, side * (e - 0.001));
+        const double stp = mesh.probe_ground(a.x, a.z).y - terrain.probe_ground(a.x, a.z).y;
+        out.step = std::max(out.step, stp);
     }
     out.edge_cells = low + other;
     out.low_side = low;

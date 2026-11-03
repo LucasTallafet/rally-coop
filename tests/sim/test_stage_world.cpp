@@ -424,8 +424,8 @@ TEST_CASE("stage_world: without micro relief leaving and coming back over the sh
     for (int c = 0; c < kEdgeCases; ++c) {
         const EdgeRun run = drive_across(
             lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::Design, false));
-        MESSAGE("sin microrrelieve, ", kEdgeNames[c], ": impacto máximo ", run.loads.max_impact,
-                " m/s; pasos-rueda sin carga ", run.loads.unloaded);
+        MESSAGE("sin microrrelieve, ", std::string(kEdgeNames[c]), ": impacto máximo ",
+                run.loads.max_impact, " m/s; pasos-rueda sin carga ", run.loads.unloaded);
         CHECK((c == 2 ? run.back_on_road : run.left_road));
         CHECK(run.loads.unloaded == 0);
         CHECK(run.loads.max_impact <= 1.0);
@@ -443,10 +443,10 @@ TEST_CASE("stage_world: with micro relief the shoulder crossings match the dense
         const EdgeRun run = drive_across(lazadas_desc(edge_spawn(c)));
         const EdgeRun ref =
             drive_across(lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh));
-        MESSAGE("con microrrelieve, ", kEdgeNames[c], ": impacto máximo ", run.loads.max_impact,
-                " m/s; pasos-rueda sin carga ", run.loads.unloaded, " (malla densa ",
-                ref.loads.unloaded, "), episodio más largo ", run.loads.longest, " (",
-                ref.loads.longest, ")");
+        MESSAGE("con microrrelieve, ", std::string(kEdgeNames[c]), ": impacto máximo ",
+                run.loads.max_impact, " m/s; pasos-rueda sin carga ", run.loads.unloaded,
+                " (malla densa ", ref.loads.unloaded, "), episodio más largo ", run.loads.longest,
+                " (", ref.loads.longest, ")");
         CHECK(run.loads.max_impact <= 1.0);
         stage.add(run.loads);
         dense.add(ref.loads);
