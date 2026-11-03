@@ -102,7 +102,7 @@ StagePose StageTrack::pose(double s) const {
 
 double StageTrack::core_half_width(double s, int side) const { return side_core(pose(s), side); }
 
-StageProjection StageTrack::finish(double x, double z, double s) const {
+StageProjection StageTrack::finish(double x, double z, double s, double margin) const {
     const StagePose p = pose(s);
     const double dx = x - p.x;
     const double dz = z - p.z;
@@ -115,7 +115,7 @@ StageProjection StageTrack::finish(double x, double z, double s) const {
     out.t = dx * cos_h + dz * sin_h;
     out.distance = rmath::sqrt(dx * dx + dz * dz);
     out.on_road = rmath::abs(along) <= kPerpendicularTolerance &&
-                  rmath::abs(out.t) <= side_core(p, out.t >= 0.0 ? 1 : -1);
+                  rmath::abs(out.t) <= side_core(p, out.t >= 0.0 ? 1 : -1) + margin;
     return out;
 }
 
@@ -346,7 +346,7 @@ StageProjection StageTrack::acquire(double x, double z) const {
     return finish(x, z, best.s);
 }
 
-bool StageTrack::on_any_road(double x, double z, StageProjection& out) const {
+bool StageTrack::on_any_road(double x, double z, StageProjection& out, double margin) const {
     const Cell* cell = find_cell(x, z);
     if (cell == nullptr) {
         return false;
@@ -360,7 +360,7 @@ bool StageTrack::on_any_road(double x, double z, StageProjection& out) const {
             if (c.d2 > reach * reach) {
                 return;
             }
-            const StageProjection p = finish(x, z, c.s);
+            const StageProjection p = finish(x, z, c.s, margin);
             if (p.on_road && (!found || p.distance < best.distance)) {
                 best = p;
                 found = true;

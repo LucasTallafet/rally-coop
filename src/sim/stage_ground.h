@@ -28,6 +28,9 @@ namespace rally::sim {
 //   curvaturas en una junta donde salta, que se anula donde un pie nace o muere; ψ, que se anula
 //   a kStageFanReach del eje; φ, que se anula si el borde está 16 m más lejos que el más
 //   cercano). Si todos los pesos son 0 (el centro de un arco), la altura del pie más cercano.
+//   En cada celda que cruza el borde de un núcleo (esquinas dentro y fuera), todas sus muestras
+//   toman el plano del arcén prolongado − kStageTerrainDrop: la rejilla queda justo esa bajada
+//   bajo la malla en el borde, también con peralte (segunda respuesta del consultor, §1).
 //   Solo tienen colisión las muestras a menos de kStageStripCollision del eje.
 
 inline constexpr double kStageTerrainDrop = 0.005; // terreno bajo el plano del núcleo y del borde
@@ -119,7 +122,7 @@ struct StageReliefFrame {
 
 // Marco de (x, z): su proyección local en el eje cerca de s_hint (la circunferencia osculatriz de
 // la pose en s_hint: exacta en rectas y arcos) y, si el punto queda fuera del núcleo de esa pasada
-// y de su franja de mezcla y está en la calzada o el arcén de otra, la de esa.
+// y de su franja de mezcla y está en la calzada, el arcén o la franja de mezcla de otra, la de esa.
 StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, double x, double z);
 // h en el punto (x, z) que está en (s, t) del marco.
 double stage_relief_height(const StageReliefFrame& frame, const TestZone& noise, double s, double t,

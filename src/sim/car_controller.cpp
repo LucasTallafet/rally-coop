@@ -81,6 +81,8 @@ double ReliefSource::height(MicroRelief relief, Surface surface, double x, doubl
     case MicroRelief::Noise:
         return noise != nullptr ? noise->surface_noise(surface, x, z) : 0.0;
     case MicroRelief::Stage:
+        // El tramo lo calcula CarWheelTester::Collide con el marco de la rueda.
+        RALLY_CHECK(false, "ReliefSource::height: MicroRelief::Stage va por el marco de la rueda");
         return 0.0;
     }
     return 0.0;
@@ -860,6 +862,9 @@ bool CarWheelTester::Collide(JPH::PhysicsSystem& system, const JPH::VehicleConst
         double sum = 0.0;
         if (material->relief() == MicroRelief::Stage) {
             // Tramo: una proyección por rueda y paso; las muestras, con su desplazamiento.
+            RALLY_CHECK(relief_.stage != nullptr && relief_.run != nullptr &&
+                            relief_.noise != nullptr,
+                        "CarWheelTester: un material del tramo sin el tramo en ReliefSource");
             const StageReliefFrame frame =
                 stage_relief_frame(*relief_.stage, relief_.run->s, center.GetX(), center.GetZ());
             for (int a = -1; a <= 1; ++a) {

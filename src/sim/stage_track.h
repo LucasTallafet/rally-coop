@@ -54,9 +54,10 @@ public:
     StageProjection project(double x, double z, double s_lo, double s_hi) const;
     // La proyección más cercana en todo el tramo, con el índice (celdas de 10 m). Sin reservas.
     StageProjection acquire(double x, double z) const;
-    // Si (x, z) está en la calzada o el arcén de alguna pasada, su proyección en ella. Sin
-    // reservas.
-    bool on_any_road(double x, double z, StageProjection& out) const;
+    // Si (x, z) está en la calzada o el arcén de alguna pasada, su proyección en ella. Con
+    // `margin` > 0, también hasta `margin` fuera del arcén (el microrrelieve del tramo, que mezcla
+    // en esa franja; on_road de `out` dice entonces si está dentro del margen). Sin reservas.
+    bool on_any_road(double x, double z, StageProjection& out, double margin = 0.0) const;
     // Memoria de las piezas, las muestras y el índice (bytes).
     std::size_t index_bytes() const;
 
@@ -94,7 +95,7 @@ private:
     template <typename F>
     void for_each_candidate(double x, double z, double lo, double hi, F&& f) const;
     // Proyección de (x, z) en el punto s del eje: t, distancia y en carretera.
-    StageProjection finish(double x, double z, double s) const;
+    StageProjection finish(double x, double z, double s, double margin = 0.0) const;
     const Cell* find_cell(double x, double z) const;
     // Tras parse: piezas, muestras, validación e índice. Error «s = …: …» o vacío.
     std::string prepare();

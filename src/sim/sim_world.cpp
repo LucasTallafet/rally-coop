@@ -61,14 +61,14 @@ void require_shape(const JPH::ShapeSettings::ShapeResult& result, const char* wh
 // máximo de la malla y de las baldosas, no su suma: así cabe un tramo de 30 km. Cada forma lleva
 // sus SurfaceMaterial con el microrrelieve del tramo (MicroRelief::Stage: las bandas de las losas,
 // mezcladas en los bordes).
-JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground) {
+JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground, bool with_mesh, MicroRelief relief) {
     JPH::PhysicsMaterialList materials;
     for (int s = 0; s < kSurfaceCount; ++s) {
-        materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), MicroRelief::Stage));
+        materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), relief));
     }
     JPH::StaticCompoundShapeSettings compound;
     JPH::StaticCompoundShapeSettings tiles;
-    if (!ground.triangles().empty()) {
+    if (with_mesh && !ground.triangles().empty()) {
         JPH::VertexList vertices;
         vertices.reserve(ground.vertices().size());
         for (const StageVertex& v : ground.vertices()) {
@@ -140,7 +140,10 @@ JPH::Quat on_road_plane(const StagePose& p, float yaw) {
 }
 
 double stage_cell(StageGroundVariant variant) {
-    return variant == StageGroundVariant::CoarseTiles ? 2.0 * kStageCell : kStageCell;
+    if (variant == StageGroundVariant::CoarseTiles) {
+        return 2.0 * kStageCell;
+    }
+    return variant == StageGroundVariant::DenseMesh ? 0.5 * kStageCell : kStageCell;
 }
 
 } // namespace
@@ -347,7 +350,9 @@ void SimWorld::build(const WorldDesc& desc) {
             desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
                                                                 : StageMeshDensity{});
         w.stage_ground_hash = ground.hash();
-        const JPH::Ref<JPH::Shape> shape = stage_shape(ground);
+        const JPH::Ref<JPH::Shape> shape =
+            stage_shape(ground, desc.stage_variant != StageGroundVariant::TerrainOnly,
+                        desc.stage_micro_relief ? MicroRelief::Stage : MicroRelief::None);
         JPH::Shape::VisitedShapes visited;
         w.stage_ground_bytes = shape->GetStatsRecursive(visited).mSizeBytes;
         const JPH::BodyCreationSettings settings(
@@ -407,6 +412,8 @@ void SimWorld::build(const WorldDesc& desc) {
             make_car_constraint(*car_body, desc.car_data, -w.system.GetGravity().GetY(), desc.aids,
                                 desc.explicit_wheels);
         w.car_controller = static_cast<CarController*>(w.car_constraint->GetController());
+        RALLY_CHECK(!w.stage || (w.stage_run && w.noise),
+                    "SimWorld::build: el tramo necesita su pasada y las bandas de h");
         w.car_tester =
             new CarWheelTester(layers::kMoving,
                                ReliefSource{w.zone.get(), w.noise.get(), w.stage.get(),

@@ -93,13 +93,52 @@ SimInput hold_speed(const BodyVelocity& v, double speed) {
     return in;
 }
 
-// Lo que mide el criterio 3 en una pasada: el mayor salto de carga entre pasos y los pasos con
-// una rueda sin carga.
+// Lo que miden los criterios 3 y 4 en una pasada: el mayor salto de carga entre pasos, los
+// picos de un paso, los pasos-rueda sin carga, cuántos se midieron y el episodio más largo de
+// una rueda sin carga (segunda respuesta del consultor, §2).
 struct LoadStats {
-    double max_jump = 0.0;  // el mayor |L(n) − L(n−1)| (el criterio)
+    double max_jump = 0.0;  // el mayor |L(n) − L(n−1)|
     double max_spike = 0.0; // el mayor |L(n) − 2·L(n−1) + L(n−2)| (diagnóstico de juntas)
     int unloaded = 0;       // pasos-rueda sin contacto o sin carga
+    int wheel_steps = 0;    // pasos-rueda medidos
+    int longest = 0;        // pasos seguidos de una rueda sin carga, el episodio más largo
+    double max_impact = 0.0;
+
+    void add(const LoadStats& o) {
+        max_jump = std::max(max_jump, o.max_jump);
+        max_spike = std::max(max_spike, o.max_spike);
+        unloaded += o.unloaded;
+        wheel_steps += o.wheel_steps;
+        longest = std::max(longest, o.longest);
+        max_impact = std::max(max_impact, o.max_impact);
+    }
+    double percent() const {
+        return wheel_steps > 0 ? 100.0 * unloaded / static_cast<double>(wheel_steps) : 0.0;
+    }
 };
+
+// Diagnóstico de una parada: cada rueda (carga, h, suelo bajo ella) en un paso con una rueda sin
+// carga, como pide la segunda respuesta del consultor (§6). Hasta 12 líneas por pasada.
+void print_wheels(const SimWorld& world, int step) {
+    const BodyPose pose = world.car_pose();
+    const rally::sim::CarTelemetry& t = world.telemetry();
+    std::string line;
+    for (int w = 0; w < rally::sim::kWheelCount; ++w) {
+        const rally::sim::SimWorld::WheelPose wp = world.car_wheel(w);
+        const double yaw = -rally::tests::car_heading(pose);
+        const double wx = pose.x + wp.attach_x * std::cos(yaw) + wp.attach_z * std::sin(yaw);
+        const double wz = pose.z - wp.attach_x * std::sin(yaw) + wp.attach_z * std::cos(yaw);
+        const double t_wheel = world.stage() != nullptr ? world.stage()->acquire(wx, wz).t : 0.0;
+        const rally::sim::GroundProbe g = world.probe_ground(wx, wz);
+        const auto& wheel = t.wheels[static_cast<std::size_t>(w)];
+        char buffer[200];
+        std::snprintf(buffer, sizeof(buffer),
+                      " | r%d t %.2f carga %.0f h %.1f mm suelo %.3f (sup %d)", w, t_wheel,
+                      wheel.load, 1000.0 * wheel.h, g.y, static_cast<int>(g.surface));
+        line += buffer;
+    }
+    MESSAGE("diag paso ", step, line);
+}
 
 template <typename Input>
 LoadStats measure_loads(SimWorld& world, int settle, int steps, Input&& input) {
@@ -107,13 +146,21 @@ LoadStats measure_loads(SimWorld& world, int settle, int steps, Input&& input) {
     LoadStats stats;
     float previous[rally::sim::kWheelCount] = {};
     float before_previous[rally::sim::kWheelCount] = {};
+    int run[rally::sim::kWheelCount] = {};
+    int printed = 0;
     for (int i = 0; i < settle + steps; ++i) {
         world.step(input(world));
         const rally::sim::CarTelemetry& t = world.telemetry();
         if (i >= settle) {
+            bool any = false;
             for (int w = 0; w < rally::sim::kWheelCount; ++w) {
                 const auto& wheel = t.wheels[static_cast<std::size_t>(w)];
-                stats.unloaded += wheel.contact == 0 || wheel.load <= 0.0f ? 1 : 0;
+                const bool lost = wheel.contact == 0 || wheel.load <= 0.0f;
+                any = any || lost;
+                stats.unloaded += lost ? 1 : 0;
+                ++stats.wheel_steps;
+                run[w] = lost ? run[w] + 1 : 0;
+                stats.longest = std::max(stats.longest, run[w]);
                 if (i > settle + 1) {
                     const double jump = std::abs(static_cast<double>(wheel.load - previous[w]));
                     stats.max_jump = std::max(stats.max_jump, jump);
@@ -123,6 +170,11 @@ LoadStats measure_loads(SimWorld& world, int settle, int steps, Input&& input) {
                         static_cast<double>(wheel.load - 2.0f * previous[w] + before_previous[w]));
                     stats.max_spike = std::max(stats.max_spike, spike);
                 }
+            }
+            stats.max_impact = std::max(stats.max_impact, static_cast<double>(t.impact));
+            if (any && printed < 12 && world.stage() != nullptr) {
+                ++printed;
+                print_wheels(world, i);
             }
         }
         for (int w = 0; w < rally::sim::kWheelCount; ++w) {
@@ -134,8 +186,8 @@ LoadStats measure_loads(SimWorld& world, int settle, int steps, Input&& input) {
 }
 
 // Losa plana de `surface` con su microrrelieve bajo la salida (la cara de arriba a su altura),
-// de 400 × 400 m: la referencia del criterio 3 por el mismo camino en planta, así que la rueda
-// nota la misma h que en el tramo y lo que cambia es solo la geometría.
+// de 400 × 400 m: la referencia de la recta del criterio 3 por el mismo camino en planta, así que
+// la rueda nota la misma h que en el tramo y lo que cambia es solo la geometría.
 WorldDesc slab_under(const rally::sim::CarSpawn& spawn,
                      rally::sim::Surface surface = rally::sim::Surface::Gravel) {
     rally::sim::BoxDesc box;
@@ -152,6 +204,17 @@ WorldDesc slab_under(const rally::sim::CarSpawn& spawn,
     desc.car = true;
     desc.car_data = rally::tests::reference_car();
     desc.car_spawn = spawn;
+    return desc;
+}
+
+// El mundo de lazadas con la salida `spawn`, el suelo `variant` y el microrrelieve o sin él.
+WorldDesc
+lazadas_desc(const rally::sim::CarSpawn& spawn,
+             rally::sim::StageGroundVariant variant = rally::sim::StageGroundVariant::Design,
+             bool micro = true) {
+    WorldDesc desc = stage_desc(rally::tests::lazadas_stage_text(), spawn);
+    desc.stage_variant = variant;
+    desc.stage_micro_relief = micro;
     return desc;
 }
 
@@ -175,73 +238,109 @@ constexpr double kCriterionSpeeds[] = {60.0};
 constexpr int kCriterionSteps = 2 * kSteps;
 #endif
 
+// La recta (desde s = −15, cruza la junta de s = 0, sin dirección ni freno) y la curva de R 100
+// (tierra, peralte −3 %, con la dirección del conductor de test y sin freno) a `speed`.
+LoadStats straight_run(const WorldDesc& desc, double speed) {
+    SimWorld world;
+    world.build(desc);
+    world.seal();
+    return measure_loads(world, kSteps / 2, kCriterionSteps,
+                         [speed](SimWorld& w) { return hold_speed(w.car_velocity(), speed); });
+}
+
+LoadStats curve_run(const WorldDesc& desc, double speed, bool* on_road = nullptr) {
+    SimWorld world;
+    world.build(desc);
+    world.seal();
+    rally::tests::StageDriver driver(lazadas(), speed, 100.0);
+    const LoadStats stats =
+        measure_loads(world, kSteps / 2, kCriterionSteps, [speed, &driver](SimWorld& w) {
+            SimInput in = driver.input(w.car_pose(), w.car_velocity());
+            in.throttle = hold_speed(w.car_velocity(), speed).throttle;
+            in.brake = 0;
+            return in;
+        });
+    if (on_road != nullptr) {
+        *on_road = world.stage_run() == nullptr || world.stage_run()->on_road;
+    }
+    return stats;
+}
+
+rally::sim::CarSpawn straight_spawn(double speed) {
+    return spawn_at(lazadas(), -15.0, 0.0, static_cast<float>(speed));
+}
+
+rally::sim::CarSpawn curve_spawn(double speed) {
+    return spawn_at(lazadas(), kCurveStart + 5.0, 0.0, static_cast<float>(speed));
+}
+
 } // namespace
 
-TEST_CASE("stage_world: no joints under the road on the straight and the curve") {
-    // Respuesta del consultor §2: (a) ninguna rueda pierde la carga; (b) en la recta, la losa
-    // de la misma superficie con su microrrelieve por el mismo camino, + 1 % de la carga
-    // estática; (c) en la curva, el mismo tramo con la malla 4 veces más densa, + 1 %.
+TEST_CASE("stage_world: without micro relief no wheel loses load on the straight and the curve") {
+    // Segunda respuesta del consultor, §2 (A): la geometría sola, en absoluto.
     const rally::sim::JoltRuntime runtime;
-    const StageTrack& track = lazadas();
-    const double limit = 0.01 * static_load();
     for (const double kmh : kCriterionSpeeds) {
         const double speed = kmh / 3.6;
-        const int settle = kSteps / 2;
-        // Recta: sale en s = −15 (cruza la junta de s = 0), sin dirección ni freno.
-        const rally::sim::CarSpawn straight_spawn =
-            spawn_at(track, -15.0, 0.0, static_cast<float>(speed));
-        SimWorld straight;
-        straight.build(stage_desc(rally::tests::lazadas_stage_text(), straight_spawn));
-        straight.seal();
-        const auto hold = [speed](SimWorld& w) { return hold_speed(w.car_velocity(), speed); };
-        const LoadStats on_stage = measure_loads(straight, settle, kCriterionSteps, hold);
-        SimWorld slab;
-        slab.build(slab_under(straight_spawn));
-        slab.seal();
-        const LoadStats on_slab = measure_loads(slab, settle, kCriterionSteps, hold);
-
-        // Curva de R 100 (tierra, peralte −3 %) con la dirección del conductor de test, sin
-        // freno; la referencia, la misma pasada sobre la malla 4 veces más densa.
-        const auto curve_input = [speed](rally::tests::StageDriver& driver) {
-            return [speed, &driver](SimWorld& w) {
-                SimInput in = driver.input(w.car_pose(), w.car_velocity());
-                const SimInput held = hold_speed(w.car_velocity(), speed);
-                in.throttle = held.throttle;
-                in.brake = 0;
-                return in;
-            };
-        };
-        const rally::sim::CarSpawn curve_spawn =
-            spawn_at(track, kCurveStart + 5.0, 0.0, static_cast<float>(speed));
-        SimWorld curve;
-        curve.build(stage_desc(rally::tests::lazadas_stage_text(), curve_spawn));
-        curve.seal();
-        rally::tests::StageDriver driver(track, speed, 100.0);
-        const LoadStats on_curve =
-            measure_loads(curve, settle, kCriterionSteps, curve_input(driver));
-        WorldDesc dense_desc = stage_desc(rally::tests::lazadas_stage_text(), curve_spawn);
-        dense_desc.stage_variant = rally::sim::StageGroundVariant::DenseMesh;
-        SimWorld dense;
-        dense.build(dense_desc);
-        dense.seal();
-        rally::tests::StageDriver dense_driver(track, speed, 100.0);
-        const LoadStats on_dense =
-            measure_loads(dense, settle, kCriterionSteps, curve_input(dense_driver));
-
-        MESSAGE(kmh, " km/h: salto de carga en la recta ", on_stage.max_jump, " N (losa ",
-                on_slab.max_jump, " N), en la curva ", on_curve.max_jump, " N (malla densa ",
-                on_dense.max_jump, " N); pasos-rueda sin carga: recta ", on_stage.unloaded,
-                " (losa ", on_slab.unloaded, "), curva ", on_curve.unloaded, " (malla densa ",
-                on_dense.unloaded, "); 1 % de la carga estática ", limit,
-                " N; picos de un paso: recta ", on_stage.max_spike, " N (losa ", on_slab.max_spike,
-                " N), curva ", on_curve.max_spike, " N (malla densa ", on_dense.max_spike, " N)");
-        CHECK(on_stage.unloaded == 0);
-        CHECK(on_curve.unloaded == 0);
-        CHECK(on_stage.max_jump <= on_slab.max_jump + limit);
-        CHECK(on_curve.max_jump <= on_dense.max_jump + limit);
-        CHECK(curve.stage_run()->on_road);
+        const auto plain = rally::sim::StageGroundVariant::Design;
+        const LoadStats straight =
+            straight_run(lazadas_desc(straight_spawn(speed), plain, false), speed);
+        bool on_road = false;
+        const LoadStats curve =
+            curve_run(lazadas_desc(curve_spawn(speed), plain, false), speed, &on_road);
+        MESSAGE("sin microrrelieve a ", kmh, " km/h: pasos-rueda sin carga ", straight.unloaded,
+                " en la recta y ", curve.unloaded, " en la curva; salto de carga ",
+                straight.max_jump, " y ", curve.max_jump, " N");
+        CHECK(straight.unloaded == 0);
+        CHECK(curve.unloaded == 0);
+        CHECK(on_road);
     }
 }
+
+#ifdef NDEBUG
+TEST_CASE("stage_world: with micro relief the loads match their references on the straight and the "
+          "curve") {
+    // Segunda respuesta del consultor, §2 (B) y criterios 3 (b) y (c): con MicroRelief::Stage,
+    // la recta frente a la losa de su superficie por el mismo camino y la curva frente al mismo
+    // tramo con la malla 4 veces más densa (y la rejilla de 0,375 m). Las tres velocidades se
+    // suman: pasos-rueda sin carga ≤ la referencia + 0,5 puntos y episodio más largo ≤ la
+    // referencia + 12 pasos. Y el salto de carga de cada pasada ≤ la referencia + 1 % de la
+    // carga estática.
+    const rally::sim::JoltRuntime runtime;
+    const double limit = 0.01 * static_load();
+    LoadStats straight;
+    LoadStats slab;
+    LoadStats curve;
+    LoadStats dense;
+    for (const double kmh : kCriterionSpeeds) {
+        const double speed = kmh / 3.6;
+        const LoadStats s = straight_run(lazadas_desc(straight_spawn(speed)), speed);
+        const LoadStats r = straight_run(slab_under(straight_spawn(speed)), speed);
+        const LoadStats c = curve_run(lazadas_desc(curve_spawn(speed)), speed);
+        const LoadStats d = curve_run(
+            lazadas_desc(curve_spawn(speed), rally::sim::StageGroundVariant::DenseMesh), speed);
+        MESSAGE(kmh, " km/h: salto de carga en la recta ", s.max_jump, " N (losa ", r.max_jump,
+                " N), en la curva ", c.max_jump, " N (malla densa ", d.max_jump,
+                " N); pasos-rueda sin carga: recta ", s.unloaded, " (losa ", r.unloaded,
+                "), curva ", c.unloaded, " (malla densa ", d.unloaded,
+                "); picos de un paso: recta ", s.max_spike, " N (losa ", r.max_spike, " N), curva ",
+                c.max_spike, " N (malla densa ", d.max_spike, " N)");
+        CHECK(s.max_jump <= r.max_jump + limit);
+        CHECK(c.max_jump <= d.max_jump + limit);
+        straight.add(s);
+        slab.add(r);
+        curve.add(c);
+        dense.add(d);
+    }
+    MESSAGE("con microrrelieve, las tres velocidades: recta ", straight.percent(),
+            " % de pasos-rueda sin carga y episodio de ", straight.longest, " pasos (losa ",
+            slab.percent(), " % y ", slab.longest, "); curva ", curve.percent(), " % y ",
+            curve.longest, " (malla densa ", dense.percent(), " % y ", dense.longest, ")");
+    CHECK(straight.percent() <= slab.percent() + 0.5);
+    CHECK(straight.longest <= slab.longest + 12);
+    CHECK(curve.percent() <= dense.percent() + 0.5);
+    CHECK(curve.longest <= dense.longest + 12);
+}
+#endif
 
 TEST_CASE("stage_world: on a flat mesh the load jumps are those of a slab") {
     // Criterio 3 sin geometría: la recta de la horquilla llana (malla plana, sin peralte ni
@@ -252,15 +351,8 @@ TEST_CASE("stage_world: on a flat mesh the load jumps are those of a slab") {
     for (const double kmh : kCriterionSpeeds) {
         const double speed = kmh / 3.6;
         const rally::sim::CarSpawn spawn = spawn_at(track, 10.0, 0.0, static_cast<float>(speed));
-        const auto hold = [speed](SimWorld& w) { return hold_speed(w.car_velocity(), speed); };
-        SimWorld stage;
-        stage.build(stage_desc(text, spawn));
-        stage.seal();
-        const LoadStats a = measure_loads(stage, kSteps / 2, kCriterionSteps, hold);
-        SimWorld slab;
-        slab.build(slab_under(spawn));
-        slab.seal();
-        const LoadStats b = measure_loads(slab, kSteps / 2, kCriterionSteps, hold);
+        const LoadStats a = straight_run(stage_desc(text, spawn), speed);
+        const LoadStats b = straight_run(slab_under(spawn), speed);
         MESSAGE("malla llana a ", kmh, " km/h: salto de carga ", a.max_jump, " N (losa ",
                 b.max_jump, " N), pico de un paso ", a.max_spike, " N (losa ", b.max_spike,
                 " N), pasos-rueda sin carga ", a.unloaded, " (losa ", b.unloaded, ")");
@@ -275,100 +367,100 @@ TEST_CASE("stage_world: on a flat mesh the load jumps are those of a slab") {
 namespace {
 
 struct EdgeRun {
-    int unloaded = 0;
-    double max_impact = 0.0;
+    LoadStats loads;
     bool left_road = false;
     bool back_on_road = false;
-    int printed = 0;
 };
 
-// 3 s a la velocidad de la salida, sin dirección: en el tramo o, con `slab`, por el mismo camino
-// sobre la losa de referencia.
-EdgeRun drive_across(const rally::sim::CarSpawn& spawn, bool slab = false) {
+// 3 s (2 s en Debug) a la velocidad de la salida, sin dirección, en `desc`.
+EdgeRun drive_across(const WorldDesc& desc) {
     SimWorld world;
-    world.build(slab ? slab_under(spawn) : stage_desc(rally::tests::lazadas_stage_text(), spawn));
+    world.build(desc);
     world.seal();
-    world.set_telemetry(true);
     EdgeRun run;
-    const double speed = spawn.speed;
-    for (int i = 0; i < kCriterionSteps; ++i) {
-        world.step(hold_speed(world.car_velocity(), speed));
-        const rally::sim::CarTelemetry& t = world.telemetry();
-        if (i >= kSteps / 4) {
-            for (const auto& wheel : t.wheels) {
-                run.unloaded += wheel.contact == 0 || wheel.load <= 0.0f ? 1 : 0;
-            }
-            run.max_impact = std::max(run.max_impact, static_cast<double>(t.impact));
-        }
-        // Diagnóstico de la parada: cada rueda en los pasos de la primera pérdida de carga.
-        if (!slab && run.unloaded > 0 && run.printed < 12) {
-            ++run.printed;
-            const BodyPose pose = world.car_pose();
-            std::string line;
-            for (int w = 0; w < rally::sim::kWheelCount; ++w) {
-                const rally::sim::SimWorld::WheelPose wp = world.car_wheel(w);
-                // Punto de la rueda en planta (giro del coche alrededor de y).
-                const double yaw = -rally::tests::car_heading(pose);
-                const double wx =
-                    pose.x + wp.attach_x * std::cos(yaw) + wp.attach_z * std::sin(yaw);
-                const double wz =
-                    pose.z - wp.attach_x * std::sin(yaw) + wp.attach_z * std::cos(yaw);
-                const auto q = world.stage()->acquire(wx, wz);
-                const rally::sim::GroundProbe g = world.probe_ground(wx, wz);
-                const auto& wheel = t.wheels[static_cast<std::size_t>(w)];
-                char buffer[200];
-                std::snprintf(buffer, sizeof(buffer),
-                              " | r%d t %.2f carga %.0f h %.1f mm suelo %.3f (sup %d)", w, q.t,
-                              wheel.load, 1000.0 * wheel.h, g.y, static_cast<int>(g.surface));
-                line += buffer;
-            }
-            MESSAGE("diag paso ", i, line);
-        }
-        if (!slab) {
-            const bool on_road = world.stage_run()->on_road;
-            run.left_road = run.left_road || !on_road;
-            run.back_on_road = run.back_on_road || (run.left_road && on_road);
-        }
-    }
+    const double speed = desc.car_spawn.speed;
+    run.loads = measure_loads(world, kSteps / 4, kCriterionSteps - kSteps / 4, [&](SimWorld& w) {
+        const bool on_road = w.stage_run()->on_road;
+        run.left_road = run.left_road || !on_road;
+        run.back_on_road = run.back_on_road || (run.left_road && on_road);
+        return hold_speed(w.car_velocity(), speed);
+    });
+    const bool on_road = world.stage_run()->on_road;
+    run.left_road = run.left_road || !on_road;
+    run.back_on_road = run.back_on_road || (run.left_road && on_road);
     return run;
+}
+
+// Recta (s 20), 8° hacia fuera desde t = 1,5; curva de R 80 (peralte −5 %), recto desde
+// t = −1,5, sale por fuera; y de vuelta desde el terreno, 8° hacia dentro desde t = −7. En Debug,
+// solo la recta, desde t = 2,5 (2 s: sale del arcén igual).
+constexpr const char* kEdgeNames[3] = {"recta", "curva", "vuelta"};
+#ifdef NDEBUG
+constexpr int kEdgeCases = 3;
+constexpr double kStraightStart = 1.5;
+#else
+constexpr int kEdgeCases = 1;
+constexpr double kStraightStart = 2.5;
+#endif
+
+rally::sim::CarSpawn edge_spawn(int c) {
+    const StageTrack& track = lazadas();
+    const float speed = static_cast<float>(30.0 / 3.6);
+    constexpr double kTurn = 8.0 * 3.14159265358979323846 / 180.0;
+    if (c == 0) {
+        return spawn_at(track, 20.0, kStraightStart, speed, kTurn);
+    }
+    if (c == 1) {
+        return spawn_at(track, 150.0, -1.5, speed);
+    }
+    return spawn_at(track, 20.0, -7.0, speed, kTurn);
 }
 
 } // namespace
 
-TEST_CASE("stage_world: leaving and coming back over the shoulder at 30 kmh") {
+TEST_CASE("stage_world: without micro relief leaving and coming back over the shoulder at 30 kmh") {
+    // Segunda respuesta del consultor, §2 (A): la geometría del borde sola, en absoluto.
     const rally::sim::JoltRuntime runtime;
-    const StageTrack& track = lazadas();
-    const float speed = static_cast<float>(30.0 / 3.6);
-    constexpr double kTurn = 8.0 * 3.14159265358979323846 / 180.0;
-    // Recta (s 20), 8° hacia fuera desde t = 1,5; curva de R 80 (peralte −5 %), recto desde
-    // t = −1,5, sale por fuera; y de vuelta desde el terreno, 8° hacia dentro desde t = −7. En
-    // Debug, solo la recta (versión corta).
-#ifdef NDEBUG
-    constexpr double kStraightStart = 1.5;
-#else
-    constexpr double kStraightStart = 2.5; // 2 s: sale del arcén igual
-#endif
-    const rally::sim::CarSpawn spawns[3] = {spawn_at(track, 20.0, kStraightStart, speed, kTurn),
-                                            spawn_at(track, 150.0, -1.5, speed),
-                                            spawn_at(track, 20.0, -7.0, speed, kTurn)};
-    const char* names[3] = {"recta", "curva", "vuelta"};
-#ifdef NDEBUG
-    constexpr int kCases = 3;
-#else
-    constexpr int kCases = 1;
-#endif
-    for (int c = 0; c < kCases; ++c) {
-        const EdgeRun run = drive_across(spawns[c]);
-        const EdgeRun ref = drive_across(spawns[c], true);
-        MESSAGE(names[c], ": impacto máximo ", run.max_impact, " m/s; pasos-rueda sin carga ",
-                run.unloaded, " (por el mismo camino sobre la losa: ", ref.unloaded, ")");
+    for (int c = 0; c < kEdgeCases; ++c) {
+        const EdgeRun run = drive_across(
+            lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::Design, false));
+        MESSAGE("sin microrrelieve, ", kEdgeNames[c], ": impacto máximo ", run.loads.max_impact,
+                " m/s; pasos-rueda sin carga ", run.loads.unloaded);
         CHECK((c == 2 ? run.back_on_road : run.left_road));
-        CHECK(run.unloaded == 0);
-        CHECK(run.max_impact <= 1.0);
+        CHECK(run.loads.unloaded == 0);
+        CHECK(run.loads.max_impact <= 1.0);
     }
+}
+
+#ifdef NDEBUG
+TEST_CASE("stage_world: with micro relief the shoulder crossings match the dense reference") {
+    // Segunda respuesta del consultor, §2 (B): el mismo cruce con MicroRelief::Stage frente a la
+    // malla 4 veces más densa y la rejilla de 0,375 m; los tres casos se suman.
+    const rally::sim::JoltRuntime runtime;
+    LoadStats stage;
+    LoadStats dense;
+    for (int c = 0; c < kEdgeCases; ++c) {
+        const EdgeRun run = drive_across(lazadas_desc(edge_spawn(c)));
+        const EdgeRun ref =
+            drive_across(lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh));
+        MESSAGE("con microrrelieve, ", kEdgeNames[c], ": impacto máximo ", run.loads.max_impact,
+                " m/s; pasos-rueda sin carga ", run.loads.unloaded, " (malla densa ",
+                ref.loads.unloaded, "), episodio más largo ", run.loads.longest, " (",
+                ref.loads.longest, ")");
+        CHECK(run.loads.max_impact <= 1.0);
+        stage.add(run.loads);
+        dense.add(ref.loads);
+    }
+    MESSAGE("cruces del arcén con microrrelieve: ", stage.percent(),
+            " % de pasos-rueda sin carga "
+            "y episodio de ",
+            stage.longest, " pasos (malla densa ", dense.percent(), " % y ", dense.longest, ")");
+    CHECK(stage.percent() <= dense.percent() + 0.5);
+    CHECK(stage.longest <= dense.longest + 12);
 
     // Escalón efectivo (geometría + microrrelieve mezclado del tramo) al cruzar las líneas
     // calzada–arcén y arcén–terreno de lazadas, de 30 cm dentro a 30 cm fuera: al informe.
+    const StageTrack& track = lazadas();
     const rally::sim::TestZone noise;
     double road_shoulder = 0.0;
     double shoulder_terrain = 0.0;
@@ -385,15 +477,13 @@ TEST_CASE("stage_world: leaving and coming back over the shoulder at 30 kmh") {
                 return rally::sim::stage_relief_height(f, noise, f.s, f.t, x, z);
             };
             road_shoulder = std::max(road_shoulder, std::abs(h(w + 0.3) - h(w - 0.3)));
-            shoulder_terrain =
-                std::max(shoulder_terrain,
-                         std::abs(h(e + 0.3) - rally::sim::kStageTerrainDrop - h(e - 0.3)));
+            shoulder_terrain = std::max(shoulder_terrain, std::abs(h(e + 0.3) - h(e - 0.3)));
         }
     }
-    MESSAGE("diferencia de h (y la bajada del terreno) de 30 cm dentro a 30 cm fuera: "
-            "calzada–arcén ",
-            100.0 * road_shoulder, " cm, arcén–terreno ", 100.0 * shoulder_terrain, " cm");
+    MESSAGE("diferencia de h de 30 cm dentro a 30 cm fuera: calzada–arcén ", 100.0 * road_shoulder,
+            " cm, arcén–terreno ", 100.0 * shoulder_terrain, " cm");
 }
+#endif
 
 // --- Criterio 5: seguimiento en el mundo
 // ------------------------------------------------------------

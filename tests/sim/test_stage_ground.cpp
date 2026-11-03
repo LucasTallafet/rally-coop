@@ -33,7 +33,7 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x9494'dcf5'e269'9e5aull;
+constexpr std::uint64_t kExpectedStageGroundHash = 0x7754'2c37'f8b2'759full;
 
 constexpr double kMm = 1.0e-3;
 
@@ -134,45 +134,6 @@ rally::sim::WorldDesc stage_only(const std::string& text) {
     rally::sim::WorldDesc desc;
     desc.stage_text = text;
     return desc;
-}
-
-// Altura del terreno en (x, z) con la triangulación de HeightFieldShape (diagonal de (i, k) a
-// (i + 1, k + 1)), desde las muestras sin cuantizar. NaN sin colisión.
-double terrain_at(const StageGround& g, double x, double z) {
-    const double fx = (x - g.origin_x()) / g.cell();
-    const double fz = (z - g.origin_z()) / g.cell();
-    const auto i = static_cast<std::int64_t>(std::floor(fx));
-    const auto k = static_cast<std::int64_t>(std::floor(fz));
-    const auto floor_div = [](std::int64_t a, std::int64_t b) {
-        return a >= 0 ? a / b : -((-a + b - 1) / b);
-    };
-    const std::int64_t tx = floor_div(i, rally::sim::kStageTileCells);
-    const std::int64_t tz = floor_div(k, rally::sim::kStageTileCells);
-    for (const rally::sim::StageTile& tile : g.tiles()) {
-        if (tile.tx != tx || tile.tz != tz) {
-            continue;
-        }
-        const auto li = static_cast<int>(i - tx * rally::sim::kStageTileCells);
-        const auto lk = static_cast<int>(k - tz * rally::sim::kStageTileCells);
-        constexpr int n = rally::sim::kStageTileSamples;
-        const auto at = [&](int a, int b) {
-            return static_cast<double>(
-                tile.heights[static_cast<std::size_t>((lk + b) * n + li + a)]);
-        };
-        const double h00 = at(0, 0);
-        const double h10 = at(1, 0);
-        const double h01 = at(0, 1);
-        const double h11 = at(1, 1);
-        if (h00 >= 1e30 || h10 >= 1e30 || h01 >= 1e30 || h11 >= 1e30) {
-            return std::nan("");
-        }
-        const double u = fx - static_cast<double>(i);
-        const double v = fz - static_cast<double>(k);
-        const double h = v >= u ? h00 + v * (h01 - h00) + u * (h11 - h01)
-                                : h00 + u * (h10 - h00) + v * (h11 - h10);
-        return h + g.origin_y();
-    }
-    return std::nan("");
 }
 
 // Mayor diferencia de altura entre dos muestras vecinas con colisión.
@@ -405,9 +366,12 @@ TEST_CASE("stage_ground: the micro relief has no step across the road edges and 
     rally::sim::Pcg32 rng(15, 1000);
     double blended = 0.0;
     double raw = 0.0;
-    // 1000 sitios: una recta de cada lado, del eje a 1 m fuera del arcén, cada 1 cm.
+    // 1000 sitios: una recta de cada lado, del eje a 1 m fuera del arcén, cada 1 cm. La s de
+    // referencia del marco (la de la pasada) va en s, s − 1,3 o s + 1,3 m: donde está una rueda
+    // respecto al origen del coche.
     for (int i = 0; i < (kFull ? 1000 : 100); ++i) {
         const double s = rand01(rng) * track.axis().length();
+        const double hint = s + 1.3 * static_cast<double>((i / 2) % 3 - 1);
         const StagePose p = track.pose(s);
         const double side = (i & 1) != 0 ? 1.0 : -1.0;
         const double end = half_width(p, side) + kStageShoulderWidth + 1.0;
@@ -416,7 +380,7 @@ TEST_CASE("stage_ground: the micro relief has no step across the road edges and 
         for (int k = 0; k * 0.01 <= end; ++k) {
             const double t = side * k * 0.01;
             const Point q = at(track, s, t);
-            const double h = relief_at(track, noise, s, q.x, q.z);
+            const double h = relief_at(track, noise, hint, q.x, q.z);
             const double r = unblended_at(track, noise, s, t, q.x, q.z);
             if (k > 0) {
                 blended = std::max(blended, std::abs(h - previous));
@@ -441,10 +405,44 @@ TEST_CASE("stage_ground: the micro relief has no step across the road edges and 
             previous = h;
         }
     }
+    // Hasta la otra pasada (segunda revisión, cambio 4): rectas del brazo central de las lazadas
+    // al de entrada y al de salida, y la del atajo de la horquilla llana, con la s del marco fija
+    // en el brazo de salida, como la de la pasada de un coche que cruza.
+    double across = 0.0;
+    const auto cross = [&](const StageTrack& tr, double s0, double x0, double z0, double x1,
+                           double z1) {
+        const double length = std::hypot(x1 - x0, z1 - z0);
+        const int steps = static_cast<int>(length / 0.01);
+        double previous = 0.0;
+        for (int k = 0; k <= steps; ++k) {
+            const double f = static_cast<double>(k) / steps;
+            const double h = relief_at(tr, noise, s0, x0 + f * (x1 - x0), z0 + f * (z1 - z0));
+            if (k > 0) {
+                across = std::max(across, std::abs(h - previous));
+            }
+            previous = h;
+        }
+    };
+    int lines = 0;
+    for (double s = 770.0; s <= 820.0; s += 2.5) {
+        const StagePose p = track.pose(s);
+        for (const bool towards_entry : {true, false}) {
+            const StageProjection other = towards_entry ? track.project(p.x, p.z, 640.0, 735.0)
+                                                        : track.project(p.x, p.z, 850.0, 960.0);
+            const StagePose q = track.pose(other.s);
+            cross(track, s, p.x, p.z, q.x, q.z);
+            ++lines;
+        }
+    }
+    const StageTrack hairpin = load(hairpin_text());
+    const StagePose from = hairpin.pose(165.0);
+    cross(hairpin, 165.0, from.x, from.z, from.x + 24.0, from.z);
     MESSAGE("mayor salto de h en 1 cm: ", blended / kMm, " mm cruzando los bordes, ", along / kMm,
-            " mm en el cambio de superficie; sin mezclar, ", raw / kMm, " mm");
+            " mm en el cambio de superficie, ", across / kMm, " mm de una pasada a otra (",
+            lines + 1, " rectas); sin mezclar, ", raw / kMm, " mm");
     CHECK(blended <= 1.5 * kMm);
     CHECK(along <= 1.5 * kMm);
+    CHECK(across <= 1.5 * kMm);
     // Las rectas ven el salto que la mezcla quita.
     CHECK(raw > 1.5 * kMm);
 }
@@ -525,17 +523,20 @@ TEST_CASE("stage_ground: a ray 59 m from the axis hits the ground and one 61 m a
     CHECK(wrong == 0);
 }
 
-TEST_CASE(
-    "stage_ground: the terrain is the drop under the core and at the edge height past one cell") {
+TEST_CASE("stage_ground: the terrain is the drop under the core, the shoulder plane at the edge "
+          "cells and the edge height past them") {
+    // Bajo el núcleo, su plano − 5 mm. A menos de una diagonal de celda del borde, o el plano del
+    // arcén prolongado − 5 mm (las celdas que cruzan el borde, segunda respuesta del consultor
+    // §1) o la altura del borde − 5 mm. Más allá, la altura del borde − 5 mm.
     const StageTrack& track = lazadas();
     const StageGround& g = lazadas_ground();
-    double under = 0.0;      // |H − (plano − bajada)| bajo el núcleo
-    double first_cell = 0.0; // |H − borde| en la primera celda (≤ 5 cm)
-    double one_cell = 0.0;   // |H − borde| de una celda a la diagonal (también en las lazadas)
-    double alone = 0.0;      // |H − borde| hasta 10 m fuera, sin otra pasada a 30 m
-    double gap_15 = 0.0;     // a 1,5 m del borde en el hueco de las lazadas (informe)
+    double under = 0.0;     // |H − (plano − bajada)| bajo el núcleo
+    double near_edge = 0.0; // a menos de una diagonal: la menor de las dos desviaciones
+    double alone = 0.0;     // |H − borde| de una diagonal a 10 m, sin otra pasada a 30 m
+    double gap_15 = 0.0;    // a 1,5 m del borde en el hueco de las lazadas (informe)
     int n_under = 0;
-    int n_one = 0;
+    int n_near = 0;
+    int n_plane = 0;
     int n_alone = 0;
     std::size_t index = 0;
     for_each_sample(g, [&](double x, double z, double h, bool has) {
@@ -563,68 +564,165 @@ TEST_CASE(
         const double side = p.t >= 0.0 ? 1.0 : -1.0;
         const double e = half_width(pose, p.t) + kStageShoulderWidth;
         const double d = std::abs(p.t) - e;
-        const double edge = pose.y + pose.bank * side * e;
-        const double off = std::abs(h - edge);
-        if (d < 0.75) {
-            first_cell = std::max(first_cell, off);
-        } else if (d <= kCellDiagonal) {
-            one_cell = std::max(one_cell, off);
-            ++n_one;
+        const double edge = pose.y + pose.bank * side * e - kStageTerrainDrop;
+        const double plane = pose.y + pose.bank * p.t - kStageTerrainDrop;
+        if (d <= kCellDiagonal) {
+            const double off_edge = std::abs(h - edge);
+            const double off_plane = std::abs(h - plane);
+            near_edge = std::max(near_edge, std::min(off_edge, off_plane));
+            n_plane += off_plane < off_edge ? 1 : 0;
+            ++n_near;
         } else if (d <= 10.0 && other_pass_distance(track, x, z, p.s, 50.0) > 30.0) {
-            alone = std::max(alone, off);
+            alone = std::max(alone, std::abs(h - edge));
             ++n_alone;
         }
         if (d > 1.45 && d < 1.55 && p.s > 700.0 && p.s < 910.0) {
-            gap_15 = std::max(gap_15, off);
+            gap_15 = std::max(gap_15, std::abs(h - edge));
         }
     });
     MESSAGE("bajo el núcleo (", n_under, " muestras): ", under / kMm, " mm del plano − 5 mm");
-    MESSAGE("primera celda: ", first_cell / kMm, " mm del borde; de una celda a la diagonal (",
-            n_one, "): ", one_cell / kMm, " mm; solas hasta 10 m (", n_alone, "): ", alone / kMm,
-            " mm; a 1,5 m en el hueco de las lazadas: ", gap_15 / kMm, " mm");
+    MESSAGE("a menos de una diagonal del borde (", n_near, ", ", n_plane,
+            " con el plano del arcén): ", near_edge / kMm, " mm; solas hasta 10 m (", n_alone,
+            "): ", alone / kMm,
+            " mm del borde − 5 mm; a 1,5 m en el hueco de las lazadas: ", gap_15 / kMm, " mm");
     CHECK(n_under > 1000);
     CHECK(under <= kMm);
-    CHECK(first_cell <= 0.05);
-    CHECK(one_cell <= kStageTerrainDrop + kMm);
-    CHECK(alone <= kStageTerrainDrop + kMm);
+    CHECK(n_plane > 0);
+    CHECK(near_edge <= kMm);
+    CHECK(alone <= kMm);
 }
 
-TEST_CASE("stage_ground: under the core the grid stays below the mesh") {
-    // Respuesta del consultor §1.2: el terreno baja 5 mm bajo el núcleo; en 10 000 puntos de
-    // los núcleos de lazadas (hasta el borde exterior del arcén), la rejilla queda bajo la malla.
-    const rally::sim::JoltRuntime runtime;
-    const StageTrack& track = lazadas();
-    const StageGround& g = lazadas_ground();
-    rally::sim::SimWorld world;
-    world.build(stage_only(rally::tests::lazadas_stage_text()));
-    world.seal();
-    rally::sim::Pcg32 rng(10'000, 5);
-    double lowest = 1e9;
+namespace {
+
+// Tramo sintético con el 10 % de peralte (el formato no pone tope; 10 % es más del doble que
+// lazadas) en una curva a derechas y otra a izquierdas, con una pendiente del 5 %.
+std::string max_bank_text() {
+    return "format = 1\nname = peralte 10 %\nstart_x = 0\nstart_z = 0\nstart_heading_deg = 0\n"
+           "start_height = 0\n[plan]\nstraight 60\nspiral 20 inf 60\narc 60 60\nspiral 20 60 inf\n"
+           "straight 60\nspiral 20 inf -60\narc 60 -60\nspiral 20 -60 inf\nstraight 60\n"
+           "[profile]\npvi 0 0 0\npvi 380 19 0\n[bank]\nbank 0 0\nbank 60 0\nbank 80 -10\n"
+           "bank 140 -10\nbank 160 0\nbank 220 0\nbank 240 10\nbank 300 10\nbank 320 0\n"
+           "[width]\nwidth 0 3 3\n[surface]\nsurface 0 gravel\n";
+}
+
+struct GridMargins {
+    double lowest = 1e9; // margen mínimo de la malla sobre la rejilla (m)
     double worst_s = 0.0;
     double worst_t = 0.0;
-    int above = 0;
-    for (int i = 0; i < (kFull ? 10'000 : 2'000); ++i) {
+    int above = 0;      // puntos con la rejilla encima de la malla
+    int edge_cells = 0; // puntos en celdas que cruzan un borde
+    int low_side = 0;   // de ellos, en el borde bajo de un tramo con peralte
+    double step = 0.0;  // el mayor escalón de la malla a la rejilla en el borde (m)
+};
+
+// La rejilla de Jolt (cuantizada: un mundo con el terreno solo) frente a la malla de Jolt, en
+// `random` puntos al azar de los núcleos y en `edge` puntos de celdas que cruzan el borde
+// arcén–terreno, la mitad en el borde bajo de los tramos con peralte. Y el escalón en el borde.
+GridMargins grid_margins(const std::string& text, int random, int edge, std::uint64_t seed) {
+    const StageTrack track = load(text);
+    const StageGround g = StageGround::build(track);
+    rally::sim::SimWorld mesh;
+    mesh.build(stage_only(text));
+    mesh.seal();
+    rally::sim::WorldDesc terrain_desc = stage_only(text);
+    terrain_desc.stage_variant = rally::sim::StageGroundVariant::TerrainOnly;
+    rally::sim::SimWorld terrain;
+    terrain.build(terrain_desc);
+    terrain.seal();
+    GridMargins out;
+    const auto measure = [&](double s, double t) {
+        const Point q = at(track, s, t);
+        const rally::sim::GroundProbe m = mesh.probe_ground(q.x, q.z);
+        const rally::sim::GroundProbe r = terrain.probe_ground(q.x, q.z);
+        REQUIRE(m.hit);
+        REQUIRE(r.hit);
+        // La malla con el rayo del mundo entero; si la rejilla asoma, el rayo da la rejilla y el
+        // margen sale 0: entonces, la del plano de la sección (la malla, con ≤ 2 mm de cuerda).
+        const StagePose pose = track.pose(s);
+        const double margin = m.y > r.y ? m.y - r.y : pose.y + pose.bank * t - r.y;
+        out.above += margin <= 0.0 ? 1 : 0;
+        if (margin < out.lowest) {
+            out.lowest = margin;
+            out.worst_s = s;
+            out.worst_t = t;
+        }
+    };
+    // ¿Cruza el borde la celda de la rejilla que contiene (x, z)? Esquinas dentro y fuera.
+    const auto in_edge_cell = [&](double x, double z) {
+        const double i = std::floor((x - g.origin_x()) / g.cell());
+        const double k = std::floor((z - g.origin_z()) / g.cell());
+        int inside = 0;
+        for (const double di : {0.0, 1.0}) {
+            for (const double dk : {0.0, 1.0}) {
+                StageProjection p;
+                inside += track.on_any_road(g.origin_x() + (i + di) * g.cell(),
+                                            g.origin_z() + (k + dk) * g.cell(), p)
+                              ? 1
+                              : 0;
+            }
+        }
+        return inside > 0 && inside < 4;
+    };
+    rally::sim::Pcg32 rng(seed, 11);
+    for (int i = 0; i < random; ++i) {
         const double s = track.s_begin() + (track.s_end() - track.s_begin()) * rand01(rng);
         const StagePose p = track.pose(s);
         const double left = p.half_width_left + kStageShoulderWidth;
         const double right = p.half_width_right + kStageShoulderWidth;
-        const double t = -left + (left + right) * rand01(rng);
-        const Point q = at(track, s, t);
-        const rally::sim::GroundProbe mesh = world.probe_ground(q.x, q.z);
-        const double terrain = terrain_at(g, q.x, q.z);
-        REQUIRE(mesh.hit);
-        REQUIRE(std::isfinite(terrain));
-        const double margin = mesh.y - terrain;
-        above += margin <= 0.0 ? 1 : 0;
-        if (margin < lowest) {
-            lowest = margin;
-            worst_s = s;
-            worst_t = t;
-        }
+        measure(s, -left + (left + right) * rand01(rng));
     }
-    MESSAGE("rejilla bajo la malla: margen mínimo ", lowest / kMm, " mm (s = ", worst_s,
-            ", t = ", worst_t, "); puntos con la rejilla encima: ", above);
-    CHECK(above == 0);
+    int low = 0;
+    int other = 0;
+    for (int i = 0; low + other < edge; ++i) {
+        REQUIRE(i < 100 * edge);
+        const double s = rand01(rng) * track.axis().length();
+        const StagePose p = track.pose(s);
+        const double side = rng.bounded(2) == 0 ? -1.0 : 1.0;
+        const bool is_low = p.bank * side < -0.005; // el plano baja hacia fuera
+        if (is_low ? low >= edge / 2 : other >= edge - edge / 2) {
+            continue;
+        }
+        const double e = half_width(p, side) + kStageShoulderWidth;
+        const double t = side * (e - kCellDiagonal * rand01(rng));
+        const Point q = at(track, s, t);
+        if (!in_edge_cell(q.x, q.z)) {
+            continue;
+        }
+        (is_low ? low : other)++;
+        measure(s, t);
+        // Escalón en el borde: la malla 1 cm dentro frente a la rejilla 1 cm fuera.
+        const Point a = at(track, s, side * (e - 0.01));
+        const Point b = at(track, s, side * (e + 0.01));
+        out.step =
+            std::max(out.step, mesh.probe_ground(a.x, a.z).y - terrain.probe_ground(b.x, b.z).y);
+    }
+    out.edge_cells = low + other;
+    out.low_side = low;
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("stage_ground: under the core and across the edge the grid stays below the mesh") {
+    // Segunda respuesta del consultor, §1: en las celdas que cruzan el borde arcén–terreno, todas
+    // las muestras siguen el plano del arcén prolongado − 5 mm. La rejilla de Jolt, cuantizada,
+    // nunca queda encima de la malla: margen ≥ 2,5 mm; escalón en el borde ≤ 6 mm.
+    const rally::sim::JoltRuntime runtime;
+    const GridMargins lazadas_margins = grid_margins(
+        rally::tests::lazadas_stage_text(), kFull ? 8'000 : 800, kFull ? 2'000 : 200, 10'000);
+    const GridMargins bank_margins =
+        grid_margins(max_bank_text(), kFull ? 2'000 : 200, kFull ? 2'000 : 200, 10);
+    for (const GridMargins* m : {&lazadas_margins, &bank_margins}) {
+        MESSAGE((m == &lazadas_margins ? std::string("lazadas") : std::string("peralte 10 %")),
+                ": margen mínimo de la malla sobre la rejilla ", m->lowest / kMm,
+                " mm (s = ", m->worst_s, ", t = ", m->worst_t, "); puntos con la rejilla encima ",
+                m->above, "; ", m->edge_cells, " en celdas del borde, ", m->low_side,
+                " en el borde bajo; escalón en el borde ", m->step / kMm, " mm");
+        CHECK(m->above == 0);
+        CHECK(m->lowest >= 2.5 * kMm);
+        CHECK(m->step <= 6.0 * kMm);
+        CHECK(m->low_side * 2 >= m->edge_cells);
+    }
 }
 
 TEST_CASE("stage_ground: far from other passes the terrain is flat across at the edge height") {
@@ -798,7 +896,8 @@ TEST_CASE(
     const rally::sim::JoltRuntime runtime;
     for (const rally::sim::StageGroundVariant v :
          {rally::sim::StageGroundVariant::Design, rally::sim::StageGroundVariant::CoarseTiles,
-          rally::sim::StageGroundVariant::GridOnly}) {
+          rally::sim::StageGroundVariant::GridOnly, rally::sim::StageGroundVariant::DenseMesh,
+          rally::sim::StageGroundVariant::TerrainOnly}) {
         rally::sim::WorldDesc desc = stage_only(rally::tests::lazadas_stage_text());
         desc.stage_variant = v;
         rally::sim::SimWorld world;
@@ -806,7 +905,9 @@ TEST_CASE(
         world.seal();
         CHECK(world.stage() != nullptr);
         CHECK(world.stage_ground_bytes() > 0);
-        if (v == rally::sim::StageGroundVariant::Design) {
+        // El terreno solo es la misma geometría sin la malla en Jolt: el mismo hash.
+        if (v == rally::sim::StageGroundVariant::Design ||
+            v == rally::sim::StageGroundVariant::TerrainOnly) {
             CHECK(world.stage_ground_hash() == lazadas_ground().hash());
         } else {
             CHECK(world.stage_ground_hash() != lazadas_ground().hash());

@@ -132,6 +132,10 @@ struct Acc {
     double core_abs_t = 0.0;
     double nearest_dist = 0.0; // el pie más cercano fuera del núcleo y su altura (si Σw = 0)
     double nearest_h = 0.0;
+    // El borde de núcleo más cercano (fuera del núcleo): su distancia y la altura del plano del
+    // arcén prolongado hasta la muestra, menos la bajada (la regla de las celdas del borde).
+    double edge_d = 0.0;
+    double edge_plane_h = 0.0;
     bool core = false;
     Surface core_surface = Surface::Dirt;
 
@@ -140,6 +144,7 @@ struct Acc {
         overflow = false;
         min_dist = std::numeric_limits<double>::infinity();
         nearest_dist = std::numeric_limits<double>::infinity();
+        edge_d = std::numeric_limits<double>::infinity();
         core = false;
     }
 };
@@ -357,6 +362,10 @@ private:
         const double c = rmath::clamp(ca + u * (strength(b, t) - ca), 0.0, 1.0);
         const double d = rmath::max(abs_t - edge, kMinEdgeDistance);
         const double side = t >= 0.0 ? 1.0 : -1.0;
+        if (abs_t - edge < acc.edge_d) {
+            acc.edge_d = abs_t - edge;
+            acc.edge_plane_h = y + bank * t - drop_;
+        }
         add_outside(c * fade(dist) * edge_weight(d), dist, d, y + bank * side * edge - drop_, acc);
     }
 
@@ -380,6 +389,10 @@ private:
         const double qz = ez - tc * p.tx;
         const double d = rmath::max(rmath::sqrt(qx * qx + qz * qz), kMinEdgeDistance);
         acc.min_dist = rmath::min(acc.min_dist, dist);
+        if (d < acc.edge_d) {
+            acc.edge_d = d;
+            acc.edge_plane_h = p.y + p.bank * t - drop_;
+        }
         add_outside(fade(dist) * edge_weight(d), dist, d, p.y + p.bank * tc - drop_, acc);
     }
 
@@ -592,10 +605,10 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
         double z0 = 0.0;
         double z1 = 0.0;
         raster.bounds(f, x0, x1, z0, z1);
-        const auto i0 = static_cast<std::int64_t>(rmath::floor(x0 / cell)) - 1;
-        const auto i1 = static_cast<std::int64_t>(rmath::ceil(x1 / cell)) + 1;
-        const auto k0 = static_cast<std::int64_t>(rmath::floor(z0 / cell)) - 1;
-        const auto k1 = static_cast<std::int64_t>(rmath::ceil(z1 / cell)) + 1;
+        const auto i0 = static_cast<std::int64_t>(rmath::floor(x0 / cell)) - 2;
+        const auto i1 = static_cast<std::int64_t>(rmath::ceil(x1 / cell)) + 2;
+        const auto k0 = static_cast<std::int64_t>(rmath::floor(z0 / cell)) - 2;
+        const auto k1 = static_cast<std::int64_t>(rmath::ceil(z1 / cell)) + 2;
         // Baldosas cuyo intervalo cerrado de muestras corta [i0, i1] × [k0, k1].
         for (std::int64_t tz = floor_div(k0 - 1, kStageTileCells);
              tz <= floor_div(k1, kStageTileCells); ++tz) {
@@ -609,7 +622,11 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
     std::sort(entries.begin(), entries.end());
 
     constexpr int n = kStageTileSamples;
-    std::vector<Acc> acc(static_cast<std::size_t>(n * n));
+    // Se calcula una muestra más por cada lado (m × m): las celdas del borde de la baldosa se
+    // deciden con las mismas muestras que en la baldosa vecina, así que el borde común coincide.
+    constexpr int m = n + 2;
+    std::vector<Acc> acc(static_cast<std::size_t>(m * m));
+    std::vector<std::uint8_t> edge_cell(static_cast<std::size_t>(m * m));
     std::vector<Acc> centers;
     if (kind == StageGroundKind::GridOnly) {
         centers.resize(static_cast<std::size_t>(kStageTileCells * kStageTileCells));
@@ -629,19 +646,46 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
         grid.n = n;
         grid.base_x = static_cast<double>(static_cast<std::int64_t>(tx) * kStageTileCells) * cell;
         grid.base_z = static_cast<double>(static_cast<std::int64_t>(tz) * kStageTileCells) * cell;
+        Grid wide = grid;
+        wide.n = m;
+        wide.base_x -= cell;
+        wide.base_z -= cell;
         for (Acc& a : acc) {
             a.reset();
         }
         for (std::size_t k = e; k < end; ++k) {
-            raster.add(entries[k].second, grid, acc);
+            raster.add(entries[k].second, wide, acc);
+        }
+        // Celdas que cruzan el borde de un núcleo (unas esquinas dentro y otras fuera): todas sus
+        // muestras toman el plano del arcén prolongado menos la bajada (segunda respuesta del
+        // consultor, §1). Interpolar un plano da el mismo plano: la rejilla queda justo esa
+        // bajada bajo la malla en el borde, sin asomar ni dejar escalón.
+        std::fill(edge_cell.begin(), edge_cell.end(), std::uint8_t{0});
+        if (kind == StageGroundKind::Design) {
+            for (int b = 0; b + 1 < m; ++b) {
+                for (int a = 0; a + 1 < m; ++a) {
+                    const auto at = [&](int i, int k) {
+                        return static_cast<std::size_t>((b + k) * m + a + i);
+                    };
+                    const int inside = (acc[at(0, 0)].core ? 1 : 0) + (acc[at(1, 0)].core ? 1 : 0) +
+                                       (acc[at(0, 1)].core ? 1 : 0) + (acc[at(1, 1)].core ? 1 : 0);
+                    if (inside > 0 && inside < 4) {
+                        edge_cell[at(0, 0)] = 1;
+                        edge_cell[at(1, 0)] = 1;
+                        edge_cell[at(0, 1)] = 1;
+                        edge_cell[at(1, 1)] = 1;
+                    }
+                }
+            }
         }
         StageTile tile;
         tile.tx = tx;
         tile.tz = tz;
         tile.heights.resize(static_cast<std::size_t>(n * n));
         bool any = false;
-        for (std::size_t k = 0; k < acc.size(); ++k) {
-            const Acc& a = acc[k];
+        for (std::size_t k = 0; k < tile.heights.size(); ++k) {
+            const std::size_t w = (k / n + 1) * m + (k % n + 1);
+            const Acc& a = acc[w];
             if (!(a.min_dist < kStageStripCollision)) {
                 tile.heights[k] = kStageNoCollision;
                 continue;
@@ -650,6 +694,8 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
             double h = 0.0;
             if (a.core) {
                 h = a.core_h;
+            } else if (edge_cell[w] != 0 && a.edge_d < kStageFanReach) {
+                h = a.edge_plane_h;
             } else if (!blend(a, h)) {
                 // Todos los pesos son 0 (el centro de un arco): el pie más cercano.
                 h = a.nearest_h;
@@ -735,9 +781,10 @@ StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, doub
     const double edge =
         (t >= 0.0 ? pose.half_width_right : pose.half_width_left) + kStageShoulderWidth;
     if (rmath::abs(t) > edge + 0.5 * kStageReliefBlend) {
-        // Fuera de este núcleo y de su franja: en la calzada o el arcén de otra pasada, la suya.
+        // Fuera de este núcleo y de su franja: en la calzada, el arcén o la franja de mezcla de
+        // otra pasada, la suya (sin la franja, h saltaría al entrar en el arcén de la otra).
         StageProjection other;
-        if (track.on_any_road(x, z, other)) {
+        if (track.on_any_road(x, z, other, 0.5 * kStageReliefBlend)) {
             pose = track.pose(other.s);
             s = other.s;
             t = other.t;

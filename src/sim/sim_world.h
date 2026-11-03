@@ -62,8 +62,15 @@ struct CarSpawn {
 // Suelo del tramo de WorldDesc::stage_text. Design es el del juego (núcleo en malla y terreno en
 // baldosas de 0,75 m, sim/stage_ground.h); los demás solo los usan los tests de tramo-fisica: la
 // medida de la parte A (baldosas de 1,5 m, y todo en rejilla de 0,75 m con la superficie por
-// celda) y la referencia del criterio 3 en curva (la malla 4 veces más densa).
-enum class StageGroundVariant : std::uint8_t { Design, CoarseTiles, GridOnly, DenseMesh };
+// celda), la referencia de los criterios 3 y 4 (la malla 4 veces más densa y la rejilla de
+// 0,375 m) y el terreno solo, sin la malla (la altura de la rejilla con la cuantización de Jolt).
+enum class StageGroundVariant : std::uint8_t {
+    Design,
+    CoarseTiles,
+    GridOnly,
+    DenseMesh,
+    TerrainOnly
+};
 
 // Descripción del mundo. Primero el suelo y los muros de la zona de pruebas o el suelo del tramo
 // (si los hay), después los cuerpos en el orden de `bodies` y al final el coche: los BodyID
@@ -93,8 +100,11 @@ struct WorldDesc {
     // núcleo y las baldosas del terreno (sim/stage_ground.h). io::serialize_world no lo conoce
     // todavía (lote 5): el juego no construye mundos con tramo.
     std::string stage_text;
-    // Solo la medida de la parte A (tests): el suelo del tramo. No se graba.
+    // Solo tests: el suelo del tramo. No se graba.
     StageGroundVariant stage_variant = StageGroundVariant::Design;
+    // Solo tests (segunda respuesta del consultor, §2 A): false quita el microrrelieve de todo el
+    // tramo (MicroRelief::None) para medir la geometría sola. No se graba.
+    bool stage_micro_relief = true;
 };
 
 // Salida en el eje del tramo en `s`, apoyada (el origen del coche en la calzada) y mirando en el
