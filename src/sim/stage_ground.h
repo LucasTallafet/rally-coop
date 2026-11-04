@@ -37,7 +37,9 @@ namespace rally::sim {
 //     kStageEdgeBand < d < +D          B + smoothstep((d − kStageEdgeBand)/D)·(N − B);
 //     más allá                         N;
 //   con D = kStageEdgeBlend. Dentro de un núcleo manda el suyo; fuera de todos, si una muestra
-//   está en la zona de varias pasadas, la menor de sus alturas.
+//   está en la zona de varias pasadas, su combinación continua (cuarta respuesta del consultor,
+//   §1): la media de sus alturas con peso (1 − paso suave)/d⁸, que se anula al salir de la
+//   zona, y como mucho la banda de cada una junto a su borde (la rejilla no asoma).
 //   Solo tienen colisión las muestras a menos de kStageStripCollision del eje.
 
 inline constexpr double kStageTerrainDrop = 0.005; // terreno bajo el plano del núcleo y del borde
@@ -198,8 +200,8 @@ public:
     // Muestras con colisión que tenían más pies con peso de los que guardan (se quedan los más
     // cercanos a su borde). Si alguna vez no es 0, la media de esas muestras no es continua.
     std::size_t candidate_overflows() const { return candidate_overflows_; }
-    // Diagnóstico (tercera respuesta del consultor, §7, premisa 3): el mayor salto que da la
-    // regla del mínimo de varias pasadas cuando una sale de la zona (m).
+    // Diagnóstico (cuarta respuesta del consultor, §1): el mayor salto de la combinación de
+    // varias pasadas cuando un pie sale de su zona, medido en su último centímetro (m), y dónde.
     double zone_jump() const { return zone_jump_; }
     double zone_jump_x() const { return zone_jump_x_; }
     double zone_jump_z() const { return zone_jump_z_; }

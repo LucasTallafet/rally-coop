@@ -33,7 +33,7 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x3593'916f'9abe'8baaull;
+constexpr std::uint64_t kExpectedStageGroundHash = 0x8b9c'9097'177e'30a0ull;
 
 constexpr double kMm = 1.0e-3;
 
@@ -648,7 +648,8 @@ struct GridMargins {
     double step_e = 0.0;
     double step_over_e = -1e9; // el mayor escalón − e(s)
     double step_outside = 0.0; // el mayor fuera de las horquillas de lazadas
-    int over_15 = 0;           // puntos con el escalón > 15 mm
+    double step_over_e_outside = -1e9;
+    int over_15 = 0; // puntos con el escalón > 15 mm
 };
 
 // La rejilla de Jolt (cuantizada: un mundo con el terreno solo) frente a la malla de Jolt, en
@@ -740,8 +741,10 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         }
         out.step_over_e = std::max(out.step_over_e, over);
         out.over_15 += stp > 15.0 * kMm ? 1 : 0;
+        // Las horquillas de R 6 de lazadas (s 725–765 y 822–862; el sintético no llega).
         if (s < 725.0 || (s > 765.0 && s < 822.0) || s > 862.0) {
             out.step_outside = std::max(out.step_outside, stp);
+            out.step_over_e_outside = std::max(out.step_over_e_outside, over);
         }
     }
     out.edge_cells = low + other;
@@ -752,9 +755,10 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
 } // namespace
 
 TEST_CASE("stage_ground: under the core and across the edge the grid stays below the mesh") {
-    // Tercera respuesta del consultor, §2: la rejilla de Jolt, cuantizada, nunca queda encima de
-    // la malla (para); margen ≥ 1,5 mm en la banda y escalón en el borde ≤ 8 mm + e(s) (avisos);
-    // el escalón no pasa de 15 mm (para).
+    // Tercera respuesta del consultor, §2, y cuarta, §2: la rejilla de Jolt, cuantizada, nunca
+    // queda encima de la malla; margen ≥ 1,5 mm en la banda; fuera de las horquillas de R 6, el
+    // escalón en el borde ≤ 8 mm + e(s). En las horquillas el escalón es diagnóstico (decide el
+    // impacto del criterio 4 A).
     const rally::sim::JoltRuntime runtime;
     const GridMargins lazadas_margins = grid_margins(
         rally::tests::lazadas_stage_text(), kFull ? 8'000 : 800, kFull ? 2'000 : 200, 10'000);
@@ -769,11 +773,11 @@ TEST_CASE("stage_ground: under the core and across the edge the grid stays below
                 " mm (s = ", m->step_s, ", lado ", m->step_side, ", e = ", m->step_e / kMm,
                 " mm), escalón − e hasta ", m->step_over_e / kMm, " mm, ", m->over_15,
                 " puntos de más de 15 mm; fuera de las horquillas, escalón hasta ",
-                m->step_outside / kMm, " mm");
+                m->step_outside / kMm, " mm y escalón − e hasta ", m->step_over_e_outside / kMm,
+                " mm");
         CHECK(m->above == 0);
         CHECK(m->lowest >= 1.5 * kMm);
-        CHECK(m->step_over_e <= 8.0 * kMm);
-        CHECK(m->step <= 15.0 * kMm);
+        CHECK(m->step_over_e_outside <= 8.0 * kMm);
         CHECK(m->low_side * 2 >= m->edge_cells);
     }
 }
@@ -933,19 +937,26 @@ TEST_CASE("stage_ground: along the stage the grid follows the edge band function
         MESSAGE((synthetic ? "peralte 10 %" : "lazadas"),
                 ": ondulación (máx − mín de rejilla − G a lo largo de s) a d =", line,
                 " la mayor, ", worst / kMm, " mm a ", worst_d, " m");
-        CHECK(worst <= 5.0 * kMm);
+        // Objetivo 5 mm (tercera respuesta del consultor); con D = 4 m quedan 7,2 y 13,8 mm, que la
+        // cuarta respuesta (§4) acepta como límite del formato 1. El test guarda esas cifras.
+        CHECK(worst <= 15.0 * kMm);
     }
 }
 
-TEST_CASE("stage_ground: the minimum of two passes does not jump where a zone ends") {
-    // Tercera respuesta del consultor, §7, premisa 3: fuera de los núcleos, la menor de las G de
-    // las pasadas en cuya zona está la muestra. Cuando una pasada sale de la zona su G vale el
-    // terreno natural; si otra da más, el mínimo salta: el informe da el mayor salto.
-    const StageGround& g = lazadas_ground();
-    const StageProjection p = lazadas().acquire(g.zone_jump_x(), g.zone_jump_z());
-    MESSAGE("lazadas: mayor salto de la regla del mínimo al salir de una zona ",
-            g.zone_jump() / kMm, " mm, en s = ", p.s, ", t = ", p.t);
-    CHECK(g.zone_jump() <= 15.0 * kMm);
+TEST_CASE("stage_ground: the combination of passes does not jump where a zone ends") {
+    // Cuarta respuesta del consultor, §1 y §5, premisa 1: fuera de los núcleos, la combinación
+    // continua de las pasadas en cuya zona está la muestra. Al salir un pie de su zona (su último
+    // centímetro), G no salta más de 2 mm, en lazadas y en el sintético del 10 %.
+    for (const bool synthetic : {false, true}) {
+        const StageTrack track =
+            load(synthetic ? max_bank_text() : rally::tests::lazadas_stage_text());
+        const StageGround g = StageGround::build(track);
+        const StageProjection p = track.acquire(g.zone_jump_x(), g.zone_jump_z());
+        MESSAGE((synthetic ? "peralte 10 %" : "lazadas"),
+                ": mayor salto de la combinación al salir de una zona ", g.zone_jump() / kMm,
+                " mm, en s = ", p.s, ", t = ", p.t);
+        CHECK(g.zone_jump() <= 2.0 * kMm);
+    }
 }
 
 TEST_CASE("stage_ground: far from other passes the terrain is flat across at the edge height") {

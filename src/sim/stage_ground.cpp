@@ -449,8 +449,44 @@ private:
     const StageCellError* error_;
 };
 
+// Pendiente del tope B_q + Φ(d_q) más allá de la banda: tan empinada que solo actúa junto al
+// borde (a d₁ + D vale B_q + 400 m, por encima de cualquier terreno).
+constexpr double kZoneCapSlope = 100.0;
+
+// Combinación continua de las pasadas en cuya zona está una muestra fuera de todos los núcleos
+// (cuarta respuesta del consultor, §1), sobre el terreno natural N:
+//   G = mín(G_mezcla, mín_q (B_q + Φ(d_q))),
+//   G_mezcla = N + Σ V_p·(G_p − N) / Σ V_p,  V_p = (1 − w_p)/d_p⁸,  G_p = B_p + w_p·(N − B_p),
+// con w_p el paso suave del empalme y Φ = 0 hasta d₁ y kZoneCapSlope·(d − d₁) después. Con una
+// sola pasada, G = G_p; el peso de una pasada se anula al salir de su zona (sin salto), y junto
+// al borde de q, G ≤ B_q (la rejilla no asoma sobre su malla). `skip` (≥ 0) deja fuera un pie
+// (el diagnóstico de zone_boundary_jump).
+double combine_zone(const Acc& a, double natural, int skip) {
+    double sum_v = 0.0;
+    double sum_vg = 0.0;
+    double cap = 0.0;
+    bool any_cap = false;
+    for (int k = 0; k < a.zone_count; ++k) {
+        if (k == skip) {
+            continue;
+        }
+        const ZoneFoot& f = a.zone[k];
+        const double w = smoothstep((f.d - kStageEdgeBand) / kStageEdgeBlend);
+        const double g = f.band + w * (natural - f.band);
+        const double d = rmath::max(f.d, kMinEdgeDistance);
+        const double v = (1.0 - w) * edge_weight(d);
+        sum_v += v;
+        sum_vg += v * (g - natural);
+        const double c = f.band + kZoneCapSlope * rmath::max(0.0, f.d - kStageEdgeBand);
+        cap = any_cap ? rmath::min(cap, c) : c;
+        any_cap = true;
+    }
+    const double mixed = sum_v > 0.0 ? natural + sum_vg / sum_v : natural;
+    return any_cap ? rmath::min(mixed, cap) : mixed;
+}
+
 // Altura del diseño en una muestra con colisión fuera de GridOnly (tercera respuesta del
-// consultor, §1): la regla de su núcleo o, fuera de todos, la menor de las de las pasadas en cuya
+// consultor, §1): la regla de su núcleo o, fuera de todos, la combinación de las pasadas en cuya
 // zona está, sobre el terreno natural N.
 double design_height(const Acc& a, double natural) {
     if (a.core) {
@@ -460,14 +496,7 @@ double design_height(const Acc& a, double natural) {
     if (a.zone_count == 0) {
         return natural;
     }
-    double h = 0.0;
-    for (int k = 0; k < a.zone_count; ++k) {
-        const ZoneFoot& f = a.zone[k];
-        const double w = smoothstep((f.d - kStageEdgeBand) / kStageEdgeBlend);
-        const double g = f.band + w * (natural - f.band);
-        h = k == 0 ? g : rmath::min(h, g);
-    }
-    return h;
+    return combine_zone(a, natural, -1);
 }
 
 // Media de las alturas de los bordes con su peso y la caída por distancia relativa al más
@@ -676,30 +705,18 @@ double StageCellError::raw_at(double s) const {
 
 namespace {
 
-// Salto que da la regla del mínimo cuando un pie sale de la zona de su pasada (d → d₁ + D) y
-// otra pasada da más que el terreno natural: el mínimo pasa de ≈ N a la otra (diagnóstico).
+// Salto de la combinación de pasadas cuando un pie a menos de kNearBoundary del final de su
+// zona (d → d₁ + D) sale de ella: |G con él − G sin él| (diagnóstico; con la combinación
+// continua tiende a 0 con kNearBoundary).
 double zone_boundary_jump(const Acc& a, double natural) {
-    constexpr double kNearBoundary = 0.1;
+    constexpr double kNearBoundary = 0.01;
+    const double all = combine_zone(a, natural, -1);
     double jump = 0.0;
     for (int f = 0; f < a.zone_count; ++f) {
         if (a.zone[f].d < kStageEdgeBand + kStageEdgeBlend - kNearBoundary) {
             continue;
         }
-        bool any = false;
-        double others = 0.0;
-        for (int k = 0; k < a.zone_count; ++k) {
-            const ZoneFoot& o = a.zone[k];
-            if (k == f || o.d >= kStageEdgeBand + kStageEdgeBlend - kNearBoundary) {
-                continue;
-            }
-            const double w = smoothstep((o.d - kStageEdgeBand) / kStageEdgeBlend);
-            const double g = o.band + w * (natural - o.band);
-            others = any ? rmath::min(others, g) : g;
-            any = true;
-        }
-        if (any) {
-            jump = rmath::max(jump, others - natural);
-        }
+        jump = rmath::max(jump, rmath::abs(all - combine_zone(a, natural, f)));
     }
     return jump;
 }

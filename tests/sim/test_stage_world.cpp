@@ -393,13 +393,15 @@ EdgeRun drive_across(const WorldDesc& desc) {
 
 // Recta (s 20), 8° hacia fuera desde t = 1,5; curva de R 80 (peralte −5 %), recto desde
 // t = −1,5, sale por fuera; de vuelta desde el terreno, 8° hacia dentro desde t = −7; y, solo en
-// la parte (A) (tercera respuesta del consultor, §3), por el borde interior de la horquilla de
-// R 6 (s 742, 8 % y −6 %) a 20 km/h, 60° hacia dentro desde t = 2,9. En Debug, la recta desde
-// t = 2,5 y la horquilla (2 s).
-constexpr const char* kEdgeNames[4] = {"recta", "curva", "vuelta", "horquilla"};
+// la parte (A) (tercera y cuarta respuestas del consultor, §3), la horquilla de R 6 (s 742, 8 % y
+// −6 %) a 20 km/h: por el borde interior, 60° hacia dentro desde t = 2,9, y 30° desde t = 2,6,
+// que sale por el borde exterior. En Debug, la recta desde t = 2,5 y la horquilla por dentro
+// (2 s).
+constexpr const char* kEdgeNames[5] = {"recta", "curva", "vuelta", "horquilla por dentro",
+                                       "horquilla por fuera"};
 #ifdef NDEBUG
 constexpr int kEdgeCases = 3;
-constexpr int kGeometryCases[] = {0, 1, 2, 3};
+constexpr int kGeometryCases[] = {0, 1, 2, 3, 4};
 constexpr double kStraightStart = 1.5;
 #else
 constexpr int kEdgeCases = 1;
@@ -412,6 +414,7 @@ rally::sim::CarSpawn edge_spawn(int c) {
     const float speed = static_cast<float>(30.0 / 3.6);
     constexpr double kDegree = 3.14159265358979323846 / 180.0;
     constexpr double kTurn = 8.0 * kDegree;
+    const auto hairpin_speed = static_cast<float>(20.0 / 3.6);
     if (c == 0) {
         return spawn_at(track, 20.0, kStraightStart, speed, kTurn);
     }
@@ -419,7 +422,10 @@ rally::sim::CarSpawn edge_spawn(int c) {
         return spawn_at(track, 150.0, -1.5, speed);
     }
     if (c == 3) {
-        return spawn_at(track, 742.0, 2.9, static_cast<float>(20.0 / 3.6), 60.0 * kDegree);
+        return spawn_at(track, 742.0, 2.9, hairpin_speed, 60.0 * kDegree);
+    }
+    if (c == 4) {
+        return spawn_at(track, 742.0, 2.6, hairpin_speed, 30.0 * kDegree);
     }
     return spawn_at(track, 20.0, -7.0, speed, kTurn);
 }
@@ -427,16 +433,33 @@ rally::sim::CarSpawn edge_spawn(int c) {
 } // namespace
 
 TEST_CASE("stage_world: without micro relief leaving and coming back over the shoulder at 30 kmh") {
-    // Segunda respuesta del consultor, §2 (A): la geometría del borde sola, en absoluto.
+    // Segunda respuesta del consultor, §2 (A), y cuarta, §3: la geometría del borde sola.
+    // - Fuera de las horquillas: ningún episodio sin carga de más de 2 pasos e impacto ≤ 1 m/s.
+    // - En la horquilla de R 6 (el coche parado en su calzada ya pierde una rueda): frente a la
+    //   misma salida con la malla densa y la rejilla de 0,375 m, pasos-rueda sin carga ≤ la
+    //   referencia + 0,5 puntos, episodio más largo ≤ la referencia + 12, impacto ≤ 1 m/s.
     const rally::sim::JoltRuntime runtime;
     for (const int c : kGeometryCases) {
         const EdgeRun run = drive_across(
             lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::Design, false));
-        MESSAGE("sin microrrelieve, ", std::string(kEdgeNames[c]), ": impacto máximo ",
-                run.loads.max_impact, " m/s; pasos-rueda sin carga ", run.loads.unloaded);
+        const std::string name(kEdgeNames[c]);
         CHECK((c == 2 ? run.back_on_road : run.left_road));
-        CHECK(run.loads.unloaded == 0);
         CHECK(run.loads.max_impact <= 1.0);
+        if (c < 3) {
+            MESSAGE("sin microrrelieve, ", name, ": impacto máximo ", run.loads.max_impact,
+                    " m/s; pasos-rueda sin carga ", run.loads.unloaded, ", episodio más largo ",
+                    run.loads.longest);
+            CHECK(run.loads.longest <= 2);
+            continue;
+        }
+        const EdgeRun ref = drive_across(
+            lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh, false));
+        MESSAGE("sin microrrelieve, ", name, ": impacto máximo ", run.loads.max_impact,
+                " m/s (malla densa ", ref.loads.max_impact, "); pasos-rueda sin carga ",
+                run.loads.percent(), " % (", ref.loads.percent(), " %), episodio más largo ",
+                run.loads.longest, " (", ref.loads.longest, ")");
+        CHECK(run.loads.percent() <= ref.loads.percent() + 0.5);
+        CHECK(run.loads.longest <= ref.loads.longest + 12);
     }
 }
 
