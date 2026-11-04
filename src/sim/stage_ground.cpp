@@ -755,7 +755,7 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
     const Origin origin{g.origin_x_, g.origin_y_, g.origin_z_};
 
     // Núcleo.
-    if (kind == StageGroundKind::Design) {
+    if (kind != StageGroundKind::GridOnly) {
         g.sections_ = sections;
         g.vertices_.reserve(sections.size() * kStageSectionVertices);
         for (const double s : sections) {
@@ -826,13 +826,13 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
     }
 
     // Terreno: cada abanico (y extremo) en las baldosas de su caja, baldosa a baldosa.
-    const double drop = kind == StageGroundKind::Design ? kStageTerrainDrop : 0.0;
+    const double drop = kind != StageGroundKind::GridOnly ? kStageTerrainDrop : 0.0;
     StageCellError cell_error;
-    if (kind == StageGroundKind::Design) {
+    if (kind != StageGroundKind::GridOnly) {
         cell_error = StageCellError(track);
     }
     const Rasterizer raster(points, fans, drop,
-                            kind == StageGroundKind::Design ? &cell_error : nullptr);
+                            kind != StageGroundKind::GridOnly ? &cell_error : nullptr);
     std::vector<std::pair<std::int64_t, std::uint32_t>> entries;
     const auto count = static_cast<std::uint32_t>(fans.size() + 2);
     for (std::uint32_t f = 0; f < count; ++f) {
@@ -913,6 +913,8 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
                         g.zone_jump_z_ = origin.z + grid.base_z + static_cast<double>(k / n) * cell;
                     }
                 }
+                h = design_height(a, h);
+            } else if (kind == StageGroundKind::NaturalOutside && a.core) {
                 h = design_height(a, h);
             }
             tile.heights[k] = static_cast<float>(h);

@@ -346,7 +346,9 @@ void SimWorld::build(const WorldDesc& desc) {
         const StageGround ground = StageGround::build(
             *w.stage, stage_cell(desc.stage_variant),
             desc.stage_variant == StageGroundVariant::GridOnly ? StageGroundKind::GridOnly
-                                                               : StageGroundKind::Design,
+            : desc.stage_variant == StageGroundVariant::NaturalTerrain
+                ? StageGroundKind::NaturalOutside
+                : StageGroundKind::Design,
             desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
                                                                 : StageMeshDensity{});
         w.stage_ground_hash = ground.hash();

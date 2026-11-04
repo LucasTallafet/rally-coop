@@ -438,11 +438,28 @@ TEST_CASE("stage_world: without micro relief leaving and coming back over the sh
     // - En la horquilla de R 6 (el coche parado en su calzada ya pierde una rueda): frente a la
     //   misma salida con la malla densa y la rejilla de 0,375 m, pasos-rueda sin carga ≤ la
     //   referencia + 0,5 puntos, episodio más largo ≤ la referencia + 12, impacto ≤ 1 m/s.
+    // - La salida por fuera de la horquilla, solo diagnóstico (quinta respuesta).
     const rally::sim::JoltRuntime runtime;
     for (const int c : kGeometryCases) {
         const EdgeRun run = drive_across(
             lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::Design, false));
         const std::string name(kEdgeNames[c]);
+        if (c == 4) {
+            // Quinta respuesta del consultor: saliendo por fuera de la horquilla 1, el coche
+            // choca contra el talud del terreno natural hacia la curva de salida (10,6 m más
+            // arriba). Mide el talud, no el borde: solo diagnóstico, con sus tres cifras.
+            const EdgeRun dense = drive_across(
+                lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh, false));
+            const EdgeRun natural = drive_across(
+                lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::NaturalTerrain, false));
+            MESSAGE("diagnóstico, ", name, ": impacto máximo ", run.loads.max_impact,
+                    " m/s; con la malla densa ", dense.loads.max_impact,
+                    " m/s; con el terreno natural solo fuera de los núcleos ",
+                    natural.loads.max_impact, " m/s; pasos-rueda sin carga ", run.loads.percent(),
+                    " % (densa ", dense.loads.percent(), " %), episodio más largo ",
+                    run.loads.longest, " (", dense.loads.longest, ")");
+            continue;
+        }
         CHECK((c == 2 ? run.back_on_road : run.left_road));
         CHECK(run.loads.max_impact <= 1.0);
         if (c < 3) {

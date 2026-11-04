@@ -78,8 +78,10 @@ struct StageMeshDensity {
 inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005};
 
 // Design: núcleo en malla y terreno en baldosas (§2.6). GridOnly: todo en rejilla, el núcleo con
-// su superficie por celda y sin bajada; solo para la medida R de la parte A.
-enum class StageGroundKind : std::uint8_t { Design, GridOnly };
+// su superficie por celda y sin bajada; solo para la medida R de la parte A. NaturalOutside: como
+// Design, pero fuera de los núcleos el terreno natural N sin la banda ni el empalme; solo para el
+// diagnóstico del talud en los tests (quinta respuesta del consultor a tramo-fisica).
+enum class StageGroundKind : std::uint8_t { Design, GridOnly, NaturalOutside };
 
 // Vértice respecto al origen del suelo (StageGround::origin_*).
 struct StageVertex {
