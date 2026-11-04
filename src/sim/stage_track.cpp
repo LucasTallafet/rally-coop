@@ -1,6 +1,7 @@
 #include "sim/stage_track.h"
 
 #include "sim/check.h"
+#include "sim/fnv1a.h"
 #include "sim/rmath.h"
 
 #include <algorithm>
@@ -101,7 +102,7 @@ StagePose StageTrack::pose(double s) const {
 
 double StageTrack::core_half_width(double s, int side) const { return side_core(pose(s), side); }
 
-StageProjection StageTrack::finish(double x, double z, double s) const {
+StageProjection StageTrack::finish(double x, double z, double s, double margin) const {
     const StagePose p = pose(s);
     const double dx = x - p.x;
     const double dz = z - p.z;
@@ -114,7 +115,7 @@ StageProjection StageTrack::finish(double x, double z, double s) const {
     out.t = dx * cos_h + dz * sin_h;
     out.distance = rmath::sqrt(dx * dx + dz * dz);
     out.on_road = rmath::abs(along) <= kPerpendicularTolerance &&
-                  rmath::abs(out.t) <= side_core(p, out.t >= 0.0 ? 1 : -1);
+                  rmath::abs(out.t) <= side_core(p, out.t >= 0.0 ? 1 : -1) + margin;
     return out;
 }
 
@@ -345,7 +346,7 @@ StageProjection StageTrack::acquire(double x, double z) const {
     return finish(x, z, best.s);
 }
 
-bool StageTrack::on_any_road(double x, double z, StageProjection& out) const {
+bool StageTrack::on_any_road(double x, double z, StageProjection& out, double margin) const {
     const Cell* cell = find_cell(x, z);
     if (cell == nullptr) {
         return false;
@@ -359,7 +360,7 @@ bool StageTrack::on_any_road(double x, double z, StageProjection& out) const {
             if (c.d2 > reach * reach) {
                 return;
             }
-            const StageProjection p = finish(x, z, c.s);
+            const StageProjection p = finish(x, z, c.s, margin);
             if (p.on_road && (!found || p.distance < best.distance)) {
                 best = p;
                 found = true;
@@ -487,6 +488,22 @@ std::string StageTrack::prepare() {
     }
     add_sample(s_end());
     const std::size_t samples = sample_s_.size();
+
+    // Validación 0: ningún arco gira una vuelta o más (tercera respuesta del consultor a
+    // tramo-fisica, §4): se cerraría sobre sí mismo.
+    for (std::size_t i = 0; i < prims.size(); ++i) {
+        const StagePrimitive& prim = prims[i];
+        if (prim.curvature0 != prim.curvature1 || prim.curvature0 == 0.0) {
+            continue;
+        }
+        const double s1 = i + 1 < prims.size() ? prims[i + 1].s0 : length;
+        const double turn = rmath::abs(prim.curvature0) * (s1 - prim.s0);
+        if (turn >= 2.0 * kPi - 1.0e-9) {
+            return fail_at(prim.s0,
+                           "el arco gira " + fixed2(turn * 180.0 / kPi) + "°, más de una vuelta")
+                .error;
+        }
+    }
 
     // Validación 1: la malla no se pliega en ninguna curva.
     for (const Piece& piece : pieces_) {
@@ -661,6 +678,26 @@ std::string StageTrack::prepare() {
 
 // --- Pasada --------------------------------------------------------------------------------------
 
+void hash_stage_run(Fnv1a64& hash, const StageRunState& state) {
+    hash.add_f64(state.s);
+    hash.add_f64(state.t);
+    hash.add_f64(state.reset_s);
+    hash.add_f64(state.exit_s);
+    hash.add_f64(state.off_travel);
+    hash.add_f64(state.last_x);
+    hash.add_f64(state.last_z);
+    hash.add_u64(static_cast<std::uint64_t>(state.steps));
+    hash.add_u64(static_cast<std::uint64_t>(state.start_step));
+    hash.add_u64(static_cast<std::uint64_t>(state.finish_step));
+    hash.add_u32(static_cast<std::uint32_t>(state.resets));
+    hash.add_u32(static_cast<std::uint32_t>(state.shortcuts));
+    hash.add_u32(static_cast<std::uint32_t>(state.split_count));
+    hash.add_byte(state.on_road ? 1 : 0);
+    for (const std::int64_t step : state.split_steps) {
+        hash.add_u64(static_cast<std::uint64_t>(step));
+    }
+}
+
 StageRun::StageRun(const StageTrack& track) : track_(&track) {
     std::memset(&state_, 0, sizeof(state_)); // relleno incluido
     const StagePose p = track.pose(0.0);
@@ -693,7 +730,6 @@ void StageRun::placed(StagePlace why, double s, double x, double z) {
 StageRun::Step StageRun::step(double x, double z) {
     const StageTrack& track = *track_;
     StageRunState& st = state_;
-    ++st.steps;
     const double dx = x - st.last_x;
     const double dz = z - st.last_z;
     const double d = rmath::sqrt(dx * dx + dz * dz);

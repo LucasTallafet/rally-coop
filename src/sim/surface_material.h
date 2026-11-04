@@ -10,12 +10,15 @@
 namespace rally::sim {
 
 class TestZone;
+class StageTrack;
+struct StageRunState;
 
 // De dónde sale el microrrelieve h(x, z) que nota la rueda sobre un material.
 enum class MicroRelief : std::uint8_t {
     None,  // sin h (muros, cajas sueltas, el recinto)
     Zone,  // TestZone::micro_height: el suelo de la zona, mezclado entre áreas
     Noise, // TestZone::surface_noise de la superficie del material (losas de los tests)
+    Stage, // el tramo: las bandas mezcladas en sus bordes (sim/stage_ground.h)
 };
 
 // Material de todo lo que hay en el mundo: la superficie que usa el neumático y su h. Cada
@@ -32,12 +35,16 @@ private:
     MicroRelief relief_;
 };
 
-// Fuente de h para las ruedas: la zona de pruebas (si la hay) y la tabla de ondas de la que
-// salen las bandas de ruido por superficie.
+// Fuente de h para las ruedas: la zona de pruebas (si la hay), la tabla de ondas de la que
+// salen las bandas de ruido por superficie y, en un mundo con tramo, el tramo y su pasada (la s
+// del último paso centra la proyección de cada rueda).
 struct ReliefSource {
     const TestZone* zone = nullptr;
     const TestZone* noise = nullptr;
+    const StageTrack* stage = nullptr;
+    const StageRunState* run = nullptr;
 
+    // Zone y Noise; Stage la calcula el tester de las ruedas con su marco (0 aquí).
     double height(MicroRelief relief, Surface surface, double x, double z) const;
 };
 

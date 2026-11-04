@@ -1,0 +1,36 @@
+# Tramo de test «parciales» (tarea tramo-fisica, lote 4): 1300 m en llano con dos curvas suaves
+# de R 200, para que el conductor de test pase un parcial (en s = 1000, a 300 m de la meta) y la
+# meta en un mundo con física.
+#
+# Salida en (0, 0) mirando al norte.
+
+format = 1
+name = Parciales (test)
+start_x = 0
+start_z = 0
+start_heading_deg = 0
+start_height = 0
+
+[plan]
+straight 300
+spiral 40 inf 200
+arc 100 200
+spiral 40 200 inf
+straight 300
+spiral 40 inf -200
+arc 100 -200
+spiral 40 -200 inf
+straight 340
+
+[profile]
+pvi 0 0 0
+pvi 1300 0 0
+
+[bank]
+bank 0 0
+
+[width]
+width 0 3 3
+
+[surface]
+surface 0 gravel

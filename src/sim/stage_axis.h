@@ -60,6 +60,15 @@ public:
     // s se acota a [0, length()] (NaN da 0). Sin reservas de memoria.
     StagePose pose(double s) const;
     const std::vector<StagePrimitive>& primitives() const { return prims_; }
+    // Las s en las que cambia la fórmula de algo de la pose: 0, cada junta de primitiva, cada
+    // extremo de curva vertical (y cada PIV sin curva), cada punto de [bank], [width] y
+    // [surface] y la longitud; ordenadas y sin repetir. Entre dos seguidas, la curvatura es
+    // lineal, y'' constante y el peralte y los semianchos lineales (la malla del tramo,
+    // sim/stage_ground.h, pone una sección en cada una). Reserva memoria: al cargar.
+    std::vector<double> breaks() const;
+    // El cambio de [surface] más cercano a s: su s y las superficies de antes y de después. Sin
+    // cambios, s_break es +∞ y las dos son la única superficie. Sin reservas.
+    void surface_change_near(double s, double& s_break, Surface& before, Surface& after) const;
     // FNV-1a de los datos leídos, campo a campo (todo menos el nombre): el mismo tramo da el
     // mismo hash en cualquier PC.
     std::uint64_t hash() const;

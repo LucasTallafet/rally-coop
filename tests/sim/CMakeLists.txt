@@ -11,7 +11,9 @@ rally_add_test_executable(rally_tests_sim
     test_rmath.cpp
     test_sim_world.cpp
     test_stage_axis.cpp
+    test_stage_ground.cpp
     test_stage_track.cpp
+    test_stage_world.cpp
     test_steer_assist.cpp
     test_telemetry.cpp
     test_test_road.cpp
@@ -19,6 +21,16 @@ rally_add_test_executable(rally_tests_sim
     test_tire.cpp
 )
 target_include_directories(rally_tests_sim PRIVATE common)
+
+# Medida de la parte A de tramo-fisica (lote 4): el suelo del tramo de §2.6 frente a la rejilla
+# sola, en lazadas.stage y en un tramo sintético de 30 km. No va en ctest: se lanza a mano en
+# Release (build/windows-release/tests/sim/Release/rally_stage_measure.exe) y escribe la tabla.
+add_executable(rally_stage_measure stage_measure.cpp)
+target_include_directories(rally_stage_measure PRIVATE common)
+target_link_libraries(rally_stage_measure PRIVATE rally_sim rally_io rally_warnings)
+target_compile_definitions(rally_stage_measure PRIVATE
+    RALLY_TEST_DATA_DIR="${RALLY_TEST_DATA}"
+    RALLY_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # Test de muerte: doctest no los tiene. Un ejecutable propio que tiene que abortar con el
 # mensaje de RALLY_CHECK; si sigue después de la llamada prohibida, escribe NO_ABORT.
@@ -33,6 +45,20 @@ add_test(NAME sim_world.soft_without_settings_aborts
     COMMAND rally_check_abort soft_without_settings)
 set_tests_properties(sim_world.soft_without_settings_aborts PROPERTIES
     PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: .*\\[settings\\]"
+    FAIL_REGULAR_EXPRESSION "NO_ABORT")
+
+# Tramo (tramo-fisica): con la zona, con un texto que no vale o la variante de medida sin tramo.
+foreach(_case stage_with_zone bad_stage variant_without_stage)
+    add_test(NAME sim_world.${_case}_aborts COMMAND rally_check_abort ${_case})
+endforeach()
+set_tests_properties(sim_world.stage_with_zone_aborts PROPERTIES
+    PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: .*tramo y zona"
+    FAIL_REGULAR_EXPRESSION "NO_ABORT")
+set_tests_properties(sim_world.bad_stage_aborts PROPERTIES
+    PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: el tramo no vale"
+    FAIL_REGULAR_EXPRESSION "NO_ABORT")
+set_tests_properties(sim_world.variant_without_stage_aborts PROPERTIES
+    PASS_REGULAR_EXPRESSION "RALLY_CHECK: SimWorld::build: .*variante"
     FAIL_REGULAR_EXPRESSION "NO_ABORT")
 
 # Reglas de simulación (cmake -P, sin Python). Se prueba el propio script con dos

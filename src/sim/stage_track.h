@@ -54,9 +54,10 @@ public:
     StageProjection project(double x, double z, double s_lo, double s_hi) const;
     // La proyección más cercana en todo el tramo, con el índice (celdas de 10 m). Sin reservas.
     StageProjection acquire(double x, double z) const;
-    // Si (x, z) está en la calzada o el arcén de alguna pasada, su proyección en ella. Sin
-    // reservas.
-    bool on_any_road(double x, double z, StageProjection& out) const;
+    // Si (x, z) está en la calzada o el arcén de alguna pasada, su proyección en ella. Con
+    // `margin` > 0, también hasta `margin` fuera del arcén (el microrrelieve del tramo, que mezcla
+    // en esa franja; on_road de `out` dice entonces si está dentro del margen). Sin reservas.
+    bool on_any_road(double x, double z, StageProjection& out, double margin = 0.0) const;
     // Memoria de las piezas, las muestras y el índice (bytes).
     std::size_t index_bytes() const;
 
@@ -94,7 +95,7 @@ private:
     template <typename F>
     void for_each_candidate(double x, double z, double lo, double hi, F&& f) const;
     // Proyección de (x, z) en el punto s del eje: t, distancia y en carretera.
-    StageProjection finish(double x, double z, double s) const;
+    StageProjection finish(double x, double z, double s, double margin = 0.0) const;
     const Cell* find_cell(double x, double z) const;
     // Tras parse: piezas, muestras, validación e índice. Error «s = …: …» o vacío.
     std::string prepare();
@@ -134,6 +135,12 @@ struct StageRunState {
 static_assert(std::is_trivial_v<StageRunState> && std::is_standard_layout_v<StageRunState>);
 static_assert(sizeof(StageRunState) == 7 * 8 + 3 * 8 + 3 * 4 + 4 + kMaxSplits * 8);
 
+class Fnv1a64;
+// Añade el estado de la pasada a un hash campo a campo, en el orden de la estructura y sin el
+// relleno: los double por sus bits, los enteros en little-endian, on_road como un byte y las
+// kMaxSplits entradas de split_steps. Es lo que SimWorld::state_hash() pone tras ControlState.
+void hash_stage_run(Fnv1a64& hash, const StageRunState& state);
+
 // La pasada por el tramo: sin Jolt, posiciones de entrada y decisiones de salida. Cuenta pasos:
 // no lee ningún reloj. La penalización de tiempo no es de la simulación.
 class StageRun {
@@ -144,12 +151,18 @@ public:
         bool shortcut = false; // atajo: recolocar en reset_s (= exit_s)
         double reset_s = 0.0;  // sin atajo: el punto de recolocación actual
     };
-    // Tras cada paso de física, con el origen del coche en planta (la altura no cuenta). Tras un
-    // Step{true, …}, quien llama recoloca el coche en exit_s y llama a placed(Shortcut, …) antes
-    // del siguiente step: si no, cada paso sobre la otra pasada contaría otro atajo.
+    // Cuenta un paso de física (`steps`). Es el único sitio que cuenta: SimWorld lo llama en
+    // cada paso, antes de step() o, con el botón de recolocar, de placed(Button), así que
+    // `steps` son los pasos desde la construcción y start_step, parciales y meta se miden con
+    // él (respuesta del consultor a tramo-fisica, §3).
+    void begin_step() { ++state_.steps; }
+    // Tras cada paso de física (y su begin_step), con el origen del coche en planta (la altura
+    // no cuenta). Tras un Step{true, …}, quien llama recoloca el coche en exit_s y llama a
+    // placed(Shortcut, …) antes del siguiente step: si no, cada paso sobre la otra pasada
+    // contaría otro atajo.
     Step step(double x, double z);
     // Tras recolocar (botón o atajo) o al construir: s, t = 0, en carretera, last_x/z = (x, z).
-    // Start solo antes del primer step (RALLY_CHECK).
+    // No cuenta pasos. Start solo antes del primer paso (RALLY_CHECK).
     void placed(StagePlace why, double s, double x, double z);
     const StageRunState& state() const { return state_; }
 

@@ -5,10 +5,12 @@
 #include "sim/jolt_config.h"
 #include "sim/layers.h"
 #include "sim/rmath.h"
+#include "sim/stage_ground.h"
 #include "sim/surface_material.h"
 
 #include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Core/UnorderedSet.h> // Shape::VisitedShapes: solo para contar la memoria
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Collision/CastResult.h>
@@ -16,7 +18,9 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/StateRecorderImpl.h>
 
@@ -39,7 +43,121 @@ enum class State : std::uint8_t { Empty, Built, Sealed };
 constexpr JPH::uint kGroundBlockSize = 4;
 constexpr JPH::uint kGroundBitsPerSample = 8;
 
+// Baldosas del tramo: bloques de 4 × 4 y los bits por muestra que dejan el error de altura de
+// Jolt por debajo de esto (m): el terreno va 5 mm bajo el núcleo y no puede asomar.
+constexpr float kStageTileMaxError = 0.001f;
+
+// Aborta con el error de Jolt si no pudo crear una forma del tramo.
+void require_shape(const JPH::ShapeSettings::ShapeResult& result, const char* what) {
+    if (!result.IsValid()) {
+        const std::string message = std::string("SimWorld::build: Jolt no pudo crear ") + what +
+                                    ": " + result.GetError().c_str();
+        check_failed(message.c_str(), __FILE__, __LINE__);
+    }
+}
+
+// Forma del suelo del tramo: un compuesto estático con la malla del núcleo (si la hay) y, en un
+// compuesto anidado, las baldosas, en ese orden. Anidadas, los bits del SubShapeID son 1 + el
+// máximo de la malla y de las baldosas, no su suma: así cabe un tramo de 30 km. Cada forma lleva
+// sus SurfaceMaterial con el microrrelieve del tramo (MicroRelief::Stage: las bandas de las losas,
+// mezcladas en los bordes).
+JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground, bool with_mesh, MicroRelief relief) {
+    JPH::PhysicsMaterialList materials;
+    for (int s = 0; s < kSurfaceCount; ++s) {
+        materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), relief));
+    }
+    JPH::StaticCompoundShapeSettings compound;
+    JPH::StaticCompoundShapeSettings tiles;
+    if (with_mesh && !ground.triangles().empty()) {
+        JPH::VertexList vertices;
+        vertices.reserve(ground.vertices().size());
+        for (const StageVertex& v : ground.vertices()) {
+            vertices.push_back(JPH::Float3(v.x, v.y, v.z));
+        }
+        JPH::IndexedTriangleList triangles;
+        triangles.reserve(ground.triangles().size());
+        for (const StageTriangle& t : ground.triangles()) {
+            triangles.push_back(
+                JPH::IndexedTriangle(t.a, t.b, t.c, static_cast<JPH::uint32>(t.surface)));
+        }
+        const JPH::MeshShapeSettings mesh(std::move(vertices), std::move(triangles), materials);
+        const JPH::ShapeSettings::ShapeResult result = mesh.Create();
+        require_shape(result, "la malla del tramo");
+        compound.AddShape(JPH::Vec3::sZero(), JPH::Quat::sIdentity(), result.Get());
+    }
+    JPH::PhysicsMaterialList dirt;
+    dirt.push_back(materials[static_cast<std::size_t>(Surface::Dirt)]);
+    const auto cell = static_cast<float>(ground.cell());
+    for (const StageTile& tile : ground.tiles()) {
+        const bool by_cell = !tile.surfaces.empty();
+        JPH::HeightFieldShapeSettings settings(tile.heights.data(), JPH::Vec3::sZero(),
+                                               JPH::Vec3(cell, 1.0f, cell), kStageTileSamples,
+                                               by_cell ? tile.surfaces.data() : nullptr,
+                                               by_cell ? materials : JPH::PhysicsMaterialList());
+        if (!by_cell) {
+            // Sin índices, Jolt usa el único material de la lista (el constructor la ignora).
+            settings.mMaterials = dirt;
+        }
+        settings.mBlockSize = kGroundBlockSize;
+        settings.mBitsPerSample = settings.CalculateBitsPerSampleForError(kStageTileMaxError);
+        const JPH::ShapeSettings::ShapeResult result = settings.Create();
+        require_shape(result, "una baldosa del tramo");
+        // Múltiplos de 63 celdas: exactos en float.
+        const JPH::Vec3 corner(static_cast<float>(tile.tx * kStageTileCells) * cell, 0.0f,
+                               static_cast<float>(tile.tz * kStageTileCells) * cell);
+        // Un compuesto necesita al menos dos formas: una baldosa sola va al de fuera.
+        (ground.tiles().size() >= 2 ? tiles : compound)
+            .AddShape(corner, JPH::Quat::sIdentity(), result.Get());
+    }
+    if (ground.tiles().size() >= 2) {
+        const JPH::ShapeSettings::ShapeResult result = tiles.Create();
+        require_shape(result, "las baldosas del tramo");
+        if (compound.mSubShapes.empty()) {
+            return result.Get();
+        }
+        compound.AddShape(JPH::Vec3::sZero(), JPH::Quat::sIdentity(), result.Get());
+    }
+    const JPH::ShapeSettings::ShapeResult result = compound.Create();
+    require_shape(result, "el suelo del tramo");
+    return result.Get();
+}
+
+// Giro del coche con el rumbo `yaw` (alrededor de +y, como CarSpawn) apoyado en el plano de la
+// calzada de la pose `p`: su adelante es el del rumbo llevado al plano y su arriba, la normal.
+JPH::Quat on_road_plane(const StagePose& p, float yaw) {
+    const auto sh = static_cast<float>(rmath::sin(p.heading));
+    const auto ch = static_cast<float>(rmath::cos(p.heading));
+    const JPH::Vec3 along(sh, static_cast<float>(p.grade), -ch);
+    const JPH::Vec3 across(ch, static_cast<float>(p.bank), sh);
+    const JPH::Vec3 up = across.Cross(along).Normalized();
+    // Adelante del rumbo (−z girado por yaw), sin la componente normal al plano.
+    const JPH::Vec3 flat = JPH::Quat::sRotation(JPH::Vec3::sAxisY(), yaw) * JPH::Vec3(0, 0, -1);
+    const JPH::Vec3 forward = (flat - up * flat.Dot(up)).Normalized();
+    const JPH::Vec3 right = forward.Cross(up);
+    const JPH::Mat44 m(JPH::Vec4(right, 0.0f), JPH::Vec4(up, 0.0f), JPH::Vec4(-forward, 0.0f),
+                       JPH::Vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    return m.GetQuaternion().Normalized();
+}
+
+double stage_cell(StageGroundVariant variant) {
+    if (variant == StageGroundVariant::CoarseTiles) {
+        return 2.0 * kStageCell;
+    }
+    return variant == StageGroundVariant::DenseMesh ? 0.5 * kStageCell : kStageCell;
+}
+
 } // namespace
+
+CarSpawn stage_spawn(const StageTrack& track, double s, float speed) {
+    const StagePose p = track.pose(s);
+    CarSpawn spawn;
+    spawn.x = p.x;
+    spawn.y = p.y;
+    spawn.z = p.z;
+    spawn.yaw = static_cast<float>(-p.heading);
+    spawn.speed = speed;
+    return spawn;
+}
 
 struct SimWorld::Impl {
     Impl() : temp_allocator(kTempAllocatorBytes), job_system(JPH::cMaxPhysicsJobs) {
@@ -91,11 +209,35 @@ struct SimWorld::Impl {
     std::uint64_t zone_hash = 0;
     std::size_t ground_bytes = 0;
 
+    // Tramo (si la descripción lo tiene). StageRun guarda la dirección del StageTrack: los dos
+    // van en unique_ptr y no se mueven en la vida del mundo.
+    std::unique_ptr<StageTrack> stage;
+    std::unique_ptr<StageRun> stage_run;
+    JPH::BodyID stage_body;
+    std::uint64_t stage_ground_hash = 0;
+    std::size_t stage_ground_bytes = 0;
+
     // Rellena `telemetry` al final de un paso. Solo lee.
     void capture_telemetry(const SimInput& input, JPH::Vec3Arg before_velocity, bool reset);
-    // Recolocar: mueve el coche, pone sus velocidades y el controlador a cero.
+    // Recolocar: mueve el coche, pone sus velocidades y el controlador a cero. En el tramo, a
+    // stage_spawn(reset_s) con placed(Button).
     void reset_car();
+    // Lleva el coche quieto a stage_spawn(s), apoyado, con el controlador a cero.
+    void place_on_stage(double s);
+    // Giro de salida del coche: el de CarSpawn y, en el tramo con la salida en carretera,
+    // apoyado en la pendiente y el peralte.
+    JPH::Quat spawn_rotation(const CarSpawn& spawn) const;
 };
+
+JPH::Quat SimWorld::Impl::spawn_rotation(const CarSpawn& spawn) const {
+    if (stage) {
+        const StageProjection p = stage->acquire(spawn.x, spawn.z);
+        if (p.on_road) {
+            return on_road_plane(stage->pose(p.s), spawn.yaw);
+        }
+    }
+    return JPH::Quat::sRotation(JPH::Vec3::sAxisY(), spawn.yaw);
+}
 
 SimWorld::SimWorld() : impl_(std::make_unique<Impl>()) {}
 
@@ -109,8 +251,21 @@ void SimWorld::build(const WorldDesc& desc) {
     if (desc.test_zone) {
         w.zone = std::make_unique<TestZone>(desc.blind_surface, desc.road_surface);
     }
+    const bool has_stage = !desc.stage_text.empty();
+    RALLY_CHECK(!(has_stage && desc.test_zone),
+                "SimWorld::build: un mundo no puede tener tramo y zona de pruebas a la vez");
+    RALLY_CHECK(has_stage || desc.stage_variant == StageGroundVariant::Design,
+                "SimWorld::build: una variante de medida del suelo del tramo sin tramo");
+    if (has_stage) {
+        auto track = std::make_unique<StageTrack>();
+        const StageParseResult parsed = StageTrack::build(desc.stage_text, *track);
+        RALLY_CHECK(parsed.ok, "SimWorld::build: el tramo no vale (quien llama lo lee antes con "
+                               "StageTrack::build para enseñar el error)");
+        w.stage = std::move(track);
+        w.stage_run = std::make_unique<StageRun>(*w.stage);
+    }
     const std::size_t zone_bodies = w.zone ? 1 + kWallCount + w.zone->road().trees().size() : 0;
-    RALLY_CHECK(desc.bodies.size() + zone_bodies + 1 <= kMaxBodies,
+    RALLY_CHECK(desc.bodies.size() + zone_bodies + (has_stage ? 1 : 0) + 1 <= kMaxBodies,
                 "SimWorld::build: demasiados cuerpos");
     RALLY_CHECK(!desc.car || desc.car_data.mass > 0.0f,
                 "SimWorld::build: el coche no tiene datos (WorldDesc::car_data)");
@@ -185,6 +340,33 @@ void SimWorld::build(const WorldDesc& desc) {
             batch.push_back(tree_body->GetID());
         }
     }
+    if (has_stage) {
+        // Suelo del tramo: un cuerpo estático, antes de los de la descripción. La geometría se
+        // calcula aquí, va a Jolt y se libera; queda su hash.
+        const StageGround ground = StageGround::build(
+            *w.stage, stage_cell(desc.stage_variant),
+            desc.stage_variant == StageGroundVariant::GridOnly ? StageGroundKind::GridOnly
+            : desc.stage_variant == StageGroundVariant::NaturalTerrain
+                ? StageGroundKind::NaturalOutside
+                : StageGroundKind::Design,
+            desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
+                                                                : StageMeshDensity{});
+        w.stage_ground_hash = ground.hash();
+        const JPH::Ref<JPH::Shape> shape =
+            stage_shape(ground, desc.stage_variant != StageGroundVariant::TerrainOnly,
+                        desc.stage_micro_relief ? MicroRelief::Stage : MicroRelief::None);
+        JPH::Shape::VisitedShapes visited;
+        w.stage_ground_bytes = shape->GetStatsRecursive(visited).mSizeBytes;
+        const JPH::BodyCreationSettings settings(
+            shape, JPH::RVec3(ground.origin_x(), ground.origin_y(), ground.origin_z()),
+            JPH::Quat::sIdentity(), JPH::EMotionType::Static, layers::kStatic);
+        const JPH::Body* body = bodies.CreateBody(settings);
+        RALLY_CHECK(body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
+        w.stage_body = body->GetID();
+        batch.push_back(w.stage_body);
+        // Las bandas de h de las superficies (MicroRelief::Stage las mezcla en los bordes).
+        w.noise = std::make_unique<TestZone>();
+    }
     w.bodies.reserve(desc.bodies.size());
     for (int i = 0; i < count; ++i) {
         const BoxDesc& box = desc.bodies[static_cast<std::size_t>(i)];
@@ -211,9 +393,9 @@ void SimWorld::build(const WorldDesc& desc) {
     JPH::Body* car_body = nullptr;
     if (desc.car) {
         const CarSpawn& spawn = desc.car_spawn;
-        car_body = bodies.CreateBody(
-            car_body_settings(desc.car_data, JPH::RVec3(spawn.x, spawn.y, spawn.z),
-                              JPH::Quat::sRotation(JPH::Vec3::sAxisY(), spawn.yaw), spawn.speed));
+        car_body = bodies.CreateBody(car_body_settings(desc.car_data,
+                                                       JPH::RVec3(spawn.x, spawn.y, spawn.z),
+                                                       w.spawn_rotation(spawn), spawn.speed));
         RALLY_CHECK(car_body != nullptr, "SimWorld::build: Jolt no tiene cuerpos libres");
         w.car = car_body->GetID();
         w.car_mass = desc.car_data.mass;
@@ -232,8 +414,13 @@ void SimWorld::build(const WorldDesc& desc) {
             make_car_constraint(*car_body, desc.car_data, -w.system.GetGravity().GetY(), desc.aids,
                                 desc.explicit_wheels);
         w.car_controller = static_cast<CarController*>(w.car_constraint->GetController());
-        w.car_tester = new CarWheelTester(
-            layers::kMoving, ReliefSource{w.zone.get(), w.noise.get()}, *w.car_controller);
+        RALLY_CHECK(!w.stage || (w.stage_run && w.noise),
+                    "SimWorld::build: el tramo necesita su pasada y las bandas de h");
+        w.car_tester =
+            new CarWheelTester(layers::kMoving,
+                               ReliefSource{w.zone.get(), w.noise.get(), w.stage.get(),
+                                            w.stage_run ? &w.stage_run->state() : nullptr},
+                               *w.car_controller);
         w.car_constraint->SetVehicleCollisionTester(w.car_tester);
         w.car_controller->set_rolling(desc.car_spawn.speed);
         if (desc.car_spawn.gear != kSpawnGearBySpeed) {
@@ -241,6 +428,11 @@ void SimWorld::build(const WorldDesc& desc) {
         }
         w.system.AddConstraint(w.car_constraint);
         w.system.AddStepListener(w.car_constraint);
+        if (w.stage_run) {
+            const CarSpawn& spawn = desc.car_spawn;
+            w.stage_run->placed(StagePlace::Start, w.stage->acquire(spawn.x, spawn.z).s, spawn.x,
+                                spawn.z);
+        }
     }
     w.state = State::Built;
 }
@@ -300,8 +492,13 @@ void SimWorld::step(const SimInput& input) {
     RALLY_CHECK(error == JPH::EPhysicsUpdateError::None,
                 "SimWorld::step: Jolt devolvió un error en Update");
 
+    bool moved = reset_pressed; // recolocado en este paso (botón o atajo)
     if (w.car_controller != nullptr) {
         JPH::BodyInterface& bodies = w.system.GetBodyInterfaceNoLock();
+        if (w.stage_run) {
+            // El único sitio que cuenta el paso de la pasada, con botón o sin él.
+            w.stage_run->begin_step();
+        }
         if (reset_pressed) {
             w.reset_car();
             w.last_impact = 0.0f;
@@ -319,15 +516,47 @@ void SimWorld::step(const SimInput& input) {
             w.lap->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
             w.road->update(before_x, before_z, after.GetX(), after.GetZ(), reset_pressed);
         }
+        // Tramo: con el botón ya está en stage_spawn(reset_s) (reset_car); si no, la pasada
+        // mira el origen del coche y, con un atajo, lo recoloca en exit_s en el mismo paso.
+        if (w.stage_run && !reset_pressed) {
+            const JPH::RVec3 at = bodies.GetPosition(w.car);
+            const StageRun::Step run = w.stage_run->step(at.GetX(), at.GetZ());
+            if (run.shortcut) {
+                w.place_on_stage(run.reset_s);
+                const StagePose p = w.stage->pose(run.reset_s);
+                w.stage_run->placed(StagePlace::Shortcut, run.reset_s, p.x, p.z);
+                w.last_impact = 0.0f;
+                moved = true;
+            }
+        }
     }
     ++w.steps;
     if (w.telemetry_enabled) {
-        w.capture_telemetry(input, before_velocity, reset_pressed);
+        w.capture_telemetry(input, before_velocity, moved);
     }
+}
+
+void SimWorld::Impl::place_on_stage(double s) {
+    Impl& w = *this;
+    JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();
+    const CarSpawn spawn = stage_spawn(*w.stage, s);
+    body_interface.SetPositionAndRotation(w.car, JPH::RVec3(spawn.x, spawn.y, spawn.z),
+                                          on_road_plane(w.stage->pose(s), spawn.yaw),
+                                          JPH::EActivation::Activate);
+    body_interface.SetLinearAndAngularVelocity(w.car, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+    w.car_controller->reset();
+    w.car_constraint->ResetWarmStart();
 }
 
 void SimWorld::Impl::reset_car() {
     Impl& w = *this;
+    if (w.stage_run) {
+        const double s = w.stage_run->state().reset_s;
+        w.place_on_stage(s);
+        const StagePose p = w.stage->pose(s);
+        w.stage_run->placed(StagePlace::Button, s, p.x, p.z);
+        return;
+    }
     JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();
     // Mover y poner a cero, nunca quitar y añadir. Un traslado no es un impacto.
     JPH::RVec3 target(w.car_spawn.x, w.car_spawn.y, w.car_spawn.z);
@@ -598,14 +827,25 @@ std::uint64_t SimWorld::zone_hash() const { return impl_->zone_hash; }
 
 std::size_t SimWorld::ground_bytes() const { return impl_->ground_bytes; }
 
+const StageTrack* SimWorld::stage() const { return impl_->stage.get(); }
+
+const StageRunState* SimWorld::stage_run() const {
+    return impl_->stage_run ? &impl_->stage_run->state() : nullptr;
+}
+
+std::uint64_t SimWorld::stage_ground_hash() const { return impl_->stage_ground_hash; }
+
+std::size_t SimWorld::stage_ground_bytes() const { return impl_->stage_ground_bytes; }
+
 GroundProbe SimWorld::probe_ground(double x, double z) const {
     GroundProbe probe;
-    if (impl_->ground.IsInvalid()) {
+    const JPH::BodyID ground = impl_->ground.IsInvalid() ? impl_->stage_body : impl_->ground;
+    if (ground.IsInvalid()) {
         return probe;
     }
     constexpr double kTop = 1000.0;
     const JPH::TransformedShape shape =
-        impl_->system.GetBodyInterfaceNoLock().GetTransformedShape(impl_->ground);
+        impl_->system.GetBodyInterfaceNoLock().GetTransformedShape(ground);
     const JPH::RRayCast ray(JPH::RVec3(x, kTop, z), JPH::Vec3(0.0f, -2.0f * kTop, 0.0f));
     JPH::RayCastResult hit;
     if (!shape.CastRay(ray, hit)) {
@@ -676,6 +916,9 @@ std::uint64_t SimWorld::state_hash() const {
         add_i64(run.last_run);
         hash.add_u32(static_cast<std::uint32_t>(run.last_resets));
         add_i64(run.best_clean);
+    }
+    if (impl_->stage_run) {
+        hash_stage_run(hash, impl_->stage_run->state());
     }
     return hash.value();
 }
