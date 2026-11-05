@@ -11,6 +11,7 @@
 add_library(rally_loop STATIC
     action_driver.cpp
     button_latch.cpp
+    cabin_volume.cpp
     camera_space.cpp
     car_feedback.cpp
     car_synth.cpp

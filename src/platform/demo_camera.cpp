@@ -1,5 +1,6 @@
 #include "platform/demo_camera.h"
 
+#include "platform/cabin_volume.h"
 #include "platform/camera_space.h"
 #include "platform/copilot_view.h"
 #include "platform/demo_camera_keys.h"
@@ -103,6 +104,9 @@ void DemoCamera::update(DemoContext& ctx) {
         const HeadView view = head_view(ctx.head_look.yaw(), ctx.head_look.pitch(), f9);
         local = {local.x + view.eye_offset.x, local.y + view.eye_offset.y,
                  local.z + view.eye_offset.z};
+        // Volumen seguro de la cabina (cabina-volumen): el ojo final, a 8 cm de la puerta, el techo
+        // y el parabrisas como mínimo. Dentro no cambia.
+        local = clamp_to_cabin(cabin_volume(ctx.car, ctx.copilot_seat), local);
         const Vec3d look = view.forward;
         const Vec3d head_up = view.up;
         const Pose head = attach(car, local);
