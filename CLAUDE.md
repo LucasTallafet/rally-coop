@@ -56,6 +56,7 @@ ctest --preset windows-release
 - Nombres de test sin corchetes ni `;`: rompen el descubrimiento de doctest en CMake.
 - Todo test debe poder correr sin ventana ni mando.
 - Antes de dar una tarea por terminada, compila en Release y pasa todos los tests.
+- Rutina de compilar y probar (la usan los agentes y la lee el modo automático de Claude Code): en la copia principal y en las copias de `.claude/worktrees/`, `powershell -ExecutionPolicy Bypass -File tools/ci/comprobar.ps1` (también con `-Debug`), `golden.ps1`, `propiedad.ps1 <rama>`, `cmake`, `ctest`, `clang-format`, `rally_replay` y los commits en las ramas `lote-*/` e `integracion` son el trabajo normal del proyecto. Nadie empuja: solo Lucas, con `promover.ps1`.
 - El exe pide la gráfica dedicada (AMD/NVIDIA); en PCs con gráfica integrada, comprobar en pantalla qué gráfica se usa.
 - Mandos: Xbox, PS4, PS5 y Switch Pro, sin driver. El PS3 en Windows necesita el driver DsHidMini (no es trabajo de código). Probar con Steam cerrado: Steam Input reasigna los mandos. El overlay muestra el nombre y el tipo del mando activo.
 
