@@ -73,12 +73,16 @@ std::string debug_motor_line(const sim::DrivetrainOutput& d) {
 }
 
 std::string debug_axles_line(const sim::DrivetrainOutput& d) {
-    const std::string failed = " SIN CONVERGER";
     return "ejes: " + signed_field(static_cast<double>(d.axle_torque[0]), 4, 0) + " / " +
-           signed_field(static_cast<double>(d.axle_torque[1]), 4, 0) + " N·m; central Δω " +
+           signed_field(static_cast<double>(d.axle_torque[1]), 4, 0) + " N·m; central dw " +
            signed_field(static_cast<double>(d.center_slip), 3, 2) + " rad/s, visco " +
-           signed_field(static_cast<double>(d.viscous_torque), 4, 0) + " N·m; autobl. " +
-           unsigned_field(static_cast<double>(d.lsd_torque[0]), 4, 0) + " / " +
+           signed_field(static_cast<double>(d.viscous_torque), 4, 0) + " N·m";
+}
+
+// Parte de debug_axles_line (arriba); no hay otra función que forme esta línea.
+std::string debug_lsd_line(const sim::DrivetrainOutput& d) {
+    const std::string failed = " SIN CONVERGER";
+    return "autobl.: " + unsigned_field(static_cast<double>(d.lsd_torque[0]), 4, 0) + " / " +
            unsigned_field(static_cast<double>(d.lsd_torque[1]), 4, 0) + " N·m; LCP " +
            unsigned_field(d.lcp_iterations, 2, 0) +
            (d.lcp_failures > 0 ? failed : pad_like("", failed));

@@ -331,6 +331,7 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
         const sim::DrivetrainOutput& d = ctx.world->car_controller().drivetrain();
         line_fit(debug_motor_line(d));
         line_fit(debug_axles_line(d));
+        line_fit(debug_lsd_line(d));
     }
 
     // Zona: a ciegas no se dice la superficie ni la configuración.
