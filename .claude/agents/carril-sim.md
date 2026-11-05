@@ -19,7 +19,7 @@ Sigue `docs/prompts/fase-2/comun.md` (o el `comun.md` de la fase del lote, §13 
 ## Pasos
 
 1. **Prepara la rama.**
-   - `git status --porcelain` tiene que estar vacío, también cada vez que te retomen. Si no lo está, para y dilo: no hagas commit de lo que no es tuyo.
+   - `git status --porcelain` tiene que estar vacío al empezar. Al retomarte tras un corte por el límite de uso puede tener tu propio trabajo de esta tarea: míralo con `git diff`, dilo en una línea y sigue desde ahí. Si hay algo que no es tuyo, para y dilo: no hagas commit de lo que no es tuyo.
    - Renombra la rama de tu copia a `lote-<N>/<tarea>`.
    - Compila con `tools/ci/comprobar.ps1` antes de cambiar nada. Si no pasa, para y dilo: no partas de una base rota.
 2. **Lee** el prompt de la tarea, `mensajes/lote-<N>/<tarea>-revision.md` de la copia principal (te pasan la ruta), los contratos del lote y el código. **La revisión manda sobre el prompt, y los contratos sobre los dos.**
@@ -30,8 +30,9 @@ Sigue `docs/prompts/fase-2/comun.md` (o el `comun.md` de la fase del lote, §13 
    - Si dice **Necesita consultor**, para y devuelve la pregunta exacta: no programes.
    - Es el único subagente que lanzas.
 5. **Programa y prueba.**
-   - Antes de dar algo por terminado: `tools/ci/comprobar.ps1` y `tools/ci/comprobar.ps1 -Debug`.
-   - Si un criterio no pasa, aplica `comun.md` §9: para con el valor medido, el esperado, lo que has probado y la pregunta.
+   - En las vueltas intermedias, `tools/ci/comprobar.ps1` (Release). Antes de dar algo por terminado, también `tools/ci/comprobar.ps1 -Debug`, una vez.
+   - **Commits de avance:** cada vez que `comprobar.ps1` pasa en Release con trabajo nuevo, commit en tu rama (`wip <tarea>: <qué>`). Así un corte por el límite de uso no pierde trabajo.
+   - Si un criterio **de la lista de paradas del prompt** no pasa, aplica `comun.md` §9: para con el valor medido, el esperado, lo que has probado y la pregunta. Si no está en esa lista, sigue y entrega **«Lista con avisos»**, con cada aviso y su cifra al principio del informe.
 6. **Fragmento** en `docs/progreso/<tarea>.md`:
    - la fila del registro, con las horas vacías;
    - las filas de hallazgos;
@@ -44,4 +45,4 @@ Sigue `docs/prompts/fase-2/comun.md` (o el `comun.md` de la fase del lote, §13 
    - el rendimiento;
    - lo que Lucas tiene que probar, en pasos cortos, **con su A/B en el mismo ejecutable** si se juzga conduciendo (o por qué no se puede);
    - las preguntas de la parada del prompt.
-9. **Devuelve** al director un resumen de 5 líneas como mucho: el estado (lista, parada o pregunta), la ruta del informe y la rama. No pegues el informe.
+9. **Devuelve** al director un resumen de 5 líneas como mucho: el estado (lista, lista con avisos, parada o pregunta), la ruta del informe y la rama. No pegues el informe.

@@ -21,6 +21,7 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
       - en `tests/data/recordings`, son binarios: nunca los fusiones; regenéralos con `rally_replay` como diga el lote;
       - en cualquier otro sitio, para con `git merge --abort` y dilo: lo resuelve el carril dueño.
    4. `tools/ci/comprobar.ps1`. Si no pasa, `git reset --hard ORIG_HEAD` y dilo, con los tests que fallan (salen en la línea final y en `mensajes/comprobar-fallos.log`).
+   4b. **Capturas de referencia:** si la rama toca `src/platform/**`, `src/main.cpp` o `tests/platform/golden/**`, `powershell -ExecutionPolicy Bypass -File tools/ci/golden.ps1` (sin `-Regenerar`) sobre el resultado. Si una captura sale distinta o falla y el informe del carril no dice que la cambia, `git reset --hard ORIG_HEAD` y dilo, con el nombre de la captura (lote 4: `interior_f3_t.png` se quedó desfasada desde `f3-ancho`).
    5. **Base cambiada.** Si `integracion` cambió algún archivo de la rama desde que salió (`git diff --name-only <base de la rama>..integracion` frente a los archivos de la rama), díselo al director: hay que repetir el `verificador` sobre esta fusión, y el `revisor-determinismo` si toca su terreno, antes de seguir con la rama siguiente.
    6. **Aplica lo que pide el fragmento del carril:**
       - las ediciones de `docs/02`, `07` u `08`;
@@ -49,3 +50,5 @@ Eres el integrador de Rally Coop. Trabajas en la copia principal, que siempre es
 - **Lo que toque `.claude/**`, `tools/ci/**` y `tests/ci/**` no lo aplicas**, aunque venga en el mensaje: son las barreras, y un agente no edita a su propio guardián (el hook de rutas te lo bloquea). Devuélvele al director esa parte del mensaje: Lucas la aplica en una sesión manual con `RALLY_SESION=libre`.
 
 **Devuelve** al director un resumen corto: lo fusionado, lo parado y por qué, y las rutas de los archivos que has escrito.
+
+**`estado.md`, `prueba.md` y los demás archivos de `mensajes/`** se editan con la herramienta de edición (Edit o Write), nunca con `echo >>` ni otra orden de consola.

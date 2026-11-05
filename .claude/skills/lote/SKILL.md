@@ -46,6 +46,7 @@ Lanza cada tarea en su carril (`carril-sim`, `carril-plataforma`, `carril-juego`
 
 Cuando un carril vuelve:
 - **«Lista»:** pasa a la verificación (§3).
+- **«Lista con avisos»:** igual que «Lista»: pasa a la verificación. Copia los avisos en `estado.md` y, los que se notan jugando, pásaselos al integrador para `prueba.md`. No los contestes ni los arregles: los decide el consultor al cerrar el lote.
 - **«Parada» o «Pregunta»:** dile a Lucas la pregunta exacta, con las cifras del informe del carril. Si es técnica y la regla la resuelve, contéstala tú: retoma el carril con un mensaje y apúntalo en `estado.md`. Si es de gusto, de prioridad o de diseño, contesta Lucas o el consultor.
 
 ## 3. Verificación
@@ -90,4 +91,10 @@ Si alguna dice **No pasa**, retoma el mismo carril (el que escribió esa rama) c
 - **Veredicto en la última línea.** La respuesta de `revisor-diseno`, `verificador` y `revisor-determinismo` acaba siempre con su veredicto, en una de sus formas fijas. Si un agente vuelve sin esa línea, retómalo una vez con `SendMessage` y pídesela; si vuelve a faltar, para y avisa a Lucas.
 - **Los scripts de `tools/ci/`** se lanzan siempre en la forma permitida en `.claude/settings.json`: `powershell -ExecutionPolicy Bypass -File tools/ci/<script>.ps1 …`, con la ruta relativa y `/`.
 - **Si el modo automático de Claude Code (o un permiso) rechaza** un script de `tools/ci/`, una compilación o un commit, para y avisa a Lucas. No busques otra vía ni otra forma de la orden. Las garantías son las de `docs/09-agentes.md` §6, no las de ese clasificador.
+- **Un carril cortado por el límite de uso.** Retómalo con `SendMessage` y pídele que empiece por `git status` y `git diff`. Si responde «No transcript found»:
+  1. en su copia, `git -C <copia> add -A` y `git -C <copia> commit -m "wip <tarea>: unverified rescue after usage limit"` (si `git -C <copia> status --porcelain` no está vacío);
+  2. `git worktree remove <copia>`, sin `--force` (si se niega, para y avisa a Lucas);
+  3. lanza un carril nuevo en el mismo tipo con el mismo prompt, sobre la rama `lote-<N>/<tarea>`, con la orden de empezar por `git log` y `git diff` del commit de rescate y seguir desde ahí.
+  Apúntalo en `estado.md`.
+- **`estado.md` y los demás archivos de `mensajes/`** se editan con la herramienta de edición (Edit o Write), nunca con `echo >>` ni otra orden de consola.
 - Mensajes a Lucas cortos y en español: estado, pregunta y ruta. Los detalles van en los archivos.
