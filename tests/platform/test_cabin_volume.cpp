@@ -243,3 +243,22 @@ TEST_CASE("cabin_volume: the copilot volume is the driver one mirrored in x") {
         CHECK(c.wc == d.wc);
     }
 }
+
+TEST_CASE("cabin_volume: a car without [cockpit] leaves the eye untouched") {
+    std::string text;
+    std::string error;
+    REQUIRE(rally::io::read_file(std::string(RALLY_SOURCE_DIR) + "/tests/data/cars/reference.car",
+                                 text, error));
+    const rally::sim::CarData car =
+        rally::sim::load_car_or_abort(text, "reference", rally::sim::CarKeys::Sim);
+    for (const bool copilot : {false, true}) {
+        const CabinVolume volume = cabin_volume(car, copilot);
+        const Vec3d nominal = driver_eye(car, SeatOffsetCm{});
+        const Vec3d eyes[] = {nominal,
+                              {nominal.x - 0.3, nominal.y + 0.4, nominal.z + 1.0},
+                              {nominal.x + 0.5, nominal.y - 0.2, nominal.z - 1.0}};
+        for (const Vec3d& eye : eyes) {
+            CHECK(same_bits(clamp_to_cabin(volume, eye), eye));
+        }
+    }
+}

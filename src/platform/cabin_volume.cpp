@@ -27,6 +27,22 @@ struct HalfPlane {
 CabinVolume cabin_volume(const sim::CarData& car, bool copilot) {
     const sim::CockpitData& k = car.cockpit;
     CabinVolume v;
+    // Un coche sin [cockpit] (las medidas a cero, como tests/data/cars/reference.car) no tiene
+    // cabina: volumen abierto, el ojo no se toca.
+    if (k.door_left == 0.0f && k.door_right == 0.0f && k.roof_above == 0.0f &&
+        k.roof_behind == 0.0f && k.windshield_base_ahead == 0.0f &&
+        k.windshield_top_ahead == 0.0f) {
+        v.x_min = -kInf;
+        v.x_max = kInf;
+        v.ry = 0.0;
+        v.rz = 1.0;
+        v.rc = kInf;
+        v.z_max = kInf;
+        v.wy = 0.0;
+        v.wz = 1.0;
+        v.wc = kInf;
+        return v;
+    }
     // Puerta del conductor: a door_left a la izquierda del ojo nominal. El copiloto, reflejada.
     const double door = cockpit_point(car, 0.0, -static_cast<double>(k.door_left), 0.0).x;
     if (copilot) {
