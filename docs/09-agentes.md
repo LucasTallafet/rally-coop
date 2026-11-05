@@ -129,7 +129,8 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
    - Escribe su fragmento `docs/progreso/<tarea>.md`: la fila del registro, los hallazgos, las ediciones exactas de `02`, `07` u `08` y lo que pide de lo compartido.
    - Hace commit en su rama. **Ningún agente empuja:** las ramas se ven desde la copia principal porque comparten `.git`, y una copia con commits sin empujar es la que la limpieza periódica de Claude Code respeta.
    - Escribe su informe, con lo que Lucas tiene que probar y su A/B.
-   - Si un criterio no pasa, `comun.md` §9: para con el valor medido, el esperado y la pregunta.
+   - Si un criterio no pasa, `comun.md` §9: para con el valor medido, el esperado y la pregunta. Solo para por lo que el prompt pone en su lista de paradas; lo demás lo entrega como **«Lista con avisos»**, que sigue a la verificación como «Lista» y cuyos avisos decide el consultor al cerrar el lote (desde el lote 5; `tramo-fisica` paró cinco veces por criterios de diagnóstico).
+   - **Commits de avance:** cada vez que `comprobar.ps1` pasa en Release con trabajo nuevo, un commit en su rama. **Si el límite de uso corta al carril** y `SendMessage` responde «No transcript found», el director guarda lo que haya sin commit en un commit de rescate (`wip <tarea>: unverified rescue after usage limit`), quita la copia y lanza un carril nuevo sobre esa rama, que empieza por `git log` y `git diff` del rescate (lote 4).
 7. **Verificación** de cada rama, por agentes que no la escribieron, **en serie y nunca a la vez sobre la misma copia** (los dos compilan en ella; en el lote 1 chocaron con LNK1104):
    - **`verificador`.** Termina con `git status --porcelain` vacío en la copia del carril, y el director lo comprueba antes de retomar el carril.
    - **`revisor-determinismo`**, si la rama toca `src/sim`, `src/gen`, `src/net`, `src/game` o `src/io`, o si cambia la huella, el hash de la telemetría o `tests/data/recordings`. Comprueba:

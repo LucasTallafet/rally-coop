@@ -27,7 +27,7 @@ Las trayectorias son de puntos que se mueven por el tramo a pasos de 1/240 s: no
 
 1. **Por el eje y paralelo a él** en `lazadas.stage`, a 10, 50 y 120 km/h, con t = 0, +2 y −2 m (en la horquilla de R 6, ±2 m quedan dentro):
    - |s − s_real| ≤ 1 mm y |t − t_real| ≤ 1 mm en todos los pasos;
-   - `s` nunca retrocede y nunca salta: |Δs| ≤ lo que avanza el punto en planta + 1 mm por paso;
+   - `s` nunca retrocede y nunca salta: |Δs| ≤ d / (1 − max(κ(s_prev)·t, κ(s)·t)) + 1 mm por paso, con d lo que avanza el punto en planta (un punto paralelo al eje a t recorre Δs·(1 − κ·t): por dentro de la horquilla de R 6 a t = +2 m avanza 2/3 de `s`, y la cota «d + 1 mm» no se podía cumplir; corregido en la revisión del plan del lote 4);
    - en las lazadas, `s` nunca pasa al otro brazo (a 13,35 m).
 2. **Prolongaciones:** salir desde s = −20 m y acabar en s = L + 150 m sin saltos; fuera de [s_begin, s_end], `s` queda en el extremo.
 3. **Adquisición:** desde 2000 puntos repartidos por la franja (PCG32 de semilla fija), `acquire` da la `s` del punto del eje más cercano, frente a una búsqueda de fuerza bruta del test (muestreo cada 0,05 m y refino), con ≤ 1 mm.

@@ -22,6 +22,13 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
 13. **¿Reutiliza lo que ya existe?** Antes de aprobar, busca en `src/` y `tests/` funciones o tipos que ya hagan lo que la tarea pide (`rmath`, `fnv1a`, `input_shaping`, `atomic_file`, `PlayerSettings`, `screen_layout`, las tablas de teclas, los mundos de `car_worlds.h`…). Si el prompt o la tarea llevan a duplicar algo, dilo con la ruta y la línea. Nada genérico nuevo «por si acaso».
 14. **¿Se juzga conduciendo?** → Que el informe diga cómo hace Lucas el A/B en el mismo ejecutable (una tecla, el archivo del coche de `master` al lado), o por qué no se puede.
 
+15. **Umbrales, referencias, premisas y paradas** (desde el lote 5; `tramo-fisica` paró cinco veces por esto en el lote 4):
+    - cada umbral lleva su fuente en el texto: una medida ya hecha, un requisito de `03` o un presupuesto con todos sus términos. Sin fuente, el criterio es «medir e informar» y el umbral se fija después con la cifra;
+    - un criterio mide una sola cosa: lo demás se apaga, o se compara con una referencia medida en la misma pasada que comparta todo menos lo que se prueba (escrito);
+    - una tarea de física o geometría nueva lleva su tabla de premisas (cómo se comprueban y qué pasa si son falsas), que el carril comprueba primero;
+    - la lista de paradas es corta y escrita: falla un criterio de resultado (lo que nota el jugador, los tiempos de cuadro, la reproducibilidad) o una premisa. Lo demás es «Lista con avisos».
+    → Lo que falte, a los cambios de la revisión; si cambia un criterio del prompt, **Necesita consultor**.
+
 **Formato de `<tarea>-revision.md`:**
 - veredicto: **Adelante**, **Adelante con cambios** o **Necesita consultor**;
 - los cambios numerados, cada uno con su motivo y, si hay, su cifra;
