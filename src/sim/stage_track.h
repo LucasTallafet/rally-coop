@@ -19,7 +19,7 @@ namespace rally::sim {
 
 // Constantes del tramo (§2.3). Provisionales hasta la fase 3, salvo el margen de atajo (`05`).
 inline constexpr double kStageEntryLength = 20.0;    // prolongación recta antes de s = 0 (m)
-inline constexpr double kStageRunoffLength = 150.0;  // prolongación recta tras la meta (m)
+inline constexpr double kStageRunoffLength = 250.0;  // prolongación recta tras la meta (m)
 inline constexpr double kStageShoulderWidth = 1.0;   // arcén a cada lado (m)
 inline constexpr double kStageStripHalfWidth = 60.0; // franja con colisión, en planta (m)
 inline constexpr double kShortcutMargin = 30.0;      // atajo: ganancia > recorrido fuera + esto

@@ -594,6 +594,20 @@ TEST_CASE("stage_axis: 10000 poses of the test stage give the reference hash") {
     CHECK(hash.value() == kExpectedStageHash);
 }
 
+TEST_CASE("stage_axis: the game copy of lazadas is the test stage byte for byte") {
+    // Tarea tramo-ajustes, criterio 3: data/stages/lazadas.stage (el tramo del juego) es
+    // tests/sim/stages/lazadas.stage, así que kExpectedStageHash cubre los dos.
+    std::string game;
+    std::string error;
+    const bool ok =
+        rally::io::read_file(RALLY_SOURCE_DIR "/data/stages/lazadas.stage", game, error);
+    INFO(error);
+    REQUIRE(ok);
+    const std::string& test = lazadas_text();
+    MESSAGE("data/stages/lazadas.stage: ", game.size(), " bytes; tests/sim/stages: ", test.size());
+    CHECK(game == test);
+}
+
 // --- Criterio 11: lazadas ----------------------------------------------------------------------
 
 TEST_CASE("stage_axis: the hairpins of the test stage pass 8 to 15 m from each other") {

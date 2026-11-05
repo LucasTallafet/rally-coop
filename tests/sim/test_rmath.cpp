@@ -57,6 +57,10 @@ TEST_CASE("rmath: binary functions match std bit for bit") {
             CAPTURE(a);
             CAPTURE(b);
             CHECK(same_bits(rmath::atan2(a, b), std::atan2(a, b)));
+            CHECK(same_bits(rmath::hypot(a, b), std::hypot(a, b)));
+            const auto af = static_cast<float>(a);
+            const auto bf = static_cast<float>(b);
+            CHECK(same_bits(rmath::hypot(af, bf), std::hypot(af, bf)));
             if (b != 0.0) {
                 CHECK(same_bits(rmath::fmod(a, b), std::fmod(a, b)));
             }

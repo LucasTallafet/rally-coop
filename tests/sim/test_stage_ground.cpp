@@ -33,7 +33,7 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x8b9c'9097'177e'30a0ull;
+constexpr std::uint64_t kExpectedStageGroundHash = 0xdd43'8cd6'76e8'c121ull;
 
 constexpr double kMm = 1.0e-3;
 
@@ -521,6 +521,30 @@ TEST_CASE("stage_ground: a ray 59 m from the axis hits the ground and one 61 m a
         wrong += hit == far ? 1 : 0;
     }
     CHECK(wrong == 0);
+
+    // Tarea tramo-ajustes, criterio 2: puntos fijos de la frenada de 250 m más allá de los 150 m
+    // de antes (L + 155 … L + 245, cada 10 m), a ±59 m con suelo y a ±61 m sin él. Con la
+    // colisión hasta L + 150, a 59 m solo habría suelo hasta L + 160,9 (√(60² − 59²) pasado el
+    // final): desde L + 165 los puntos lo detectan.
+    const double length = track.axis().length();
+    int runoff_checked = 0;
+    int runoff_wrong = 0;
+    for (double s = length + 155.0; s < track.s_end(); s += 10.0) {
+        for (const double side : {-1.0, 1.0}) {
+            for (const double t : {59.0, 61.0}) {
+                const Point q = at(track, s, side * t);
+                if (std::abs(track.acquire(q.x, q.z).distance - t) > 1e-6) {
+                    continue;
+                }
+                ++runoff_checked;
+                const bool hit = world.probe_ground(q.x, q.z).hit;
+                runoff_wrong += hit == (t > 60.0) ? 1 : 0;
+            }
+        }
+    }
+    MESSAGE("frenada: ", runoff_checked, " rayos de 40 medidos, ", runoff_wrong, " mal");
+    CHECK(runoff_checked == 40);
+    CHECK(runoff_wrong == 0);
 }
 
 namespace {

@@ -182,10 +182,11 @@ TEST_CASE("stage_track: extensions continue the ends straight with their values"
     CHECK(e.surface == p0.surface);
     CHECK(e.curvature == 0.0);
     const StagePose pl = track.axis().pose(length);
-    const StagePose r = track.pose(length + 150.0);
-    CHECK(r.s == length + 150.0);
-    CHECK(std::hypot(r.x - pl.x, r.z - pl.z) == doctest::Approx(150.0).epsilon(1e-12));
-    CHECK(r.y == doctest::Approx(pl.y + 150.0 * pl.grade).epsilon(1e-12));
+    CHECK(kStageRunoffLength == 250.0);
+    const StagePose r = track.pose(length + kStageRunoffLength);
+    CHECK(r.s == length + kStageRunoffLength);
+    CHECK(std::hypot(r.x - pl.x, r.z - pl.z) == doctest::Approx(kStageRunoffLength).epsilon(1e-12));
+    CHECK(r.y == doctest::Approx(pl.y + kStageRunoffLength * pl.grade).epsilon(1e-12));
     CHECK(r.heading == pl.heading);
     CHECK(r.surface == pl.surface);
     // Acotada fuera.
