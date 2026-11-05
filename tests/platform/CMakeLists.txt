@@ -5,6 +5,7 @@
 rally_add_test_executable(rally_tests_platform
     test_action_driver.cpp
     test_button_latch.cpp
+    test_cabin_volume.cpp
     test_camera_space.cpp
     test_car_feedback.cpp
     test_car_synth.cpp
