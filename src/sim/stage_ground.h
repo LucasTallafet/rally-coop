@@ -176,10 +176,10 @@ private:
 // singular del terreno del formato 1, donde todos los abanicos del arco tienen un pie a la misma
 // distancia (respuesta del consultor a la parada de tramo-ajustes, lote 5). Solo diagnóstico.
 struct StageCenterOverflow {
-    double x = 0.0, z = 0.0;    // en el mundo
-    double distance = 0.0;      // en planta, al vértice de las cuñas del arco (m)
-    double height = 0.0;        // altura de la muestra, en el mundo
-    double foot_min = 0.0;      // la menor y la mayor altura de sus pies (con peso y en zona)
+    double x = 0.0, z = 0.0; // en el mundo
+    double distance = 0.0;   // en planta, al vértice de las cuñas del arco (m)
+    double height = 0.0;     // altura de la muestra, en el mundo
+    double foot_min = 0.0;   // la menor y la mayor altura de sus pies (con peso y en zona)
     double foot_max = 0.0;
 };
 
