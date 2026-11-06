@@ -188,7 +188,7 @@ TEST_CASE(
     "actions_recording: a session with 10 requests and 2 cancellations replays with hash OK") {
     const rally::sim::JoltRuntime runtime;
     const Session& session = the_session();
-    CHECK(session.recording.header.format_version == 7);
+    CHECK(session.recording.header.format_version == 8);
     CHECK(session.recording.events.size() == 12);
     CHECK_FALSE(session.recording.header.actions_text.empty());
     // No es degenerada: hay rechazos, cancelaciones del jugador y una del coche al arrancar.
@@ -230,7 +230,8 @@ TEST_CASE("actions_recording: the stored format 7 recording replays with hash OK
     CHECK(recording.events.size() == 12);
     CHECK_FALSE(recording.header.actions_text.empty());
     rally::sim::WorldDesc desc;
-    REQUIRE(rally::io::parse_world(recording.header.world, desc, error));
+    REQUIRE(rally::io::parse_world(recording.header.world, desc, error,
+                                   recording.header.format_version));
     CHECK(desc.aids.abs);
     CHECK(desc.aids.traction == rally::sim::TractionControl::High);
     CHECK(desc.aids.suspension == rally::sim::SuspensionSetting::Soft);

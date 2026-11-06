@@ -23,7 +23,7 @@ using rally::sim::Pcg32;
 // números). Tiene que ser el mismo en Debug y en Release. Si cambia a propósito, se copia aquí
 // el valor nuevo y va en el mensaje del commit («CSV hash: 0x... -> 0x...»). El hash de
 // la telemetría de la simulación es otro: kExpectedTelemetryHash (tests/sim).
-constexpr std::uint64_t kExpectedCsvHash = 0xdc7d3a061d9f3d6bull;
+constexpr std::uint64_t kExpectedCsvHash = 0x4f7f22a7fa276eeeull;
 
 float real(Pcg32& rng, float scale) { return (rng.next_float01() - 0.5f) * scale; }
 
@@ -191,7 +191,13 @@ TEST_CASE("csv: every field of the synthetic telemetry reaches a column") {
     std::string zero_row;
     std::string filled_row;
     rally::io::append_telemetry_row(CarTelemetry{}, zero_row);
-    rally::io::append_telemetry_row(filled, filled_row);
+    rally::sim::StageRunState stage{};
+    stage.s = 123.45;
+    stage.t = -1.5;
+    stage.on_road = true;
+    stage.resets = 2;
+    stage.shortcuts = 1;
+    rally::io::append_telemetry_row(filled, filled_row, &stage);
     const auto split = [](const std::string& row) {
         std::vector<std::string> out;
         std::string current;

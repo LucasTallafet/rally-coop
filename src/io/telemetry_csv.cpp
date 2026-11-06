@@ -35,6 +35,9 @@ const char* wheel_surface_text(const CarTelemetry& t) {
     return surface < 0 ? "none" : sim::surface_key(static_cast<sim::Surface>(surface));
 }
 
+// `number` de las columnas del tramo: lo que valen sin tramo (la pasada la lee `stage_number`).
+double zero_number(const CarTelemetry&) { return 0.0; }
+
 using C = TelemetryColumn;
 constexpr ColumnKind kInt = ColumnKind::Integer;
 constexpr ColumnKind kReal = ColumnKind::Real;
@@ -236,6 +239,19 @@ constexpr std::array kColumns = {
     RALLY_WHEEL_COLUMNS(1, "fr"),
     RALLY_WHEEL_COLUMNS(2, "rl"),
     RALLY_WHEEL_COLUMNS(3, "rr"),
+    // Tramo (lote 5): de SimWorld::stage_run() tras el paso; sin tramo, todas a 0.
+    C{"stage", "", "0 o 1", "Hay tramo en el mundo", kInt, 0, zero_number, nullptr,
+      [](const sim::StageRunState&) { return 1.0; }},
+    C{"stage_s", "m", "", "Distancia a lo largo del eje del tramo del último paso", kReal, 4, zero_number, nullptr,
+      [](const sim::StageRunState& s) { return s.s; }},
+    C{"stage_t", "m", "+ derecha", "Distancia lateral al eje del tramo del último paso", kReal, 4, zero_number, nullptr,
+      [](const sim::StageRunState& s) { return s.t; }},
+    C{"stage_on_road", "", "0 o 1", "El coche está en la carretera del tramo", kInt, 0, zero_number, nullptr,
+      [](const sim::StageRunState& s) { return s.on_road ? 1.0 : 0.0; }},
+    C{"stage_resets", "", "≥ 0", "Recolocaciones con el botón desde la construcción del mundo", kInt, 0, zero_number, nullptr,
+      [](const sim::StageRunState& s) { return static_cast<double>(s.resets); }},
+    C{"stage_shortcuts", "", "≥ 0", "Atajos (recolocación automática por salirse y reentrar más adelante)", kInt, 0, zero_number, nullptr,
+      [](const sim::StageRunState& s) { return static_cast<double>(s.shortcuts); }},
 };
 #undef RALLY_WHEEL_COLUMNS
 // clang-format on
@@ -298,19 +314,24 @@ std::string telemetry_csv_header(std::string_view recording_name, bool zone,
     return out;
 }
 
-void append_telemetry_row(const sim::CarTelemetry& telemetry, std::string& out) {
+void append_telemetry_row(const sim::CarTelemetry& telemetry, std::string& out,
+                          const sim::StageRunState* stage) {
     bool first = true;
     for (const TelemetryColumn& column : kColumns) {
         if (!first) {
             out += ',';
         }
         first = false;
+        const double value = column.stage_number != nullptr
+                                 ? (stage != nullptr ? column.stage_number(*stage) : 0.0)
+                             : column.number != nullptr ? column.number(telemetry)
+                                                        : 0.0;
         switch (column.kind) {
         case ColumnKind::Integer:
-            append_integer(column.number(telemetry), out);
+            append_integer(value, out);
             break;
         case ColumnKind::Real:
-            append_real(column.number(telemetry), column.precision, out);
+            append_real(value, column.precision, out);
             break;
         case ColumnKind::Text:
             out += column.text(telemetry);
@@ -398,8 +419,9 @@ bool TelemetryCsvWriter::open(const std::string& path, std::string_view header,
     return true;
 }
 
-void TelemetryCsvWriter::append(const sim::CarTelemetry& telemetry) {
-    append_telemetry_row(telemetry, buffer_);
+void TelemetryCsvWriter::append(const sim::CarTelemetry& telemetry,
+                                const sim::StageRunState* stage) {
+    append_telemetry_row(telemetry, buffer_, stage);
     if (buffer_.size() >= kFlushBytes) {
         flush();
     }

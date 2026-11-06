@@ -34,6 +34,7 @@ struct Host::Impl {
     std::string world_bytes;
     std::string car_text;
     std::uint64_t zone_hash = 0;
+    std::uint64_t stage_ground_hash = 0;
     std::uint8_t generation = 0;
 
     std::int64_t last_index = -1;
@@ -46,6 +47,7 @@ struct Host::Impl {
         WorldInfo info;
         info.generation = generation;
         info.zone_hash = zone_hash;
+        info.stage_ground_hash = stage_ground_hash;
         info.world_bytes = world_bytes;
         info.car_text = car_text;
         send_reliable(active, encode_world(info));
@@ -139,10 +141,12 @@ bool Host::start(std::uint16_t port, std::string& error) {
 
 std::uint16_t Host::port() const { return impl_->port; }
 
-void Host::set_world(std::string world_bytes, std::string car_text, std::uint64_t zone_hash) {
+void Host::set_world(std::string world_bytes, std::string car_text, std::uint64_t zone_hash,
+                     std::uint64_t stage_ground_hash) {
     impl_->world_bytes = std::move(world_bytes);
     impl_->car_text = std::move(car_text);
     impl_->zone_hash = zone_hash;
+    impl_->stage_ground_hash = stage_ground_hash;
     impl_->has_world = true;
     if (impl_->active != nullptr) {
         impl_->send_world();

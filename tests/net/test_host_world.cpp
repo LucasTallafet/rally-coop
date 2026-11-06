@@ -81,18 +81,30 @@ TEST_CASE("net_host: size of the world message") {
     const rally::sim::JoltRuntime runtime;
     const rally::sim::CarData& car = rally::tests::reference_car();
     const std::string& car_text = rally::tests::reference_car_text();
-    for (int zone = 0; zone < 2; ++zone) {
-        const rally::sim::WorldDesc desc =
-            zone == 0 ? rally::sim::zone_world(rally::sim::Surface::Gravel, car)
-                      : rally::sim::demo_arena(0.0, car);
+    std::string lazadas;
+    std::string error;
+    REQUIRE_MESSAGE(
+        rally::io::read_file(RALLY_SOURCE_DIR "/data/stages/lazadas.stage", lazadas, error), error);
+    for (int zone = 0; zone < 3; ++zone) {
+        rally::sim::WorldDesc desc = zone == 0
+                                         ? rally::sim::zone_world(rally::sim::Surface::Gravel, car)
+                                     : zone == 1 ? rally::sim::demo_arena(0.0, car)
+                                                 : rally::sim::WorldDesc{};
+        if (zone == 2) {
+            desc.stage_text = lazadas;
+            desc.car = true;
+            desc.car_data = car;
+        }
         WorldInfo info;
         info.world_bytes = rally::io::serialize_world(desc);
         info.car_text = car_text;
         const std::string message = encode_world(info);
         std::printf("net_host: mensaje de mundo %s: %zu B (mundo %zu B + coche %zu B)\n",
-                    zone == 0 ? "con la zona" : "con el recinto", message.size(),
-                    info.world_bytes.size(), info.car_text.size());
-        CHECK(message.size() == 1 + 1 + 8 + 4 + info.world_bytes.size() + 4 + car_text.size());
+                    zone == 0   ? "con la zona"
+                    : zone == 1 ? "con el recinto"
+                                : "con lazadas",
+                    message.size(), info.world_bytes.size(), info.car_text.size());
+        CHECK(message.size() == 1 + 1 + 8 + 8 + 4 + info.world_bytes.size() + 4 + car_text.size());
         WorldInfo back;
         REQUIRE(
             decode_world(std::span<const std::uint8_t>(

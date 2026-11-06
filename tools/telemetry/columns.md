@@ -156,3 +156,9 @@ Líneas `# clave=valor` antes de la fila de nombres: `format` (versión del CSV)
 | `brake_torque_rr` | N·m | ≥ 0 | Par de freno pedido (freno y freno de mano) |
 | `h_rr` | m | + arriba | Media del microrrelieve h sobre la huella |
 | `abs_torque_cut_rr` | N·m | ≥ 0 | Par del freno de pie que quita el ABS (media de los subpasos); 0 sin ABS |
+| `stage` | — | 0 o 1 | Hay tramo en el mundo |
+| `stage_s` | m | — | Distancia a lo largo del eje del tramo del último paso |
+| `stage_t` | m | + derecha | Distancia lateral al eje del tramo del último paso |
+| `stage_on_road` | — | 0 o 1 | El coche está en la carretera del tramo |
+| `stage_resets` | — | ≥ 0 | Recolocaciones con el botón desde la construcción del mundo |
+| `stage_shortcuts` | — | ≥ 0 | Atajos (recolocación automática por salirse y reentrar más adelante) |

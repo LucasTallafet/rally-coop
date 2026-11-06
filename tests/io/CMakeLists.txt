@@ -1,6 +1,6 @@
 # Carril de los formatos (src/io): grabaciones, su repetición y el guardado de emergencia.
 rally_add_test_executable(rally_tests_io test_recording.cpp test_format7.cpp
-    test_actions_recording.cpp test_csv_hash.cpp)
+    test_actions_recording.cpp test_csv_hash.cpp test_stage_v8.cpp)
 target_link_libraries(rally_tests_io PRIVATE rally_game)
 target_compile_definitions(rally_tests_io PRIVATE
     RALLY_GAME_DATA_DIR="${PROJECT_SOURCE_DIR}/data/game")
@@ -40,3 +40,12 @@ set_tests_properties(replay.actions_v7 PROPERTIES
 add_test(NAME replay.missing_file COMMAND rally_replay info ${RALLY_TESTS_OUT}/no_existe.rrec)
 set_tests_properties(replay.missing_file PROPERTIES
     PASS_REGULAR_EXPRESSION "error: no se puede abrir")
+# Formato 8 (lote 5): lazadas con el conductor de test (205, ayudas por defecto, desde 5 m antes
+# de la línea hasta 1 s pasada la meta). La genera test_stage_v8 con RALLY_WRITE_STAGE_REC=<ruta>
+# (en Release). rally_replay la repite con el mismo hash (el tiempo de la pasada lo imprime
+# replay-tramo; aquí lo compara test_stage_v8 con el del pie).
+add_test(NAME replay.stage_v8
+    COMMAND rally_replay run ${RALLY_TEST_DATA}/recordings/stage_lazadas.rrec)
+set_tests_properties(replay.stage_v8 PROPERTIES
+    PASS_REGULAR_EXPRESSION "pasos: 21976 .*hash OK"
+    FAIL_REGULAR_EXPRESSION "FALLO|aviso")

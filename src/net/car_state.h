@@ -1,6 +1,6 @@
 #pragma once
 
-// Estado del coche que viaja del host al copiloto (50 B, protocolo 1, lote 3 §2.6) y su
+// Estado del coche que viaja del host al copiloto (50 B, protocolos 1 y 2, lote 3 §2.6) y su
 // codificación. Sin ENet.
 
 #include "sim/sim_world.h"

@@ -25,6 +25,18 @@ RoadResult road_result(const sim::SimWorld& world) {
     return road;
 }
 
+StageResult stage_result(const sim::SimWorld& world) {
+    StageResult stage;
+    const sim::StageRunState* run = world.stage_run();
+    if (run != nullptr) {
+        stage.steps =
+            run->start_step >= 0 && run->finish_step >= 0 ? run->finish_step - run->start_step : -1;
+        stage.resets = static_cast<std::uint32_t>(run->resets);
+        stage.shortcuts = static_cast<std::uint32_t>(run->shortcuts);
+    }
+    return stage;
+}
+
 bool build_world(const Recording& recording, sim::SimWorld& world, std::string& error) {
     sim::WorldDesc desc;
     if (!parse_world(recording.header.world, desc, error, recording.header.format_version)) {
@@ -125,7 +137,9 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
     result.timed_steps = timed_steps(world);
     result.road = road_result(world);
     result.version_mismatch = recording.header.sim_version != sim::kSimVersion;
+    result.stage = stage_result(world);
     result.zone_mismatch = recording.header.zone_hash != world.zone_hash();
+    result.stage_mismatch = recording.header.stage_ground_hash != world.stage_ground_hash();
     result.incomplete = !recording.footer.complete;
 
     char buffer[200];
@@ -146,6 +160,12 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
                       "la zona ha cambiado (grabada con 0x%016" PRIx64 ", esta es 0x%016" PRIx64
                       "): no se compara el hash",
                       recording.header.zone_hash, world.zone_hash());
+        result.problem = buffer;
+    } else if (result.stage_mismatch) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "el tramo ha cambiado (grabado con 0x%016" PRIx64 ", este es 0x%016" PRIx64
+                      "): no se compara el hash",
+                      recording.header.stage_ground_hash, world.stage_ground_hash());
         result.problem = buffer;
     } else if (result.steps != recording.footer.total_steps) {
         std::snprintf(buffer, sizeof(buffer),
@@ -169,6 +189,14 @@ ReplayResult replay(const Recording& recording, StepObserver* observer) {
                       recording.footer.road.last_run, recording.footer.road.last_resets,
                       recording.footer.road.runs, result.road.last_run, result.road.last_resets,
                       result.road.runs);
+        result.problem = buffer;
+    } else if (result.stage != recording.footer.stage) {
+        std::snprintf(buffer, sizeof(buffer),
+                      "pasada por el tramo distinta: grabada %" PRId64
+                      " pasos (%u recolocaciones, %u atajos), repetida %" PRId64 " pasos (%u, %u)",
+                      recording.footer.stage.steps, recording.footer.stage.resets,
+                      recording.footer.stage.shortcuts, result.stage.steps, result.stage.resets,
+                      result.stage.shortcuts);
         result.problem = buffer;
     } else if (result.actions_ran && result.actions_hash != recording.footer.actions_hash) {
         std::snprintf(buffer, sizeof(buffer),
@@ -203,6 +231,7 @@ ReplayResult rewrite_footer(Recording& recording) {
     std::string error;
     if (build_world(recording, world, error)) {
         recording.header.zone_hash = world.zone_hash();
+        recording.header.stage_ground_hash = world.stage_ground_hash();
     }
     recording.footer.complete = true;
     recording.footer.total_steps = result.steps;
@@ -210,6 +239,7 @@ ReplayResult rewrite_footer(Recording& recording) {
     recording.footer.timed_steps = result.timed_steps;
     recording.footer.road = result.road;
     recording.footer.actions_hash = result.actions_hash;
+    recording.footer.stage = result.stage;
     return replay(recording);
 }
 

@@ -156,7 +156,7 @@ TEST_CASE("recording: the file is exactly header plus 12 bytes per run plus foot
     // texto de las acciones (formato 7) y el número de tramos.
     const std::size_t header = 8 + 4 + 4 + (4 + h.commit.size()) + (4 + h.world.size()) +
                                (4 + h.car_text.size()) + (4 + h.settings.size()) + 8 +
-                               (4 + h.actions_text.size()) + 4;
+                               (4 + h.actions_text.size()) + 8 + 4;
     CHECK(rally::io::header_bytes(h) == header);
     // Detrás de los tramos, el número de eventos de acción (formato 7).
     CHECK(bytes.size() == header + 12 * recording.runs.size() + 4 + rally::io::kFooterBytes);

@@ -66,10 +66,11 @@ TEST_CASE("format7: the file is header plus runs plus events plus footer, and ro
     // Firma, dos versiones, cuatro cadenas, hash de la zona, texto de acciones, n.º de tramos.
     const std::size_t header = 8 + 4 + 4 + (4 + h.commit.size()) + (4 + h.world.size()) +
                                (4 + h.car_text.size()) + (4 + h.settings.size()) + 8 +
-                               (4 + h.actions_text.size()) + 4;
+                               (4 + h.actions_text.size()) + 8 + 4; // + hash del tramo (v8)
     CHECK(rally::io::header_bytes(h) == header);
     CHECK(rally::io::kEventBytes == 11);
-    CHECK(rally::io::kFooterBytes == 56);
+    CHECK(rally::io::kFooterBytes == 72);
+    CHECK(rally::io::footer_bytes(8) == 72);
     CHECK(rally::io::footer_bytes(7) == 56);
     CHECK(rally::io::footer_bytes(6) == 48);
     CHECK(rally::io::footer_bytes(5) == 32);
@@ -196,7 +197,7 @@ TEST_CASE("format7: the world description carries ABS, traction control and susp
     // Rangos: ABS 0/1, control 0..2, suspensión 0..2.
     for (int field = 0; field < 3; ++field) {
         std::string bad = bytes;
-        bad[bad.size() - 3 + static_cast<std::size_t>(field)] = field == 0 ? 2 : 3;
+        bad[bad.size() - 4 - 3 + static_cast<std::size_t>(field)] = field == 0 ? 2 : 3;
         CHECK_FALSE(rally::io::parse_world(bad, back, error));
     }
 }
@@ -211,14 +212,14 @@ TEST_CASE("format7: worlds of formats 3 to 6 read with ABS off, no traction cont
     desc.aids.abs = true;
     desc.aids.traction = rally::sim::TractionControl::High;
     desc.aids.suspension = rally::sim::SuspensionSetting::Soft;
-    const std::string v7 = rally::io::serialize_world(desc);
-    // Cada formato anterior quita del final: 3 (la 7), 1 (calzada, la 6), 2 (caja y marcha, la
-    // 5) y 1 (ayuda de dirección, la 4).
-    const std::size_t cut[] = {0, 3, 4, 6, 7};
-    const std::uint32_t formats[] = {7, 6, 5, 4, 3};
-    for (int i = 0; i < 5; ++i) {
+    const std::string v8 = rally::io::serialize_world(desc);
+    // Cada formato anterior quita del final: 4 (el tramo, la 8), 3 (la 7), 1 (calzada, la 6), 2
+    // (caja y marcha, la 5) y 1 (ayuda de dirección, la 4).
+    const std::size_t cut[] = {0, 4, 7, 8, 10, 11};
+    const std::uint32_t formats[] = {8, 7, 6, 5, 4, 3};
+    for (int i = 0; i < 6; ++i) {
         INFO("formato ", formats[i]);
-        const std::string bytes = v7.substr(0, v7.size() - cut[i]);
+        const std::string bytes = v8.substr(0, v8.size() - cut[i]);
         rally::sim::WorldDesc back;
         std::string error;
         REQUIRE_MESSAGE(rally::io::parse_world(bytes, back, error, formats[i]), error);
@@ -229,8 +230,8 @@ TEST_CASE("format7: worlds of formats 3 to 6 read with ABS off, no traction cont
                                                        : rally::sim::SuspensionSetting::Medium));
         CHECK(back.aids.steer_assist == (formats[i] >= 4));
         // Los bytes de un formato no valen para otro.
-        if (formats[i] < 7) {
-            CHECK_FALSE(rally::io::parse_world(bytes, back, error, 7));
+        if (formats[i] < 8) {
+            CHECK_FALSE(rally::io::parse_world(bytes, back, error, 8));
         }
     }
 }
@@ -269,7 +270,7 @@ TEST_CASE("format7: the stored recordings of formats 1 to 6 still read and repla
             // rewrite: pasa al formato 7 y sigue dando hash OK.
             Recording rewritten = r;
             const rally::io::ReplayResult result = rally::io::rewrite_footer(rewritten);
-            CHECK(rewritten.header.format_version == 7);
+            CHECK(rewritten.header.format_version == rally::io::kRecordingFormatVersion);
             CHECK_MESSAGE(result.hash_ok, result.problem);
             CHECK(rally::io::parse(rally::io::serialize(rewritten)).ok);
         }

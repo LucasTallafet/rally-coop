@@ -139,7 +139,8 @@ std::size_t header_bytes(const RecordingHeader& header) {
     return kMagic.size() + 4 + 4 + (4 + header.commit.size()) + (4 + header.world.size()) +
            (4 + header.car_text.size()) + (4 + header.settings.size()) +
            (header.format_version >= 2 ? 8 : 0) +
-           (header.format_version >= 7 ? 4 + header.actions_text.size() : 0) + 4;
+           (header.format_version >= 7 ? 4 + header.actions_text.size() : 0) +
+           (header.format_version >= 8 ? 8 : 0) + 4;
 }
 
 std::string validate_events(const std::vector<game::ActionEvent>& events,
@@ -192,6 +193,9 @@ std::string serialize(const Recording& recording) {
     if (v7) {
         w.str(h.actions_text);
     }
+    if (h.format_version >= 8) {
+        w.u64(h.stage_ground_hash);
+    }
     w.u32(static_cast<std::uint32_t>(recording.runs.size()));
     for (const InputRun& run : recording.runs) {
         w.u32(run.count);
@@ -221,6 +225,11 @@ std::string serialize(const Recording& recording) {
     }
     if (v7) {
         w.u64(f.actions_hash);
+    }
+    if (h.format_version >= 8) {
+        w.i64(f.stage.steps);
+        w.u32(f.stage.resets);
+        w.u32(f.stage.shortcuts);
     }
     w.raw(kEndMagic);
     return out;
@@ -254,6 +263,9 @@ ParseResult parse(std::string_view bytes) {
     }
     if (h.format_version >= 7) {
         h.actions_text = r.str();
+    }
+    if (h.format_version >= 8) {
+        h.stage_ground_hash = r.u64();
     }
     const std::uint32_t run_count = r.u32();
     if (!r.ok()) {
@@ -332,6 +344,11 @@ ParseResult parse(std::string_view bytes) {
     if (h.format_version >= 7) {
         f.actions_hash = r.u64();
     }
+    if (h.format_version >= 8) {
+        f.stage.steps = r.i64();
+        f.stage.resets = r.u32();
+        f.stage.shortcuts = r.u32();
+    }
     const std::size_t end_offset = r.offset();
     if (r.raw(kEndMagic.size()) != kEndMagic || !r.ok()) {
         result.error = at("pie dañado (falta REND)", end_offset);
@@ -385,6 +402,7 @@ std::string serialize_world(const sim::WorldDesc& desc) {
     w.u8(desc.aids.abs ? 1 : 0);
     w.u8(static_cast<std::uint8_t>(desc.aids.traction));
     w.u8(static_cast<std::uint8_t>(desc.aids.suspension));
+    w.str(desc.stage_text);
     return out;
 }
 
@@ -399,16 +417,21 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
     // automático y la marcha que da la velocidad. Desde la 6, detrás, la superficie de la
     // calzada de la carretera (u8: grava o asfalto); hasta la 5, grava. Desde la 7, detrás, u8 ABS
     // (0/1), u8 control de tracción (0..2) y u8 suspensión (0..2); hasta la 6, sin ABS, sin
-    // control y con suspensión media.
+    // control y con suspensión media. Desde la 8, detrás, u32 longitud + bytes del texto del
+    // tramo (lo último, de tamaño variable); hasta la 7, sin tramo.
     const bool v3 = format_version >= 3;
     const std::size_t body_bytes = 1 + 3 * 8 + 3 * 4 + (v3 ? 4 + 1 + 1 : 0);
     const std::size_t car_bytes = 1 + 3 * 8 + 2 * 4;
     const std::size_t tail_bytes = (v3 ? car_bytes : 4) + (format_version >= 2 ? 2 : 0) +
                                    (format_version >= 4 ? 1 : 0) + (format_version >= 5 ? 2 : 0) +
-                                   (format_version >= 6 ? 1 : 0) + (format_version >= 7 ? 3 : 0);
+                                   (format_version >= 6 ? 1 : 0) + (format_version >= 7 ? 3 : 0) +
+                                   (format_version >= 8 ? 4 : 0);
     Reader r(bytes);
     const std::uint32_t count = r.u32();
-    if (!r.ok() || static_cast<std::uint64_t>(count) * body_bytes + tail_bytes != r.remaining()) {
+    // Desde la 8 el texto del tramo añade tamaño variable: aquí solo se exige la parte fija y
+    // la longitud del texto se comprueba al leerla.
+    const std::uint64_t fixed = static_cast<std::uint64_t>(count) * body_bytes + tail_bytes;
+    if (!r.ok() || (format_version >= 8 ? fixed > r.remaining() : fixed != r.remaining())) {
         error = "descripción del mundo con un tamaño que no cuadra";
         return false;
     }
@@ -511,6 +534,28 @@ bool parse_world(std::string_view bytes, sim::WorldDesc& desc, std::string& erro
         desc.aids.traction = static_cast<sim::TractionControl>(traction);
         desc.aids.suspension = static_cast<sim::SuspensionSetting>(suspension);
     }
+    if (format_version >= 8) {
+        const std::size_t length_offset = r.offset();
+        const std::uint32_t length = r.u32();
+        if (!r.ok() || length != r.remaining()) {
+            error = at("descripción del mundo: la longitud del texto del tramo no cuadra",
+                       length_offset);
+            return false;
+        }
+        desc.stage_text = std::string(r.raw(length));
+        if (!desc.stage_text.empty()) {
+            if (desc.test_zone) {
+                error = "descripción del mundo: un tramo y la zona de pruebas a la vez";
+                return false;
+            }
+            sim::StageTrack track;
+            const sim::StageParseResult parsed = sim::StageTrack::build(desc.stage_text, track);
+            if (!parsed.ok) {
+                error = "descripción del mundo: tramo no válido: " + parsed.error;
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -595,17 +640,21 @@ void Recorder::append(const sim::SimInput& input) {
 }
 
 std::size_t footer_bytes(std::uint32_t format_version) {
-    return format_version >= 7 ? kFooterBytes : (format_version >= 6 ? 48 : 32);
+    return format_version >= 8   ? kFooterBytes
+           : format_version >= 7 ? 56
+           : format_version >= 6 ? 48
+                                 : 32;
 }
 
 Recording Recorder::finish(std::uint64_t final_hash, std::int64_t timed_steps, RoadResult road,
-                           std::uint64_t actions_hash) {
+                           std::uint64_t actions_hash, StageResult stage) {
     RALLY_CHECK(active_, "Recorder::finish: no hay grabación empezada");
     recording_.footer.complete = true;
     recording_.footer.final_hash = final_hash;
     recording_.footer.timed_steps = timed_steps;
     recording_.footer.road = road;
     recording_.footer.actions_hash = actions_hash;
+    recording_.footer.stage = stage;
     active_ = false;
     return std::move(recording_);
 }

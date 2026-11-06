@@ -22,6 +22,7 @@ namespace rally::io {
 //             u64 hash de la zona de pruebas (desde la versión 2; 0 sin zona)
 //             texto de las acciones (desde la 7; u32 longitud + bytes: data/game/actions.txt;
 //             vacío = grabación sin acciones)
+//             u64 hash del suelo del tramo (desde la 8; SimWorld::stage_ground_hash, 0 sin tramo)
 //   cuerpo    u32 número de tramos
 //             por tramo (12 B): u32 repeticiones (> 0), i16 steer, i16 throttle, i16 brake,
 //             u16 buttons
@@ -33,7 +34,9 @@ namespace rally::io {
 //             final (SimWorld::state_hash; 0 si incompleta), i64 tiempo del recorrido
 //             cronometrado en pasos (la mejor vuelta completa; -1 si no hay), desde la 6 la
 //             pasada por la carretera, desde la 7 u64 hash de la línea de tiempo de las
-//             acciones (ActionMachine::timeline_hash; 0 sin acciones), "REND" (4 B)
+//             acciones (ActionMachine::timeline_hash; 0 sin acciones), desde la 8 la pasada por
+//             el tramo (StageResult: i64 pasos de la pasada, -1 sin meta; u32 recolocaciones;
+//             u32 atajos), "REND" (4 B)
 //
 // Una grabación incompleta es la que se guarda al saltar un RALLY_CHECK: lleva los pasos
 // terminados hasta entonces y no tiene hash final.
@@ -56,6 +59,12 @@ namespace rally::io {
 // la calzada, u8 ABS (0/1), u8 control de tracción y u8 suspensión (valores de sim::DriverAids);
 // el cuerpo, los eventos de acción, y el pie, el hash de la línea de tiempo. Las de las
 // versiones 1–6 se leen sin ABS, sin control de tracción, con suspensión media y sin acciones.
+// 8 (lote 5, grabacion-v8): la descripción del mundo lleva al final u32 longitud + bytes del
+// texto del tramo (WorldDesc::stage_text; 0 = sin tramo; el suelo es el de diseño y con
+// microrrelieve, que no se graban), la cabecera el hash del suelo del tramo y el pie la pasada
+// por el tramo. Una grabación se repite sin el archivo .stage. Las de las versiones 1–7 se leen
+// sin tramo, con hash 0 y StageResult{-1, 0, 0}. Si el hash de la cabecera no es el del mundo
+// repetido, io::replay avisa («el tramo ha cambiado») y no compara el hash final.
 //
 // Acciones al repetir (io::replay): si el texto no está vacío, la repetición construye
 // game::ActionMachine(tabla de la cabecera, MachineSetup{}) con setup.car = car_state_from del
@@ -69,12 +78,12 @@ namespace rally::io {
 // Orden en el bucle de la partida, por fotograma: ensure_capacity(pasos) antes de append_event
 // y de los pasos; append_event con cada evento en el paso (steps()) en que se aplica.
 
-inline constexpr std::uint32_t kRecordingFormatVersion = 7;
+inline constexpr std::uint32_t kRecordingFormatVersion = 8;
 inline constexpr std::uint32_t kOldestRecordingFormatVersion = 1;
 inline constexpr std::size_t kRunBytes = 12;
 inline constexpr std::size_t kEventBytes = 11;  // por evento de acción (desde la versión 7)
-inline constexpr std::size_t kFooterBytes = 56; // el de la versión actual
-// Bytes del pie de una versión del formato (32 hasta la 5, 48 la 6).
+inline constexpr std::size_t kFooterBytes = 72; // el de la versión actual
+// Bytes del pie de una versión del formato (32 hasta la 5, 48 la 6, 56 la 7).
 std::size_t footer_bytes(std::uint32_t format_version);
 
 struct InputRun {
@@ -99,6 +108,9 @@ struct RecordingHeader {
     // Texto de data/game/actions.txt con el que se grabó (desde la versión 7). Vacío: sin
     // acciones. En un formato anterior a la 7, serialize() no lo escribe.
     std::string actions_text;
+    // Hash del suelo del tramo con el que se grabó (SimWorld::stage_ground_hash; 0 sin tramo;
+    // desde la versión 8). Si no es el del mundo repetido, la repetición avisa y no compara.
+    std::uint64_t stage_ground_hash = 0;
 };
 
 // Pasada por la carretera de prueba del pie (sim::RoadRunState): la última completa.
@@ -107,6 +119,15 @@ struct RoadResult {
     std::uint32_t last_resets = 0;
     std::uint32_t runs = 0;
     bool operator==(const RoadResult&) const = default;
+};
+
+// Pasada por el tramo del pie (sim::StageRunState): pasos de la salida a la meta, o -1 si no
+// hay meta (también sin tramo).
+struct StageResult {
+    std::int64_t steps = -1; // finish_step - start_step
+    std::uint32_t resets = 0;
+    std::uint32_t shortcuts = 0;
+    bool operator==(const StageResult&) const = default;
 };
 
 struct RecordingFooter {
@@ -118,6 +139,7 @@ struct RecordingFooter {
     // ActionMachine::timeline_hash al terminar (desde la versión 7; 0 sin acciones o si la
     // grabación es incompleta).
     std::uint64_t actions_hash = 0;
+    StageResult stage; // desde la versión 8
 };
 
 struct Recording {
@@ -156,7 +178,8 @@ ParseResult parse(std::string_view bytes);
 // la versión 2, i32 cuerpo controlado; desde la 3, u8 coche, f64 x, y, z y f32 rumbo y
 // velocidad de su salida; desde la 2, u8 zona de pruebas y u8 superficie de la pista ciega;
 // desde la 4, u8 ayuda de dirección; desde la 7, tras la calzada, u8 ABS, u8 control de
-// tracción y u8 suspensión).
+// tracción y u8 suspensión; desde la 8, u32 longitud + bytes del texto del tramo). parse_world
+// rechaza un texto de tramo que StageTrack::build no acepta y un tramo con zona de pruebas.
 // Se lee con la versión del formato de la grabación de la que sale. Los datos del coche no
 // van aquí (RecordingHeader::car_text).
 std::string serialize_world(const sim::WorldDesc& desc);
@@ -199,8 +222,9 @@ public:
     // Termina la grabación con el hash del estado final y la devuelve; el Recorder queda
     // inactivo.
     // `actions_hash`: ActionMachine::timeline_hash (0 sin acciones).
+    // `stage`: la pasada por el tramo (io::stage_result; sin tramo, el de por defecto).
     Recording finish(std::uint64_t final_hash, std::int64_t timed_steps, RoadResult road = {},
-                     std::uint64_t actions_hash = 0);
+                     std::uint64_t actions_hash = 0, StageResult stage = {});
 
 private:
     Recording recording_;
