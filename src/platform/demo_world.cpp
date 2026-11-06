@@ -285,6 +285,9 @@ void DemoWorld::prepare_stage(DemoContext& ctx) {
     const bool ok = stage_scene_.prepare(*ctx.world->stage(), ctx.desc.stage_text,
                                          ctx.world->stage_ground_hash(), error, loaded);
     const double ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+    if (loaded) {
+        TraceLog(LOG_INFO, "tramo: dibujo construido en %.0f ms", ms);
+    }
     if (ctx.golden != nullptr) {
         return; // la captura de referencia no lleva mensajes con tiempos
     }
@@ -293,7 +296,6 @@ void DemoWorld::prepare_stage(DemoContext& ctx) {
         ctx.overlay.set_message(Overlay::Message::Stage, "tramo: no se dibuja: " + error, kError,
                                 kSettingsMessageNs);
     } else if (loaded) {
-        TraceLog(LOG_INFO, "tramo: dibujo construido en %.0f ms", ms);
         ctx.overlay.set_message(Overlay::Message::Stage,
                                 "tramo " + ctx.stage.name + " cargado (dibujo " +
                                     std::to_string(static_cast<int>(ms + 0.5)) + " ms)",
