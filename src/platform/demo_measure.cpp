@@ -180,6 +180,8 @@ void DemoMeasure::advance_stage_bench(DemoContext& ctx, const DemoFrame& frame) 
         stage_full_fill_ms_ = std::max(stage_full_fill_ms_, near_stats.near_ms);
     } else if (!was_measuring) {
         stage_draw_->reset_totals();
+    } else if (stage_skip_ > 0) {
+        --stage_skip_; // el fotograma de una captura no cuenta
     } else {
         collect(stage_data_, frame, stage_draw_->last_cpu_ms(), near_stats.near_ms,
                 near_stats.cells, stage_draw_->last_triangles());
@@ -202,6 +204,7 @@ void DemoMeasure::advance_stage_bench(DemoContext& ctx, const DemoFrame& frame) 
     if (measuring && stage_captures_ < 3 && s >= kCaptureS[stage_captures_]) {
         capture_requested_ = true;
         ++stage_captures_;
+        stage_skip_ = 3;
     }
     const sim::StagePose pose = stage_track_->pose(s);
     double ground = pose.y;

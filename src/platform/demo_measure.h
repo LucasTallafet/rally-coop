@@ -104,6 +104,7 @@ private:
                  int near_cells, std::int64_t triangles);
     const char* stage_renderer_ = "";
     int stage_captures_ = 0;
+    int stage_skip_ = 0; // fotogramas sin contar tras una captura
     StageBenchPhase stage_bench_ = StageBenchPhase::Off;
     std::unique_ptr<sim::StageTrack> stage_track_;
     std::unique_ptr<StageDraw> stage_draw_;
