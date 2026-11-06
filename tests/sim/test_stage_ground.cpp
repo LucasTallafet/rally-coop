@@ -33,7 +33,7 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x8b9c'9097'177e'30a0ull;
+constexpr std::uint64_t kExpectedStageGroundHash = 0xdd43'8cd6'76e8'c121ull;
 
 constexpr double kMm = 1.0e-3;
 
@@ -484,8 +484,28 @@ TEST_CASE("stage_ground: every sample is finite and the strip has ground up to 5
                 " baldosas, ", collide, " muestras con colisión de ", g.sample_count(),
                 "; la más lejana a ", farthest, " m del eje, la más cercana sin colisión a ",
                 nearest_without, " m; sin peso (pie más cercano): ", g.nearest_fallbacks(),
-                "; con más pies de los que caben: ", g.candidate_overflows());
+                "; con más pies de los que caben: ", g.candidate_overflows(),
+                "; en el centro de un arco: ", g.center_overflows().size());
         CHECK(g.candidate_overflows() == 0);
+        // Respuesta del consultor a la parada de tramo-ajustes (lote 5): las del centro de
+        // curvatura de un arco se cuentan aparte; su altura queda entre las de sus pies.
+        for (const rally::sim::StageCenterOverflow& c : g.center_overflows()) {
+            char text[200];
+            std::snprintf(text, sizeof(text),
+                          "(%.3f, %.3f): a %.3g m del vértice; altura %.17g m, pies de %.17g a "
+                          "%.17g m (fuera del intervalo: %.3g m)",
+                          c.x, c.z, c.distance, c.height, c.foot_min, c.foot_max,
+                          std::max({0.0, c.foot_min - c.height, c.height - c.foot_max}));
+            MESSAGE("  centro de arco en ", text);
+            CHECK(c.distance < rally::sim::kStageArcCenterTolerance);
+            // En la precisión en que el suelo guarda la altura (float, respecto al origen): en
+            // double, la media ponderada de pies iguales puede salirse por el redondeo (un ulp).
+            const auto stored = [&g](double world_y) {
+                return static_cast<float>(world_y - g.origin_y());
+            };
+            CHECK(stored(c.height) >= stored(c.foot_min));
+            CHECK(stored(c.height) <= stored(c.foot_max));
+        }
         CHECK(bad == 0);
         CHECK(missing == 0);
         CHECK(extra == 0);
@@ -521,6 +541,30 @@ TEST_CASE("stage_ground: a ray 59 m from the axis hits the ground and one 61 m a
         wrong += hit == far ? 1 : 0;
     }
     CHECK(wrong == 0);
+
+    // Tarea tramo-ajustes, criterio 2: puntos fijos de la frenada de 250 m más allá de los 150 m
+    // de antes (L + 155 … L + 245, cada 10 m), a ±59 m con suelo y a ±61 m sin él. Con la
+    // colisión hasta L + 150, a 59 m solo habría suelo hasta L + 160,9 (√(60² − 59²) pasado el
+    // final): desde L + 165 los puntos lo detectan.
+    const double length = track.axis().length();
+    int runoff_checked = 0;
+    int runoff_wrong = 0;
+    for (double s = length + 155.0; s < track.s_end(); s += 10.0) {
+        for (const double side : {-1.0, 1.0}) {
+            for (const double t : {59.0, 61.0}) {
+                const Point q = at(track, s, side * t);
+                if (std::abs(track.acquire(q.x, q.z).distance - t) > 1e-6) {
+                    continue;
+                }
+                ++runoff_checked;
+                const bool hit = world.probe_ground(q.x, q.z).hit;
+                runoff_wrong += hit == (t > 60.0) ? 1 : 0;
+            }
+        }
+    }
+    MESSAGE("frenada: ", runoff_checked, " rayos de 40 medidos, ", runoff_wrong, " mal");
+    CHECK(runoff_checked == 40);
+    CHECK(runoff_wrong == 0);
 }
 
 namespace {

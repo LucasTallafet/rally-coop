@@ -8,6 +8,7 @@
 #include "io/recording.h"
 #include "sim/check.h"
 #include "sim/pcg32.h"
+#include "sim/rmath.h"
 #include "sim/sim_input.h"
 #include "sim/sim_world.h"
 #include "sim/stage_track.h"
@@ -15,7 +16,6 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -72,7 +72,7 @@ inline std::string synthetic_stage_30km() {
     const auto curve = [&](double turn, double r, double spiral, double percent) {
         const double sign = turn > 0.0 ? 1.0 : -1.0;
         const double signed_r = sign * r;
-        const double arc = r * (std::abs(turn) - spiral / r);
+        const double arc = r * (rmath::abs(turn) - spiral / r);
         const double value = -sign * percent;
         if (s > last_bank_s) {
             bank += "bank " + stage_number(s) + " 0\n";
@@ -103,12 +103,12 @@ inline std::string synthetic_stage_30km() {
         straight(uniform(30.0, 250.0));
         const double target = kEast + uniform(-kMaxSide, kMaxSide);
         const double turn = target - heading;
-        if (std::abs(turn) < 10.0 * kPi / 180.0) {
+        if (rmath::abs(turn) < 10.0 * kPi / 180.0) {
             continue;
         }
         // Radio repartido en logaritmo entre 15 y 300 m.
-        const double r = 15.0 * std::exp(uniform(0.0, std::log(20.0)));
-        const double spiral = std::min(40.0, 0.4 * std::abs(turn) * r);
+        const double r = 15.0 * rmath::exp(uniform(0.0, rmath::log(20.0)));
+        const double spiral = std::min(40.0, 0.4 * rmath::abs(turn) * r);
         curve(turn, r, spiral, uniform(3.0, 6.0));
     }
     straight(150.0);
@@ -175,7 +175,7 @@ inline double car_heading(const sim::BodyPose& pose) {
     const double w = pose.qw;
     const double fx = -(2.0 * (x * z + w * y));
     const double fz = -(1.0 - 2.0 * (x * x + y * y));
-    return std::atan2(fx, -fz);
+    return rmath::atan2(fx, -fz);
 }
 
 // Conductor de test del tramo: dirección por el error de rumbo frente al eje unos metros por
@@ -200,15 +200,15 @@ public:
         s_ = p.s;
         t_ = p.t;
         on_road_ = p.on_road;
-        const double speed = std::hypot(v.vx, v.vz);
+        const double speed = rmath::hypot(v.vx, v.vz);
         const double ahead = 1.5 + 0.3 * speed;
         const double want = track_.pose(s_ + ahead).heading;
         const double error = wrap_angle(want - car_heading(pose));
         double target = speed_;
         for (double k = 0.0; k <= 100.0; k += 2.0) {
-            const double curvature = std::abs(track_.pose(s_ + k).curvature);
+            const double curvature = rmath::abs(track_.pose(s_ + k).curvature);
             const double r = curvature > 1e-6 ? 1.0 / curvature : 1e6;
-            target = std::min(target, std::sqrt(lateral_ * r + 2.0 * 4.0 * k));
+            target = std::min(target, rmath::sqrt(lateral_ * r + 2.0 * 4.0 * k));
         }
         sim::SimInput in;
         in.steer = static_cast<std::int16_t>(std::clamp(2.5 * error - 0.4 * t_, -1.0, 1.0) *

@@ -201,6 +201,13 @@ void measure(const char* stage_name, const std::string& text, double start_s, do
                     steps, final_s, resets, shortcuts, ground.sections().size(),
                     ground.nearest_fallbacks(), ground.origin_x(), ground.origin_y(),
                     ground.origin_z());
+        std::printf("        con más pies de los que caben %zu; en el centro de un arco %zu\n",
+                    ground.candidate_overflows(), ground.center_overflows().size());
+        for (const rally::sim::StageCenterOverflow& c : ground.center_overflows()) {
+            std::printf("          (%.3f, %.3f): a %.3g m del vértice; altura %.4f, pies de %.4f "
+                        "a %.4f\n",
+                        c.x, c.z, c.distance, c.height, c.foot_min, c.foot_max);
+        }
         std::printf("        pasadas: media %.4f / %.4f / %.4f ms; p99 %.4f / %.4f / %.4f ms\n",
                     mean_runs[0], mean_runs[1], mean_runs[2], p99_runs[0], p99_runs[1],
                     p99_runs[2]);

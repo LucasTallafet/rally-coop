@@ -171,6 +171,23 @@ private:
     std::vector<double> e_;
 };
 
+// Una muestra con colisión en el centro de curvatura de un arco (a menos de
+// kStageArcCenterTolerance del vértice de sus cuñas) con más pies de los que guarda: un punto
+// singular del terreno del formato 1, donde todos los abanicos del arco tienen un pie a la misma
+// distancia (respuesta del consultor a la parada de tramo-ajustes, lote 5). Solo diagnóstico.
+struct StageCenterOverflow {
+    double x = 0.0, z = 0.0; // en el mundo
+    double distance = 0.0;   // en planta, al vértice de las cuñas del arco (m)
+    double height = 0.0;     // altura de la muestra, en el mundo
+    double foot_min = 0.0;   // la menor y la mayor altura de sus pies (con peso y en zona)
+    double foot_max = 0.0;
+};
+
+// Distancia en planta al centro de curvatura de un arco por debajo de la cual un desborde de pies
+// se cuenta en StageGround::center_overflows() y no en candidate_overflows() (1 cm; el desborde
+// del centro ocurre a ~1e-9 m del vértice).
+inline constexpr double kStageArcCenterTolerance = 0.01;
+
 class StageGround {
 public:
     // `cell`: celda de la rejilla (m). Reserva memoria y tarda: al cargar.
@@ -200,8 +217,12 @@ public:
     // Muestras con colisión que no tenían ningún peso y tomaron la altura del pie más cercano.
     std::size_t nearest_fallbacks() const { return nearest_fallbacks_; }
     // Muestras con colisión que tenían más pies con peso de los que guardan (se quedan los más
-    // cercanos a su borde). Si alguna vez no es 0, la media de esas muestras no es continua.
+    // cercanos a su borde). Si alguna vez no es 0, la media de esas muestras no es continua. No
+    // cuenta las del centro de curvatura de un arco: van en center_overflows().
     std::size_t candidate_overflows() const { return candidate_overflows_; }
+    // Las muestras que desbordan en el centro de curvatura de un arco, en el orden de las
+    // baldosas. No cambian ninguna altura: solo se apartan de candidate_overflows().
+    const std::vector<StageCenterOverflow>& center_overflows() const { return center_overflows_; }
     // Diagnóstico (cuarta respuesta del consultor, §1): el mayor salto de la combinación de
     // varias pasadas cuando un pie sale de su zona, medido en su último centímetro (m), y dónde.
     double zone_jump() const { return zone_jump_; }
@@ -224,6 +245,7 @@ private:
     std::vector<StageTile> tiles_;
     std::size_t nearest_fallbacks_ = 0;
     std::size_t candidate_overflows_ = 0;
+    std::vector<StageCenterOverflow> center_overflows_;
     double zone_jump_ = 0.0;
     double zone_jump_x_ = 0.0;
     double zone_jump_z_ = 0.0;

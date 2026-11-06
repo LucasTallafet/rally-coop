@@ -38,7 +38,7 @@ namespace {
 
 // state_hash() tras la secuencia fija del test de reproducibilidad (criterio 6): el mismo en
 // Debug y en Release. Cambia si cambia la física del tramo, el coche de referencia o lazadas.
-constexpr std::uint64_t kExpectedStageStateHash = 0x6817'49b4'9626'5c69ull;
+constexpr std::uint64_t kExpectedStageStateHash = 0x0627'0f27'dd85'0330ull;
 
 constexpr int kSteps = rally::sim::kStepsPerSecond;
 constexpr double kGravity = 9.81;
@@ -768,10 +768,17 @@ Recorded record_run() {
     return out;
 }
 
-std::uint64_t replay_run(const std::vector<SimInput>& inputs) {
+// record_run() una sola vez (solo datos: las entradas y el hash), para los dos tests que la usan.
+const Recorded& recorded_run() {
+    static const Recorded recorded = record_run();
+    return recorded;
+}
+
+// Las entradas de record_run() en un mundo nuevo, con el microrrelieve del tramo o sin él.
+std::uint64_t replay_run(const std::vector<SimInput>& inputs, bool micro = true) {
     SimWorld world;
-    world.build(
-        stage_desc(rally::tests::lazadas_stage_text(), spawn_at(lazadas(), 0.0, 0.0, 0.0f)));
+    world.build(lazadas_desc(spawn_at(lazadas(), 0.0, 0.0, 0.0f),
+                             rally::sim::StageGroundVariant::Design, micro));
     world.seal();
     for (const SimInput& in : inputs) {
         world.step(in);
@@ -789,7 +796,7 @@ std::uint64_t run_hash(const StageRunState& state) {
 
 TEST_CASE("stage_world: the same inputs on the stage give the same state hash twice") {
     const rally::sim::JoltRuntime runtime;
-    const Recorded first = record_run();
+    const Recorded& first = recorded_run();
     const std::uint64_t second = replay_run(first.inputs);
     CHECK(first.hash == second);
     if (first.hash != kExpectedStageStateHash) {
@@ -798,6 +805,21 @@ TEST_CASE("stage_world: the same inputs on the stage give the same state hash tw
         MESSAGE("state_hash en el tramo: ", text, " (kExpectedStageStateHash)");
     }
     CHECK(first.hash == kExpectedStageStateHash);
+}
+
+TEST_CASE("stage_world: the stage micro relief changes the state hash of the reproducibility run") {
+    // Tarea tramo-ajustes, criterio 4: las mismas entradas con el microrrelieve del mundo apagado
+    // (stage_micro_relief = false: MicroRelief::None en sim_world.cpp) dan otro state_hash, y
+    // encendido, el de siempre. Falla si el mundo deja de aplicar MicroRelief::Stage (los dos
+    // hashes serían iguales) o si lo aplica siempre, aunque se cambie kExpectedStageStateHash.
+    const rally::sim::JoltRuntime runtime;
+    const Recorded& with = recorded_run();
+    const std::uint64_t without = replay_run(with.inputs, false);
+    char text[32];
+    std::snprintf(text, sizeof(text), "0x%016llx", static_cast<unsigned long long>(without));
+    MESSAGE("state_hash sin microrrelieve: ", text);
+    CHECK(with.hash == kExpectedStageStateHash);
+    CHECK(without != with.hash);
 }
 
 TEST_CASE("stage_world: each field of the run state changes its hash") {
@@ -1132,11 +1154,12 @@ TEST_CASE("stage_world: the extensions carry the car before the start and past t
         CHECK(world.stage_run()->s > 0.0);
     }
     {
-        // Pasada la meta, hasta salir de la prolongación de frenada.
+        // Pasada la meta, hasta salir de la prolongación de frenada: 50 m antes de su final.
         SimWorld world;
         world.build(stage_desc(
             rally::tests::lazadas_stage_text(),
-            spawn_at(track, track.axis().length() + 100.0, 0.0, static_cast<float>(15.0))));
+            spawn_at(track, track.axis().length() + rally::sim::kStageRunoffLength - 50.0, 0.0,
+                     static_cast<float>(15.0))));
         world.seal();
         world.set_telemetry(true);
         int contacts = 0;
@@ -1156,4 +1179,70 @@ TEST_CASE("stage_world: the extensions carry the car before the start and past t
         CHECK(std::isfinite(pose.y));
         CHECK(contacts > 0);
     }
+}
+
+TEST_CASE("stage_world: the runoff carries the car from the finish to its end without jumps") {
+    // Tarea tramo-ajustes, criterio 1: la frenada entera (de L − 10 a L + 250) a 15 m/s, con la
+    // dirección del conductor de test, sin freno y sin microrrelieve (la geometría sola: sin él,
+    // la recta no deja ninguna rueda sin carga). En cada paso: en carretera y s avanza sin saltos
+    // ni retrocesos; tras medio segundo de asentarse (como measure_loads; el coche llega a la
+    // meta a L − 2,5), las cuatro ruedas con carga. Se para cuando el eje delantero llega al
+    // final de la malla (s_end − distancia del eje delantero al origen − 1 m).
+    const rally::sim::JoltRuntime runtime;
+    const StageTrack& track = lazadas();
+    constexpr double kSpeed = 15.0;
+    constexpr int kSettle = kSteps / 2;
+    const double length = track.axis().length();
+    SimWorld world;
+    world.build(lazadas_desc(spawn_at(track, length - 10.0, 0.0, static_cast<float>(kSpeed)),
+                             rally::sim::StageGroundVariant::Design, false));
+    world.seal();
+    world.set_telemetry(true);
+    double front = 0.0;
+    for (int w = 0; w < rally::sim::kWheelCount; ++w) {
+        front = std::max(front, -static_cast<double>(world.car_wheel(w).attach_z));
+    }
+    const double stop_s = track.s_end() - front - 1.0;
+    rally::tests::StageDriver driver(track, kSpeed);
+    double previous_s = world.stage_run()->s;
+    const double start_s = previous_s;
+    double min_ds = 1e9;
+    double max_ds = -1e9;
+    int off_road = 0;
+    int no_contact = 0;
+    int steps = 0;
+    while (world.stage_run()->s < stop_s && steps < 30 * kSteps) {
+        SimInput in = driver.input(world.car_pose(), world.car_velocity());
+        in.throttle = hold_speed(world.car_velocity(), kSpeed).throttle;
+        in.brake = 0;
+        world.step(in);
+        ++steps;
+        const StageRunState& run = *world.stage_run();
+        min_ds = std::min(min_ds, run.s - previous_s);
+        max_ds = std::max(max_ds, run.s - previous_s);
+        previous_s = run.s;
+        off_road += run.on_road ? 0 : 1;
+        if (steps <= kSettle) {
+            continue;
+        }
+        for (int w = 0; w < rally::sim::kWheelCount; ++w) {
+            const auto& wheel = world.telemetry().wheels[static_cast<std::size_t>(w)];
+            if (wheel.contact == 0 || wheel.load <= 0.0f) {
+                if (++no_contact <= 8) {
+                    MESSAGE("rueda ", w, " sin carga en el paso ", steps, ", s = ", run.s);
+                }
+            }
+        }
+    }
+    const StageRunState& run = *world.stage_run();
+    MESSAGE("frenada: de s = ", start_s, " a ", run.s, " (final ", track.s_end(),
+            ", eje delantero a ", front, " m) en ", steps, " pasos; Δs por paso de ", min_ds, " a ",
+            max_ds, " m; pasos fuera ", off_road, ", pasos-rueda sin carga ", no_contact);
+    CHECK(start_s < length);
+    CHECK(run.s >= stop_s);
+    CHECK(run.finish_step >= 0);
+    CHECK(off_road == 0);
+    CHECK(no_contact == 0);
+    CHECK(min_ds >= 0.0);
+    CHECK(max_ds <= 1.5 * kSpeed / kSteps);
 }
