@@ -295,6 +295,8 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 - **Límites del formato 1 (avisos aceptados):** escalón de hasta 38,6 mm en el borde interior de las horquillas de R 6 (fuera de ellas, 7,7 mm); ondulación del empalme de 7,2 mm en `lazadas` y 13,8 mm al 10 % de peralte; el terreno natural deja paredes entre pasadas apiladas (el formato 2 llevará taludes con pendiente máxima por material).
 - **Cifras (i3-8100, Release):** `lazadas.stage` (1150 m), 0,10 s de carga y 0,7 MB; 30 km sintéticos, 2,5 s y 17 MB. Paso: ×1,02 la carretera de la 2.6b en la media y ×1,03 en el p99 en `lazadas`; ×1,14 y ×1,21 en el de 30 km.
 
+**Dibujo del tramo (lote 5, `platform/stage_draw`).** `StageDraw` dibuja el tramo con la `StageGround` que calcula con la misma función que la física y comprueba su hash; la rejilla cercana (`NearGrid`, compartida con `ZoneDraw`) lleva la altura del suelo del tramo (`StageSurface`) y el microrrelieve de la rueda. Solo se dibuja la franja de ±60 m del terreno; trozos a menos de 600 m del ojo. La colisión de las baldosas es por triángulo (tres esquinas con colisión), no por celda con cuatro.
+
 **Sentido contrario:** el mundo es el mismo y no se recarga. Los datos que dependen del sentido ya se calcularon al validar; la pasada 2 empieza al instante.
 
 ## 7. Red

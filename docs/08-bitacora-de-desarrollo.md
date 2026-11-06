@@ -132,6 +132,7 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 | Línea de ejes de F3 (`f3-ejes`, lote 5) | La línea de ejes no cabía a 1280×720 (606 px frente a 563); «Δω» se dibujaba como «??» porque la fuente no lleva letras griegas | La línea se parte en dos (ejes / autoblocantes y LCP); «Δω» pasa a «dw». |
 | Centro de curvatura de un arco (lote 5, `tramo-ajustes`) | Una muestra justo en el centro tiene un pie en cada abanico del arco y desborda los que guarda; salió en `hairpin_flat` al alargar la frenada a 250 m | Punto singular del terreno del formato 1: el desborde se cuenta aparte (`center_overflows()`, a < 1 cm del vértice) y no cambia ninguna altura; lo arregla el formato 2 |
 | Cambiar el tramo de una grabación (lote 5, `grabacion-v8`) | El `start_height` del texto no se puede tocar sin que el perfil deje de ser válido | Para probar «el tramo ha cambiado» se cambia un dígito de `start_x`; el nombre no entra en el hash del suelo |
+| Núcleo y terreno solapados (lote 5, `tramo-dibujo`) | Se solapan 5 mm en el borde del arcén y parpadean | Se resuelve con desplazamiento de polígonos (el núcleo gana), no recortando el terreno, para que «mismo número de triángulos que la física» se cumpla |
 
 ---
 
