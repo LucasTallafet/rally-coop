@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sim/stage_track.h"
 #include "sim/surface.h"
 #include "sim/telemetry.h"
 
@@ -15,7 +16,8 @@ namespace rally::io {
 // entradas). Una sola tabla de columnas genera el CSV y su documentación
 // (tools/telemetry/columns.md, rally_replay columns --md): no pueden ir por separado.
 
-// Versiones: 1 (tarea 2.3); 2 (tarea 2.4): el coche (selector y 11 columnas por rueda).
+// Versiones: 1 (tarea 2.3); 2 (tarea 2.4): el coche (selector y 11 columnas por rueda). Desde el
+// lote 5, seis columnas del tramo al final (no cambia la versión: solo se añaden).
 inline constexpr int kTelemetryFormatVersion = 2;
 
 enum class ColumnKind : std::uint8_t {
@@ -33,6 +35,9 @@ struct TelemetryColumn {
     int precision;                                 // decimales (solo Real)
     double (*number)(const sim::CarTelemetry&);    // Integer y Real
     const char* (*text)(const sim::CarTelemetry&); // Text
+    // Columnas del tramo (desde el lote 5): leen la pasada (SimWorld::stage_run) en vez de
+    // CarTelemetry; `number` es nullptr. Sin tramo (nullptr) valen 0.
+    double (*stage_number)(const sim::StageRunState&) = nullptr;
 };
 
 std::span<const TelemetryColumn> telemetry_columns();
@@ -46,8 +51,10 @@ std::string telemetry_csv_header(std::string_view recording_name, bool zone,
 // Añade la fila de un paso a `out` (terminada en '\n'). Números con std::to_chars (punto
 // decimal, sin depender del idioma) y precisión fija por columna; un valor que redondea a 0 se
 // escribe sin signo. No reserva memoria si `out` tiene capacidad para la fila
-// (kTelemetryRowMaxBytes).
-void append_telemetry_row(const sim::CarTelemetry& telemetry, std::string& out);
+// (kTelemetryRowMaxBytes). `stage`: SimWorld::stage_run() de ese paso, para las seis columnas del
+// tramo (nullptr sin tramo: las seis a 0).
+void append_telemetry_row(const sim::CarTelemetry& telemetry, std::string& out,
+                          const sim::StageRunState* stage = nullptr);
 inline constexpr std::size_t kTelemetryRowMaxBytes = 2048;
 
 // Tabla de columnas en Markdown, con las convenciones (tools/telemetry/columns.md).
@@ -62,7 +69,7 @@ public:
     TelemetryCsvWriter& operator=(const TelemetryCsvWriter&) = delete;
 
     bool open(const std::string& path, std::string_view header, std::string& error);
-    void append(const sim::CarTelemetry& telemetry);
+    void append(const sim::CarTelemetry& telemetry, const sim::StageRunState* stage = nullptr);
     // Vuelca lo que quede y cierra. false si algo no se pudo escribir.
     bool close(std::string& error);
     std::uint64_t bytes_written() const { return bytes_; }

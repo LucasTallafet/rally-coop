@@ -131,6 +131,7 @@ std::string encode_world(const WorldInfo& world) {
     o.u8(kMsgWorld);
     o.u8(world.generation);
     o.u64(world.zone_hash);
+    o.u64(world.stage_ground_hash);
     o.blob(world.world_bytes);
     o.blob(world.car_text);
     return o.take();
@@ -140,7 +141,8 @@ bool decode_world(std::span<const std::uint8_t> in, WorldInfo& out) {
     In r(in);
     WorldInfo world;
     if (!expect_type(r, kMsgWorld) || !r.u8(world.generation) || !r.u64(world.zone_hash) ||
-        !r.blob(world.world_bytes) || !r.blob(world.car_text) || !r.at_end()) {
+        !r.u64(world.stage_ground_hash) || !r.blob(world.world_bytes) || !r.blob(world.car_text) ||
+        !r.at_end()) {
         return false;
     }
     out = std::move(world);

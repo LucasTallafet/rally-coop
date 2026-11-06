@@ -1,7 +1,7 @@
 #pragma once
 
 // Host: el juego que conduce. Escucha en 127.0.0.1, acepta un solo copiloto y le manda el
-// mundo (canal fiable) y el estado del coche a 30 Hz (canal no fiable, protocolo 1). No lee la
+// mundo (canal fiable) y el estado del coche a 30 Hz (canal no fiable, protocolo 2). No lee la
 // simulación salvo en after_steps, y solo la lee. Sin enet.h en este encabezado.
 
 #include "net/protocol.h"
@@ -26,7 +26,9 @@ public:
 
     // Mundo nuevo (cada build()): la generación sube en 1 (u8, con vuelta de 255 a 0) y se manda
     // al copiloto conectado; si se conecta después, se manda al aceptarlo.
-    void set_world(std::string world_bytes, std::string car_text, std::uint64_t zone_hash);
+    // `stage_ground_hash`: SimWorld::stage_ground_hash() (0 sin tramo; protocolo 2).
+    void set_world(std::string world_bytes, std::string car_text, std::uint64_t zone_hash,
+                   std::uint64_t stage_ground_hash = 0);
 
     // Tras los pasos de un fotograma; `step` = pasos desde el último build(). Manda un estado si
     // el paso cruza un múltiplo de 8 (el primero tras set_world, siempre). `reset_since_last`:

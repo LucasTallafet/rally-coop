@@ -1,6 +1,7 @@
 // ENet de verdad por 127.0.0.1, en un solo proceso. Cada fase tiene un máximo de 5 s.
 
 #include "car_worlds.h"
+#include "io/recording.h"
 #include "net/copilot.h"
 #include "net/host.h"
 #include "net/protocol.h"
@@ -170,7 +171,7 @@ TEST_CASE("net_link: another protocol version is answered with its reason") {
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
             if (event.type == ENET_EVENT_TYPE_CONNECT) {
-                const std::string hello = encode_hello(2);
+                const std::string hello = encode_hello(1);
                 ENetPacket* packet =
                     enet_packet_create(hello.data(), hello.size(), ENET_PACKET_FLAG_RELIABLE);
                 enet_peer_send(peer, 0, packet);
@@ -187,9 +188,9 @@ TEST_CASE("net_link: another protocol version is answered with its reason") {
     enet_host_flush(client);
     enet_host_destroy(client);
     REQUIRE(replied);
-    CHECK(reply.version == 1);
+    CHECK(reply.version == 2);
     CHECK_FALSE(reply.accepted);
-    CHECK(reply.reason == "protocolo 2, este juego usa el 1");
+    CHECK(reply.reason == "protocolo 1, este juego usa el 2");
     CHECK_FALSE(host->copilot_connected());
 }
 
@@ -253,4 +254,34 @@ TEST_CASE("net_link: when the host leaves the copilot falls back to retrying and
     host = start_host(port);
     REQUIRE(pump(host.get(), {copilot.get()}, [&] { return copilot->stats().connected; }));
     CHECK(copilot->status() == "conectado");
+}
+
+TEST_CASE("net_link: a world with a stage reaches the copilot with its text and ground hash") {
+    const rally::sim::JoltRuntime runtime;
+    std::string stage;
+    std::string error;
+    REQUIRE_MESSAGE(
+        rally::io::read_file(RALLY_SOURCE_DIR "/data/stages/lazadas.stage", stage, error), error);
+    rally::sim::WorldDesc desc;
+    desc.stage_text = stage;
+    desc.car = true;
+    desc.car_data = rally::tests::reference_car();
+    // El hash lo da el mundo construido, como en la partida.
+    rally::sim::SimWorld world;
+    world.build(desc);
+    world.seal();
+    REQUIRE(world.stage_ground_hash() != 0);
+    auto host = start_host();
+    auto copilot = start_copilot(host->port());
+    host->set_world(rally::io::serialize_world(desc), "coche", world.zone_hash(),
+                    world.stage_ground_hash());
+    std::optional<WorldInfo> info;
+    REQUIRE(pump(host.get(), {copilot.get()}, [&] {
+        info = copilot->take_world();
+        return info.has_value();
+    }));
+    CHECK(info->stage_ground_hash == world.stage_ground_hash());
+    rally::sim::WorldDesc back;
+    REQUIRE_MESSAGE(rally::io::parse_world(info->world_bytes, back, error), error);
+    CHECK(back.stage_text == stage);
 }

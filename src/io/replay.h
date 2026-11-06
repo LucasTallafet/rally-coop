@@ -23,6 +23,9 @@ bool build_world(const Recording& recording, sim::SimWorld& world, std::string& 
 std::int64_t timed_steps(const sim::SimWorld& world);
 // Pasada por la carretera del pie: la última completa, sus recolocaciones y cuántas hay.
 RoadResult road_result(const sim::SimWorld& world);
+// Pasada por el tramo del pie: pasos de la salida a la meta (-1 si no ha pasado alguna o no hay
+// tramo), recolocaciones y atajos.
+StageResult stage_result(const sim::SimWorld& world);
 
 struct ReplayResult {
     bool ran = false;    // se pudo repetir (si no, `problem` dice por qué)
@@ -36,6 +39,10 @@ struct ReplayResult {
     // La zona de pruebas de la grabación no es la de este build (otro hash de la zona): se
     // repite, pero no se compara el hash final.
     bool zone_mismatch = false;
+    // El suelo del tramo de la grabación no es el de este build (otro stage_ground_hash en la
+    // cabecera): se repite, pero no se compara el hash final.
+    bool stage_mismatch = false;
+    StageResult stage; // pasada por el tramo repetida (para compararla con la del pie)
     // Grabación incompleta (guardada al saltar un RALLY_CHECK): se repite hasta su último
     // paso y no hay hash con el que comparar.
     bool incomplete = false;
