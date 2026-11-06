@@ -130,6 +130,10 @@ int main(int argc, char** argv) {
             demo.set_render_size(1920, 1080);
             perf.set_visible(true);
             demo.start_stage_bench();
+        } else if (std::strcmp(argv[i], "--tramo") == 0 && i + 1 < argc) {
+            // El juego arranca en el modo tramo con ese .stage (UTF-8); si no vale, lo dice y
+            // sigue en la zona.
+            demo.use_stage(argv[++i]);
         } else if (std::strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
             ++i; // ya leído
         } else if (std::strcmp(argv[i], "--hide-config") == 0) {

@@ -9,6 +9,7 @@
 #include "platform/keys_raylib.h"
 #include "platform/scene_draw.h"
 #include "platform/stage_draw.h"
+#include "platform/stage_hud.h"
 #include "platform/wheel_spin.h"
 #include "sim/check.h"
 #include "sim/demo_world.h"
@@ -19,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -33,6 +35,9 @@ namespace {
 
 // O: el mundo se reconstruye a esta distancia del origen en x y z.
 constexpr double kFarOffset = 20000.0;
+
+// La meta del tramo se queda en pantalla más que un suceso.
+constexpr std::int64_t kStageFinishMessageNs = 30'000'000'000;
 
 // Configuraciones de prueba de la fase 2 (tarea 2.6), en el orden de F8.
 constexpr std::array<std::string_view, 4> kCarConfigs = {
@@ -112,6 +117,7 @@ DemoWorld::DemoWorld(DemoContext& ctx, std::string car_path) : ctx_(ctx) {
     ctx.car_path = std::move(car_path);
     ctx.recording = &recording_;
     ctx.zone_draw = &zone_draw_;
+    ctx.stage_scene = &stage_scene_;
     static std::string message; // vive hasta el abort
     message = "no se puede leer el coche '" + ctx.car_path +
               "' (por defecto se busca data/cars/mid_awd_turbo.car desde la carpeta del exe "
@@ -136,13 +142,20 @@ DemoWorld::DemoWorld(DemoContext& ctx, const io::Recording& recording) : ctx_(ct
     ctx.car_path = ctx.golden->recording;
     ctx.recording = &recording_;
     ctx.zone_draw = &zone_draw_;
+    ctx.stage_scene = &stage_scene_;
     // Comprobados en read_golden_recording.
     std::string error;
     io::parse_world(recording.header.world, ctx.desc, error, recording.header.format_version);
     car_text_ = recording.header.car_text;
     ctx.car = sim::parse_car(car_text_, sim::CarKeys::Sim).car;
     ctx.desc.car_data = ctx.car;
-    ctx.mode.zone = ctx.desc.test_zone;
+    ctx.mode.set_kind(!ctx.desc.stage_text.empty() ? WorldKind::Stage
+                      : ctx.desc.test_zone         ? WorldKind::Zone
+                                                   : WorldKind::Arena);
+    if (ctx.mode.stage) {
+        // El nombre del tramo para el indicador (el texto ya lo validó read_golden_recording).
+        ctx.stage.set_text(ctx.desc.stage_text, error);
+    }
     ctx.mode.blind_surface = ctx.desc.blind_surface;
     ctx.mode.road_surface = ctx.desc.road_surface;
     // Lo que se ve de los ajustes que van en la descripción (la caja en el indicador).
@@ -200,7 +213,11 @@ void DemoWorld::save_settings(DemoContext& ctx) {
 
 void DemoWorld::describe(DemoContext& ctx) const {
     const WorldMode& mode = ctx.mode;
-    if (mode.zone) {
+    if (mode.stage) {
+        // El tramo elegido con K o --tramo (ya leído y validado): el coche parado 5 m antes de la
+        // salida. Las ayudas se ponen abajo, como en la zona.
+        ctx.desc = stage_world_desc(ctx.stage, ctx.car, {});
+    } else if (mode.zone) {
         // A ciegas, cada prueba sale en la pista ciega; si no, al principio de la recta.
         // Y: al principio de la recta o en la salida de la carretera de prueba.
         ctx.desc =
@@ -221,14 +238,29 @@ void DemoWorld::reset(DemoContext& ctx) {
     if (ctx.world) {
         recording_.finish(*ctx.world, actions_.timeline_hash());
     }
+    const std::chrono::steady_clock::time_point built_from = std::chrono::steady_clock::now();
     ctx.world = std::make_unique<sim::SimWorld>();
     ctx.world->build(ctx.desc);
     ctx.world->seal();
     ctx.world->set_telemetry(true);
+    if (ctx.world->stage() != nullptr) {
+        TraceLog(
+            LOG_INFO, "tramo: mundo construido en %.0f ms",
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - built_from)
+                .count());
+    }
     // La máquina de acciones empieza con el mundo y con su grabación (paso 0 de las dos).
     actions_.start(*ctx.world);
     if (ctx.world->zone() != nullptr) {
         zone_draw_.build(*ctx.world->zone(), ctx.mode.blind);
+    }
+    // Tramo: las mallas se construyen una vez por tramo (no en cada mundo nuevo) y los contadores
+    // de los mensajes empiezan de cero.
+    ctx.stage_track = ctx.world->stage();
+    ctx.stage_overview.reset();
+    stage_events_.reset();
+    if (ctx.world->stage() != nullptr) {
+        prepare_stage(ctx);
     }
     if (ctx.golden == nullptr) {
         recording_.start(ctx.desc, *ctx.world, car_text_, recording_settings_text(ctx.settings),
@@ -243,6 +275,32 @@ void DemoWorld::reset(DemoContext& ctx) {
     ctx.poses.previous = ctx.poses.current;
     ctx.poses.previous_car = ctx.poses.current_car;
     ctx.poses.previous_wheels = ctx.poses.current_wheels;
+}
+
+void DemoWorld::prepare_stage(DemoContext& ctx) {
+    using Clock = std::chrono::steady_clock;
+    const Clock::time_point begin = Clock::now();
+    std::string error;
+    bool loaded = false;
+    const bool ok = stage_scene_.prepare(*ctx.world->stage(), ctx.desc.stage_text,
+                                         ctx.world->stage_ground_hash(), error, loaded);
+    const double ms = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+    if (loaded) {
+        TraceLog(LOG_INFO, "tramo: dibujo construido en %.0f ms", ms);
+    }
+    if (ctx.golden != nullptr) {
+        return; // la captura de referencia no lleva mensajes con tiempos
+    }
+    if (!ok) {
+        // Sin tramo dibujado, pero el juego sigue: la física es la buena.
+        ctx.overlay.set_message(Overlay::Message::Stage, "tramo: no se dibuja: " + error, kError,
+                                kSettingsMessageNs);
+    } else if (loaded) {
+        ctx.overlay.set_message(Overlay::Message::Stage,
+                                "tramo " + ctx.stage.name + " cargado (dibujo " +
+                                    std::to_string(static_cast<int>(ms + 0.5)) + " ms)",
+                                kText, kShortMessageNs);
+    }
 }
 
 void DemoWorld::read_poses(DemoContext& ctx) {
@@ -443,7 +501,8 @@ void DemoWorld::publish_world(DemoContext& ctx) {
     // A ciegas no se manda nada: la ventana del copiloto enseñaría la superficie. El copiloto se
     // queda con el último mundo; al salir del modo, el mundo nuevo se publica aquí.
     if (host_ && !ctx.mode.blind) {
-        host_->set_world(io::serialize_world(ctx.desc), car_text_, ctx.world->zone_hash());
+        host_->set_world(io::serialize_world(ctx.desc), car_text_, ctx.world->zone_hash(),
+                         ctx.world->stage_ground_hash());
     }
 }
 
@@ -489,6 +548,18 @@ void DemoWorld::after_steps(DemoContext& ctx, Gamepads& /*pads*/, float /*frame_
                             std::int64_t /*frame_ns*/) {
     if (host_) {
         update_network(ctx);
+    }
+    // Tramo: los sucesos de la pasada desde el fotograma anterior (contadores, no estados).
+    if (ctx.mode.stage && ctx.golden == nullptr && ctx.world->stage_run() != nullptr) {
+        const StageMessages messages = stage_events_.observe(*ctx.world->stage_run());
+        if (!messages.events.empty()) {
+            ctx.overlay.set_message(Overlay::Message::Stage, messages.events, kStrong,
+                                    kShortMessageNs);
+        }
+        if (!messages.finish.empty()) {
+            ctx.overlay.set_message(Overlay::Message::StageFinish, messages.finish, kStrong,
+                                    kStageFinishMessageNs);
+        }
     }
     // Los cambios de la máquina que se dicen en pantalla (cancelaciones y efecto sobre la
     // tablet), fuera del paso.
@@ -599,7 +670,13 @@ void DemoWorld::begin_frame(DemoContext& ctx, const DemoFrame& frame) {
 void DemoWorld::draw_3d(DemoContext& ctx, const DemoFrame& /*frame*/) {
     const Vec3d& origin = ctx.frame_camera.origin;
     const ScenePoses& p = ctx.poses;
-    if (ctx.mode.zone) {
+    if (ctx.mode.stage) {
+        // «Todo el tramo» ve los 1420 m: la distancia de dibujo es la de esa cámara.
+        stage_scene_.draw(ctx.frame_camera.eye, origin,
+                          ctx.view == 2 && ctx.stage_overview ? ctx.stage_overview->draw_distance
+                                                              : kStageDrawDistance);
+        draw_car(p.drawn_car, ctx.car, p.drawn_wheels, origin);
+    } else if (ctx.mode.zone) {
         if (ctx.stage_draw != nullptr) {
             ctx.stage_draw->draw(ctx.frame_camera.eye, origin);
         } else {

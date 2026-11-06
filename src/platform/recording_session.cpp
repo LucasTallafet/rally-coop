@@ -3,6 +3,7 @@
 #include "io/build_info.h"
 #include "io/crash_save.h"
 #include "io/replay.h"
+#include "platform/recording_header.h"
 
 #include <raylib.h>
 
@@ -41,14 +42,8 @@ void RecordingSession::start(const sim::WorldDesc& desc, const sim::SimWorld& wo
     const std::string folder = std::string(GetApplicationDirectory()) + "grabaciones/";
     name_ = free_name(folder, name_);
     path_ = folder + name_;
-    io::RecordingHeader header;
-    header.commit = io::build_commit();
-    header.world = io::serialize_world(desc);
-    header.car_text = car_text;
-    header.settings = settings;
-    header.actions_text = actions_text;
-    header.zone_hash = world.zone_hash();
-    recorder_.begin(std::move(header), io::steps_for_minutes(kReservedMinutes));
+    recorder_.begin(make_recording_header(desc, world, car_text, settings, actions_text),
+                    io::steps_for_minutes(kReservedMinutes));
     io::set_crash_recording(&recorder_, path_);
 }
 
@@ -58,8 +53,7 @@ void RecordingSession::finish(const sim::SimWorld& world, std::uint64_t actions_
     }
     io::set_crash_recording(nullptr, {});
     const bool has_steps = recorder_.steps() > 0;
-    const io::Recording recording = recorder_.finish(world.state_hash(), io::timed_steps(world),
-                                                     io::road_result(world), actions_hash);
+    const io::Recording recording = finish_recording(recorder_, world, actions_hash);
     if (has_steps && !io::write_file(path_, io::serialize(recording), error_)) {
         TraceLog(LOG_WARNING, "grabación: %s", error_.c_str());
     }

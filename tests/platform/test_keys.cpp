@@ -226,7 +226,7 @@ TEST_CASE("keys: docs/teclas.md matches the generated table") {
 
 TEST_CASE("keys: every action is valid in its contexts and in no other") {
     using namespace rally::platform;
-    constexpr std::uint8_t kSingles[] = {kContextZone, kContextBlind, kContextArena,
+    constexpr std::uint8_t kSingles[] = {kContextZone, kContextBlind, kContextArena, kContextStage,
                                          kContextCopilot};
     int checked = 0;
     for (const KeyBinding& b : key_table()) {
@@ -241,7 +241,7 @@ TEST_CASE("keys: every action is valid in its contexts and in no other") {
             }
             // Cada bit de b.contexts es válido y los contextos que no tiene, no.
             CHECK(action_valid_in(ref, b.contexts));
-            CHECK_FALSE(action_valid_in(ref, static_cast<std::uint8_t>(~b.contexts & 15)));
+            CHECK_FALSE(action_valid_in(ref, static_cast<std::uint8_t>(~b.contexts & 31)));
             CHECK_FALSE(action_valid_in(ref, 0));
             ++checked;
         }
@@ -254,7 +254,8 @@ TEST_CASE("keys: every action is valid in its contexts and in no other") {
 TEST_CASE("keys: the copilot's own keys fire in the copilot window and not in the game") {
     using namespace rally::platform;
     const ActionRef z = action(CopilotAction::SimulatedNet);
-    for (const std::uint8_t game : {kContextZone, kContextBlind, kContextArena, kContextAll}) {
+    for (const std::uint8_t game :
+         {kContextZone, kContextBlind, kContextArena, kContextStage, kContextAll}) {
         CHECK_FALSE(action_valid_in(z, game));
     }
     CHECK(action_valid_in(z, kCopilotKeyContext));
@@ -267,11 +268,31 @@ TEST_CASE("keys: the copilot's own keys fire in the copilot window and not in th
     }
     // Mirar con la cabeza vale en las dos ventanas y en todos los contextos del juego.
     const ActionRef look = action(CameraAction::Look);
-    for (const std::uint8_t c : {kContextZone, kContextBlind, kContextArena, kContextCopilot}) {
+    for (const std::uint8_t c :
+         {kContextZone, kContextBlind, kContextArena, kContextStage, kContextCopilot}) {
         CHECK(action_valid_in(look, c));
     }
     CHECK(pad_for(look) == PadControl::RightStick);
     CHECK(chords_for(look)[0].key == Key::None);
     // Las del recinto no valen en el copiloto.
     CHECK_FALSE(action_valid_in(action(ZoneModeAction::NextTrial), kCopilotKeyContext));
+}
+
+TEST_CASE("keys: in the stage mode G, M, U and Y do not work, and K works in all four contexts") {
+    using namespace rally::platform;
+    for (const ActionRef a :
+         {action(ZoneModeAction::NextSurface), action(ZoneModeAction::BlindMode),
+          action(ZoneModeAction::RoadSurface), action(ZoneModeAction::ZoneStart),
+          action(ZoneModeAction::NextTrial), action(ZoneModeAction::FarOrigin)}) {
+        CHECK_FALSE(action_valid_in(a, kContextStage));
+    }
+    // K recorre zona, tramo y recinto: vale en todos los contextos del juego, también a ciegas.
+    const ActionRef toggle = action(ZoneModeAction::ToggleArena);
+    for (const std::uint8_t c : {kContextZone, kContextBlind, kContextArena, kContextStage}) {
+        CHECK(action_valid_in(toggle, c));
+    }
+    // Recolocar, el contador de rendimiento y las gráficas valen en el tramo.
+    CHECK(action_valid_in(action(DriveAction::Reset), kContextStage));
+    CHECK(action_valid_in(action(ScreenAction::Graphs), kContextStage));
+    CHECK(action_valid_in(action(WorldAction::ResetWorld), kContextStage));
 }

@@ -18,6 +18,8 @@
 #include "platform/perf_counter.h"
 #include "platform/recording_session.h"
 #include "platform/screen_layout.h"
+#include "platform/stage_hud.h"
+#include "platform/stage_scene.h"
 #include "platform/telemetry_graphs.h"
 #include "platform/ui_text.h"
 #include "platform/zone_draw.h"
@@ -182,17 +184,23 @@ void DemoScreen::draw_indicator(DemoContext& ctx, const DemoFrame& frame) {
     } else {
         std::snprintf(gear_text, sizeof(gear_text), "%s", gear_names[drive.gear + 1]);
     }
-    char text[240];
-    int used =
-        std::snprintf(text, sizeof(text), "%.0f km/h   %s %s   %4.0f rpm   %.2f bar", speed * 3.6,
-                      gear_text, ctx.settings.sequential ? "sec." : "auto.",
+    std::string car_name;
+    // En el tramo el indicador no dice el coche: no cabría con el reloj (F8 lo dice al cambiarlo).
+    if (!ctx.mode.config_hidden() && !ctx.mode.stage) {
+        const std::u8string name = utf8_path(ctx.car_path).stem().u8string();
+        car_name.assign(name.begin(), name.end());
+    }
+    const std::string base =
+        hud_base_text(speed, gear_text, ctx.settings.sequential,
                       static_cast<double>(drive.engine_omega) * 30.0 / 3.14159265358979323846,
-                      static_cast<double>(drive.boost) * 1.0e-5);
-    if (!ctx.mode.config_hidden()) {
-        const std::filesystem::path stem = utf8_path(ctx.car_path).stem();
-        const std::u8string name = stem.u8string();
-        used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used), "   %s",
-                              std::string(name.begin(), name.end()).c_str());
+                      static_cast<double>(drive.boost), car_name);
+    char text[240];
+    int used = std::snprintf(text, sizeof(text), "%s", base.c_str());
+    if (ctx.mode.stage && ctx.world->stage_run() != nullptr) {
+        // Tramo: el reloj de la pasada (pasos de la simulación) y, tras la meta, sus cuentas.
+        used +=
+            std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used), "   %s",
+                          stage_indicator_text(ctx.stage.name, *ctx.world->stage_run()).c_str());
     }
     if (ctx.mode.zone) {
         const sim::LapState& lap = *ctx.world->lap();
@@ -330,13 +338,28 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     {
         const sim::DrivetrainOutput& d = ctx.world->car_controller().drivetrain();
         line_fit(debug_motor_line(d));
+        line_fit(debug_clutch_line(d));
         line_fit(debug_axles_line(d));
         line_fit(debug_lsd_line(d));
     }
 
     // Zona: a ciegas no se dice la superficie ni la configuración.
     text.block();
-    if (!ctx.mode.zone) {
+    if (ctx.mode.stage) {
+        line_fit(stage_debug_line(*ctx.world->stage_run(), ctx.stage.length));
+        line_fit(stage_debug_counts_line(*ctx.world->stage_run()));
+        const StageDraw* stage_draw =
+            ctx.stage_scene != nullptr ? ctx.stage_scene->stage_draw() : nullptr;
+        if (ctx.golden != nullptr) {
+            line("suelo (CPU): (fijo en --golden)");
+        } else if (stage_draw != nullptr && stage_draw->built()) {
+            line(TextFormat("suelo (CPU): %.2f ms   media %.2f ms   máx. %.2f ms",
+                            stage_draw->last_cpu_ms(), stage_draw->mean_cpu_ms(),
+                            stage_draw->max_cpu_ms()));
+        } else {
+            line("suelo (CPU): - (tramo sin dibujar)");
+        }
+    } else if (!ctx.mode.zone) {
         line("zona: recinto de la fase 1");
         line("vueltas: -");
         line("suelo (CPU): -");
@@ -373,10 +396,13 @@ void DemoScreen::draw_debug(DemoContext& ctx, const DemoFrame& frame) {
     const char* view_name = ctx.zone_bench   ? "medida del suelo"
                             : ctx.view == 0  ? "ojo del conductor"
                             : ctx.view == 1  ? "persecución"
+                            : ctx.mode.stage ? (ctx.view == 2 ? "todo el tramo" : "fija")
                             : !ctx.mode.zone ? "fija"
                                              : "toda la zona";
+    const std::string stage_world = "tramo " + short_stage_name(ctx.stage.name);
     line(TextFormat("cámara: %s   mundo: %s", view_name,
-                    ctx.mode.zone              ? "zona de pruebas"
+                    ctx.mode.stage             ? stage_world.c_str()
+                    : ctx.mode.zone            ? "zona de pruebas"
                     : ctx.mode.far_from_origin ? "recinto a 20 km del origen"
                                                : "recinto en el origen"));
     line(ctx.world_float ? "render: FLOAT DEL MUNDO (depuración)" : "render: relativo a la cámara");

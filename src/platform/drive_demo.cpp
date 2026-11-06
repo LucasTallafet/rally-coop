@@ -16,6 +16,9 @@ namespace rally::platform {
 static_assert(sim::kStepsPerSecond == kStepsPerSecond, "la simulación y el bucle usan otro paso");
 
 std::uint8_t DemoContext::key_context() const {
+    if (mode.stage) {
+        return kContextStage;
+    }
     if (!mode.zone) {
         return kContextArena;
     }
@@ -62,11 +65,21 @@ int DriveDemo::render_height() const {
 }
 
 void DriveDemo::use_arena() {
-    ctx_.mode.zone = false;
+    ctx_.mode.set_kind(WorldKind::Arena);
     ctx_.mode.blind = false;
     ctx_.view = 0;
     ctx_.rebuild = Rebuild::Describe;
     apply_rebuild();
+}
+
+bool DriveDemo::use_stage(const std::string& path) {
+    // Desde la zona (así arranca el juego): un paso de K con el archivo pedido.
+    ctx_.stage.path = path;
+    if (ctx_.mode.kind() != WorldKind::Zone || !zone_modes_.advance(ctx_)) {
+        return false;
+    }
+    apply_rebuild();
+    return true;
 }
 
 void DriveDemo::start_stage_bench() {

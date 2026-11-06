@@ -5,6 +5,8 @@
 #include "platform/action_driver.h"
 #include "platform/demo_part.h"
 #include "platform/recording_session.h"
+#include "platform/stage_hud.h"
+#include "platform/stage_scene.h"
 #include "platform/zone_draw.h"
 
 #include <memory>
@@ -70,6 +72,7 @@ private:
     void handle_aid_keys(DemoContext& ctx, std::uint8_t context);
     void handle_action_keys(DemoContext& ctx, std::uint8_t context);
     void request_action(DemoContext& ctx, const char* key, std::string_view name);
+    void prepare_stage(DemoContext& ctx);
     void publish_world(DemoContext& ctx);
     void update_network(DemoContext& ctx);
 
@@ -77,6 +80,8 @@ private:
     std::string car_text_;      // va a la cabecera de las grabaciones
     std::string settings_path_; // UTF-8
     ZoneDraw zone_draw_;
+    StageScene stage_scene_;   // el tramo dibujado (modo tramo)
+    StageEvents stage_events_; // contadores de la pasada vistos, para los mensajes
     RecordingSession recording_;
     ActionDriver actions_;            // máquina de acciones (teclas 7, 8 y 9)
     std::unique_ptr<net::Host> host_; // null sin red (--golden, --bench-*, puerto ocupado)

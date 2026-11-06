@@ -6,6 +6,7 @@
 #include "platform/cockpit_draw.h"
 #include "platform/copilot_keys.h"
 #include "platform/copilot_view.h"
+#include "platform/copilot_world.h"
 #include "platform/cursor_capture.h"
 #include "platform/debug_panel.h"
 #include "platform/demo_camera.h"
@@ -21,6 +22,7 @@
 #include "platform/perf_counter.h"
 #include "platform/scene_draw.h"
 #include "platform/screen_layout.h"
+#include "platform/stage_scene.h"
 #include "platform/wheel_spin.h"
 #include "platform/window.h"
 #include "platform/zone_draw.h"
@@ -108,7 +110,8 @@ public:
 private:
     void handle_keys(PerfCounter& perf, double now_s) {
         if (action_pressed(action(CameraAction::Camera), kCopilotKeyContext)) {
-            ctx_.view = next_camera_view(ctx_.view); // asiento / persecución / zona (o fija)
+            ctx_.view = next_camera_view(ctx_.view, DemoCamera::camera_view_count(ctx_.mode));
+            // asiento / persecución / toda la zona (o fija); en el tramo, también la fija
         }
         update_look(now_s);
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
@@ -156,36 +159,53 @@ private:
 
     // Construye el mundo con el mismo código que el host y sin llamar nunca a step.
     void build_world(const net::WorldInfo& info) {
-        sim::WorldDesc desc;
-        std::string error;
-        if (!io::parse_world(info.world_bytes, desc, error)) {
-            ctx_.overlay.set_message(Overlay::Message::Car,
-                                     "mundo del conductor no válido: " + error, kError);
+        CopilotWorld built = build_copilot_world(info);
+        if (!built.ok) {
+            ctx_.overlay.set_message(Overlay::Message::Car, built.error, kError);
             return;
         }
-        const sim::CarParseResult car = sim::parse_car(info.car_text, sim::CarKeys::Full);
-        if (!car.ok) {
-            ctx_.overlay.set_message(Overlay::Message::Car,
-                                     "coche del conductor no válido: " + car.error, kError);
-            return;
-        }
-        desc.car_data = car.car; // la descripción serializada no lleva los datos del coche
         world_.reset();
-        auto world = std::make_unique<sim::SimWorld>();
-        world->build(desc);
-        world->seal();
+        ctx_.stage_track = nullptr;
+        ctx_.stage_overview.reset();
+        std::unique_ptr<sim::SimWorld> world = std::move(built.world);
+        const sim::WorldDesc& desc = built.desc;
         ctx_.desc = desc;
-        ctx_.car = car.car;
-        ctx_.mode.zone = desc.test_zone;
+        ctx_.car = built.car;
+        ctx_.mode.set_kind(world->stage() != nullptr ? WorldKind::Stage
+                           : desc.test_zone          ? WorldKind::Zone
+                                                     : WorldKind::Arena);
+        if (ctx_.view >= DemoCamera::camera_view_count(ctx_.mode)) {
+            ctx_.view = 0;
+        }
         if (world->zone() != nullptr) {
             zone_draw_.build(*world->zone(), false);
         }
-        zone_matches_ = world->zone_hash() == info.zone_hash;
+        zone_matches_ = built.zone_matches;
         if (!zone_matches_) {
             ctx_.overlay.set_message(
                 Overlay::Message::Car,
                 "la zona no coincide con la del conductor; se dibuja la recibida", kError,
                 kSettingsMessageNs);
+        }
+        // El tramo se dibuja con el suelo que construye esta ventana (como la zona: «se dibuja la
+        // recibida»); el hash del host solo se compara para decir si coincide.
+        stage_present_ = world->stage() != nullptr;
+        stage_matches_ = built.stage_matches;
+        if (stage_present_) {
+            std::string error;
+            bool loaded = false;
+            if (!stage_scene_.prepare(*world->stage(), desc.stage_text, world->stage_ground_hash(),
+                                      error, loaded)) {
+                ctx_.overlay.set_message(Overlay::Message::Stage, "tramo: no se dibuja: " + error,
+                                         kError, kSettingsMessageNs);
+            }
+            if (!stage_matches_) {
+                ctx_.overlay.set_message(
+                    Overlay::Message::Stage,
+                    "el tramo no coincide con el del conductor; se dibuja el recibido", kError,
+                    kSettingsMessageNs);
+            }
+            ctx_.stage_track = world->stage();
         }
         // Cuerpos de la descripción donde empezaron (sus poses no viajan) y ruedas en su reposo:
         // anclaje, radio y ancho del mundo construido, con la suspensión en equilibrio.
@@ -204,7 +224,7 @@ private:
         p.drawn_car = to_pose(world->car_pose());
         have_last_car_ = false;
         extra_ = net::SampledState{}; // el volante del mundo anterior no se queda
-        cockpit_ = build_cockpit(car.car);
+        cockpit_ = build_cockpit(built.car);
         generation_ = info.generation;
         world_ = std::move(world);
     }
@@ -240,7 +260,12 @@ private:
     void draw_scene() {
         const Vec3d& origin = ctx_.frame_camera.origin;
         const ScenePoses& p = ctx_.poses;
-        if (ctx_.mode.zone) {
+        if (ctx_.mode.stage) {
+            stage_scene_.draw(ctx_.frame_camera.eye, origin,
+                              ctx_.view == 2 && ctx_.stage_overview
+                                  ? ctx_.stage_overview->draw_distance
+                                  : kStageDrawDistance);
+        } else if (ctx_.mode.zone) {
             zone_draw_.draw(ctx_.frame_camera.eye, origin);
             for (std::size_t i = 0; i < p.drawn.size(); ++i) {
                 draw_box(p.drawn[i], ctx_.desc.bodies[i], body_color(ctx_.desc, i), origin);
@@ -355,10 +380,16 @@ private:
              : zone_matches_ ? "zona: coincide con la del conductor"
                              : "zona: no coincide con la del conductor",
              zone_matches_ || !world_ ? kText : kError);
+        if (stage_present_) {
+            line(stage_matches_ ? "tramo: hash OK" : "tramo: distinto",
+                 stage_matches_ ? kText : kError);
+        }
         text.block();
         line(TextFormat("red simulada: %s", std::string(simulated_net_name(level_)).c_str()));
         line(TextFormat("cámara: %s", ctx_.view == 0   ? "asiento"
                                       : ctx_.view == 1 ? "persecución"
+                                      : ctx_.mode.stage
+                                          ? (ctx_.view == 2 ? "todo el tramo" : "fija")
                                       : ctx_.mode.zone ? "toda la zona"
                                                        : "fija"));
         debug_.draw(ctx_.overlay, text, now_s);
@@ -367,12 +398,15 @@ private:
     DemoContext ctx_;
     DemoCamera camera_;
     ZoneDraw zone_draw_;
+    StageScene stage_scene_;
     net::Copilot net_;
     std::unique_ptr<sim::SimWorld> world_;
     std::int64_t start_ns_ = 0;
     std::string last_status_;
     std::uint8_t generation_ = 0;
     bool zone_matches_ = true;
+    bool stage_present_ = false; // el mundo recibido tiene tramo
+    bool stage_matches_ = true;  // y su suelo es el del host (stage_ground_hash)
     bool have_last_car_ = false;
     net::SampledState extra_;
     std::vector<CockpitTri> cockpit_;       // interior fijo, al construir el mundo

@@ -26,6 +26,7 @@ rally_add_test_executable(rally_tests_platform
     test_player_settings.cpp
     test_screen_layout.cpp
     test_stage_draw.cpp
+    test_stage_mode.cpp
     test_seat.cpp
     test_surface_feel.cpp
     test_ui_text.cpp

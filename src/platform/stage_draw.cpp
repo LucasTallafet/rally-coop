@@ -122,15 +122,15 @@ bool StageDraw::ground_height(double x, double z, double& y) const {
     return hit.valid;
 }
 
-void StageDraw::draw(const Vec3d& eye, const Vec3d& origin) {
+void StageDraw::draw(const Vec3d& eye, const Vec3d& origin, double distance) {
     using Clock = std::chrono::steady_clock;
     const Clock::time_point start = Clock::now();
     if (!built_) {
         return;
     }
     rlDrawRenderBatchActive();
-    chunks_.select_tiles(eye.x, eye.z, kStageDrawDistance, tiles_selected_);
-    chunks_.select_core(eye.x, eye.z, kStageDrawDistance, core_selected_);
+    chunks_.select_tiles(eye.x, eye.z, distance, tiles_selected_);
+    chunks_.select_core(eye.x, eye.z, distance, core_selected_);
     const Vec3d ground_origin{ground_.origin_x(), ground_.origin_y(), ground_.origin_z()};
     // Las mallas van en float relativo al origen del suelo: el desplazamiento al origen del
     // render se resta en doble.

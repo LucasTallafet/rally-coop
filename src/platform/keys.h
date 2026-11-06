@@ -128,12 +128,14 @@ struct ActionRef {
 };
 
 // Contextos en los que vale una tecla. Solo uno está activo a la vez: la zona sin el modo a
-// ciegas, la zona a ciegas o el recinto. Una tecla puede repetirse solo en contextos disjuntos.
+// ciegas, la zona a ciegas, el tramo o el recinto. Una tecla puede repetirse solo en contextos
+// disjuntos.
 enum KeyContext : std::uint8_t {
     kContextZone = 1,
     kContextBlind = 2,
     kContextArena = 4,
-    kContextAll = kContextZone | kContextBlind | kContextArena,
+    kContextStage = 16, // el modo tramo (K; lote 5): la zona sin G, M, U ni Y
+    kContextAll = kContextZone | kContextBlind | kContextArena | kContextStage,
     // La ventana de rally.exe --copiloto (lote 3). No está en kContextAll: sus teclas propias (Z)
     // nunca se disparan en el juego; las del juego que valen en el copiloto se leen con
     // kContextZone | kContextCopilot.
