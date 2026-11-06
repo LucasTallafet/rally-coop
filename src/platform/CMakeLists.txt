@@ -12,6 +12,12 @@ add_library(rally_loop STATIC
     action_driver.cpp
     button_latch.cpp
     cabin_volume.cpp
+    near_ring.cpp
+    stage_checked.cpp
+    stage_chunks.cpp
+    stage_mesh.cpp
+    stage_near.cpp
+    stage_surface.cpp
     camera_space.cpp
     car_feedback.cpp
     car_synth.cpp
@@ -64,6 +70,8 @@ target_link_libraries(rally_loop PRIVATE rally_sim rally_game rally_io rally_war
 add_library(rally_platform STATIC
     audio_output.cpp
     cockpit_draw.cpp
+    near_grid.cpp
+    stage_draw.cpp
     copilot_app.cpp
     demo_camera.cpp
     demo_driver_feel.cpp

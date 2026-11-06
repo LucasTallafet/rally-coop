@@ -69,6 +69,11 @@ void DriveDemo::use_arena() {
     apply_rebuild();
 }
 
+void DriveDemo::start_stage_bench() {
+    measure_.start_stage_bench(ctx_);
+    apply_rebuild();
+}
+
 void DriveDemo::start_zone_bench(bool road) {
     measure_.start_zone_bench(ctx_, road);
     apply_rebuild();

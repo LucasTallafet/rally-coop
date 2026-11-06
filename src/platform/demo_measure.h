@@ -3,9 +3,14 @@
 #include "platform/demo_part.h"
 #include "platform/forest_scene.h"
 #include "platform/frame_log.h"
+#include "platform/perf_stats.h"
+#include "platform/process_memory.h"
+#include "platform/stage_draw.h"
 #include "platform/zone_draw.h"
+#include "sim/stage_track.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -35,6 +40,13 @@ public:
     static constexpr std::int64_t kZoneBenchMeasureNs = 20'000'000'000;
     void start_zone_bench(DemoContext& ctx, bool road);
     bool zone_bench_done() const { return zone_bench_done_; }
+    // --bench-stage (tramo-dibujo): primero la cámara recorre lazadas de s = −5 m a la meta a
+    // 60 km/h con el ojo a kZoneBenchEyeHeight, dibujando el tramo con StageDraw (sin simular el
+    // coche); después, en la misma ejecución, la carretera de prueba como --bench-road. Escribe
+    // rendimiento_tramo_NNN.txt junto al exe. Pide la zona para tener la carretera de referencia.
+    static constexpr double kStageBenchSpeed = 60.0 / 3.6;
+    static constexpr double kStageBenchStartS = -5.0;
+    void start_stage_bench(DemoContext& ctx);
     void request_capture() { capture_requested_ = true; }
     void start_frame_log() { frame_log_.start(); }
     void set_forest_mode(DemoContext& ctx, ForestMode mode) { ctx.forest_mode = mode; }
@@ -50,6 +62,8 @@ public:
 private:
     void advance_zone_bench(DemoContext& ctx, std::int64_t frame_ns);
     void write_zone_bench_report(const DemoContext& ctx) const;
+    void advance_stage_bench(DemoContext& ctx, const DemoFrame& frame);
+    void write_stage_bench_report(const DemoContext& ctx) const;
 
     DemoContext& ctx_;
     ForestScene forest_;             // B: escena de medida
@@ -70,6 +84,36 @@ private:
         ZoneDraw::Breakdown breakdown;
     };
     std::vector<ZoneBenchFrame> zone_bench_ground_ms_;
+
+    // --bench-stage: el tramo y, después, la carretera de referencia. Cada fase junta lo que mide
+    // el contador (PerfTotals) y la CPU de su dibujo por fotograma.
+    enum class StageBenchPhase : std::uint8_t { Off, Stage, Road };
+    struct StageBenchFrame {
+        double frame_ms = 0.0;
+        double draw_ms = 0.0;
+        double near_ms = 0.0;
+        int near_cells = 0;
+        std::int64_t triangles = 0; // 0 en la carretera: ZoneDraw no los cuenta
+    };
+    struct StageBenchData {
+        PerfTotals totals;
+        ProcessMemory memory; // máximos
+        std::vector<StageBenchFrame> frames;
+    };
+    void collect(StageBenchData& data, const DemoFrame& frame, double draw_ms, double near_ms,
+                 int near_cells, std::int64_t triangles);
+    const char* stage_renderer_ = "";
+    int stage_captures_ = 0;
+    StageBenchPhase stage_bench_ = StageBenchPhase::Off;
+    std::unique_ptr<sim::StageTrack> stage_track_;
+    std::unique_ptr<StageDraw> stage_draw_;
+    std::uint64_t stage_ground_hash_ = 0;
+    double stage_build_ms_ = 0.0;
+    std::int64_t stage_ns_ = 0; // tiempo de la fase del tramo
+    double stage_full_fill_ms_ = 0.0;
+    double stage_length_ = 0.0;
+    StageBenchData stage_data_;
+    StageBenchData road_data_;
 };
 
 } // namespace rally::platform

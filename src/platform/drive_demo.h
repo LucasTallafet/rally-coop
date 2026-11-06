@@ -92,6 +92,7 @@ public:
 
     // --bench-zone y --bench-road (demo_measure).
     void start_zone_bench(bool road = false);
+    void start_stage_bench();
     bool zone_bench_done() const { return measure_.zone_bench_done(); }
     void request_capture() { measure_.request_capture(); }
 

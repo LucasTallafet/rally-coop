@@ -34,6 +34,7 @@ class FramePacer;
 class Gamepads;
 class PerfCounter;
 class RecordingSession;
+class StageDraw;
 class ZoneDraw;
 struct FrameSteps;
 
@@ -121,6 +122,9 @@ struct DemoContext {
     const RecordingSession* recording = nullptr;
     const ActionDriver* actions = nullptr; // null con --golden (sin máquina)
     ZoneDraw* zone_draw = nullptr; // el suelo de la zona (la pantalla y las medidas leen su CPU)
+    // El tramo que se dibuja en lugar de la zona (tramo-dibujo; lo pone la medida --bench-stage y,
+    // en tramo-modo, el modo tramo). null: se dibuja la zona.
+    StageDraw* stage_draw = nullptr;
     ScenePoses poses;
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).
     int shift_up_presses = 0;
