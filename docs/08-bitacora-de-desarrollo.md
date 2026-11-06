@@ -130,6 +130,7 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 | Nada del terreno por celdas (lote 4) | La rejilla no va alineada con la carretera: cualquier regla «por celdas» (las que cruzan el borde, las de debajo del núcleo) deja una escalera a lo largo de `s` de hasta 4,5 cm, y la rueda exterior perdía la carga | El terreno se define en función de la distancia al borde, con empalmes continuos |
 | Volumen de la cabina (`cabina-volumen`, lote 5) | El ojo atravesaba la puerta y el techo con el asiento y el cuello extremos | El techo del volumen es el plano inclinado que se dibuja, no `roof_above` plano (con el plano holgura 0,05–0,06 m). Recorte en x y proyección exacta sobre tres semiplanos en (y, z): 1-Lipschitz, sin saltos. Un coche sin `[cockpit]` da un volumen abierto. |
 | Línea de ejes de F3 (`f3-ejes`, lote 5) | La línea de ejes no cabía a 1280×720 (606 px frente a 563); «Δω» se dibujaba como «??» porque la fuente no lleva letras griegas | La línea se parte en dos (ejes / autoblocantes y LCP); «Δω» pasa a «dw». |
+| Centro de curvatura de un arco (lote 5, `tramo-ajustes`) | Una muestra justo en el centro tiene un pie en cada abanico del arco y desborda los que guarda; salió en `hairpin_flat` al alargar la frenada a 250 m | Punto singular del terreno del formato 1: el desborde se cuenta aparte (`center_overflows()`, a < 1 cm del vértice) y no cambia ninguna altura; lo arregla el formato 2 |
 
 ---
 
