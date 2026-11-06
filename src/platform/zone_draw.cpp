@@ -1,6 +1,5 @@
 #include "platform/zone_draw.h"
 
-#include <SDL3/SDL_video.h>
 #include <raymath.h>
 #include <rlgl.h>
 
@@ -20,100 +19,6 @@ using sim::ZoneArea;
 namespace zone = sim::zone;
 
 constexpr double kPi = 3.14159265358979323846;
-
-// Desplazamiento de polígonos de OpenGL, que rlgl no expone: se pide a SDL. Sin él (no
-// debería pasar con OpenGL 3.3) las áreas se dibujan igual, con riesgo de parpadeo lejos.
-constexpr unsigned int kGlPolygonOffsetFill = 0x8037;
-using GlPolygonOffset = void(__stdcall*)(float, float);
-using GlCapability = void(__stdcall*)(unsigned int);
-GlPolygonOffset gl_polygon_offset = nullptr;
-GlCapability gl_enable = nullptr;
-GlCapability gl_disable = nullptr;
-
-// Shader del suelo: color por vértice y recorte por la distancia horizontal al ojo. side = 1
-// descarta lo que está a menos de `radius` (lejos); side = -1, lo que está a más (cerca).
-// Con radius = 0 y side = 1 no descarta nada.
-constexpr const char* kVertexShader = R"(#version 330
-in vec3 vertexPosition;
-in vec4 vertexColor;
-uniform mat4 mvp;
-uniform mat4 matModel;
-out vec4 fragColor;
-out vec2 fragXZ;
-void main() {
-    fragColor = vertexColor;
-    fragXZ = (matModel * vec4(vertexPosition, 1.0)).xz;
-    gl_Position = mvp * vec4(vertexPosition, 1.0);
-}
-)";
-
-constexpr const char* kFragmentShader = R"(#version 330
-in vec4 fragColor;
-in vec2 fragXZ;
-uniform float radius;
-uniform float side;
-uniform vec2 eye;
-out vec4 finalColor;
-void main() {
-    if ((length(fragXZ - eye) - radius) * side < 0.0) discard;
-    finalColor = fragColor;
-}
-)";
-
-// Rejilla cercana: altura de la textura (geometría + h apagado hacia el borde) y sombreado
-// por la normal de los vecinos. La textura está en anillo: la celda del vértice (i, j) es
-// ((anchorSlot + (i, j)) mod cells).
-constexpr const char* kNearVertexShader = R"(#version 330
-in vec3 vertexPosition;
-uniform mat4 mvp;
-uniform sampler2D texture0;
-uniform ivec2 anchorSlot;
-uniform int cells;
-uniform float spacing;
-uniform vec2 eyeGrid;
-uniform float fadeStart;
-uniform float radius;
-uniform vec3 surfaceColors[5];
-uniform vec3 light;
-out vec4 fragColor;
-out vec2 fragXZ;
-float fadeAt(vec2 p) {
-    float t = clamp((radius - length(p - eyeGrid)) / (radius - fadeStart), 0.0, 1.0);
-    return t * t * (3.0 - 2.0 * t);
-}
-vec4 texel(int i, int j) {
-    i = clamp(i, 0, cells - 1);
-    j = clamp(j, 0, cells - 1);
-    return texelFetch(texture0, ivec2((anchorSlot.x + i) % cells, (anchorSlot.y + j) % cells), 0);
-}
-float heightAt(int i, int j) {
-    vec4 t = texel(i, j);
-    return t.r + t.g * fadeAt(vec2(float(i), float(j)) * spacing);
-}
-void main() {
-    int i = int(round(vertexPosition.x / spacing));
-    int j = int(round(vertexPosition.z / spacing));
-    vec4 t = texel(i, j);
-    float h = t.r + t.g * fadeAt(vertexPosition.xz);
-    vec3 n = normalize(vec3(heightAt(i - 1, j) - heightAt(i + 1, j), 2.0 * spacing,
-                            heightAt(i, j - 1) - heightAt(i, j + 1)));
-    float shade = 0.5 + 0.5 * max(0.0, dot(n, light));
-    fragColor = vec4(surfaceColors[int(t.b + 0.5)] * shade, 1.0);
-    fragXZ = vertexPosition.xz - eyeGrid;
-    gl_Position = mvp * vec4(vertexPosition.x, h, vertexPosition.z, 1.0);
-}
-)";
-
-constexpr const char* kNearFragmentShader = R"(#version 330
-in vec4 fragColor;
-in vec2 fragXZ;
-uniform float radius;
-out vec4 finalColor;
-void main() {
-    if (length(fragXZ) > radius) discard;
-    finalColor = fragColor;
-}
-)";
 
 // Luz fija, la misma que las cajas de la demo.
 const Vector3 kLight = Vector3Normalize(Vector3{0.35f, 1.0f, 0.55f});
@@ -265,101 +170,21 @@ Color surface_color(sim::Surface surface) {
     return Color{255, 0, 255, 255};
 }
 
-ZoneDraw::ZoneDraw() {
-    shader_ = LoadShaderFromMemory(kVertexShader, kFragmentShader);
-    loc_radius_ = GetShaderLocation(shader_, "radius");
-    loc_side_ = GetShaderLocation(shader_, "side");
-    loc_eye_ = GetShaderLocation(shader_, "eye");
-    material_ = LoadMaterialDefault();
-    material_.shader = shader_;
-    gl_polygon_offset = reinterpret_cast<GlPolygonOffset>(SDL_GL_GetProcAddress("glPolygonOffset"));
-    gl_enable = reinterpret_cast<GlCapability>(SDL_GL_GetProcAddress("glEnable"));
-    gl_disable = reinterpret_cast<GlCapability>(SDL_GL_GetProcAddress("glDisable"));
+namespace {
 
-    // Rejilla cercana: malla fija (vértice (i, j) en (i, 0, j) × kNearSpacing) y textura.
-    near_cells_ = static_cast<int>(2.0 * kNearRadius / kNearSpacing) + 1;
-    const int n = near_cells_;
-    near_.vertexCount = n * n;
-    near_.triangleCount = 2 * (n - 1) * (n - 1);
-    near_.vertices = static_cast<float*>(MemAlloc(static_cast<unsigned int>(n * n * 12)));
-    near_.indices = static_cast<unsigned short*>(
-        MemAlloc(static_cast<unsigned int>(near_.triangleCount * 3 * 2)));
-    for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < n; ++i) {
-            float* v = near_.vertices + 3 * (j * n + i);
-            v[0] = static_cast<float>(i * kNearSpacing);
-            v[1] = 0.0f;
-            v[2] = static_cast<float>(j * kNearSpacing);
-        }
-    }
-    int k = 0;
-    for (int j = 0; j < n - 1; ++j) {
-        for (int i = 0; i < n - 1; ++i) {
-            const auto a = static_cast<unsigned short>(j * n + i);
-            const auto b = static_cast<unsigned short>(j * n + i + 1);
-            const auto c = static_cast<unsigned short>((j + 1) * n + i + 1);
-            const auto d = static_cast<unsigned short>((j + 1) * n + i);
-            // Hacia arriba (contrario a las agujas del reloj visto desde +y): a, d, c y a, c, b.
-            near_.indices[k++] = a;
-            near_.indices[k++] = d;
-            near_.indices[k++] = c;
-            near_.indices[k++] = a;
-            near_.indices[k++] = c;
-            near_.indices[k++] = b;
-        }
-    }
-    UploadMesh(&near_, false);
-
-    texels_.assign(static_cast<std::size_t>(n * n * 4), 0.0f);
-    column_.assign(static_cast<std::size_t>(n * 4), 0.0f);
-    near_texture_ =
-        rlLoadTexture(texels_.data(), n, n, RL_PIXELFORMAT_UNCOMPRESSED_R32G32B32A32, 1);
-    rlTextureParameters(near_texture_, RL_TEXTURE_MIN_FILTER, RL_TEXTURE_FILTER_NEAREST);
-    rlTextureParameters(near_texture_, RL_TEXTURE_MAG_FILTER, RL_TEXTURE_FILTER_NEAREST);
-
-    near_shader_ = LoadShaderFromMemory(kNearVertexShader, kNearFragmentShader);
-    loc_near_anchor_ = GetShaderLocation(near_shader_, "anchorSlot");
-    loc_near_eye_ = GetShaderLocation(near_shader_, "eyeGrid");
-    const int cells = n;
-    const auto spacing = static_cast<float>(kNearSpacing);
-    const auto fade_start = static_cast<float>(kNearFadeStart);
-    const auto radius = static_cast<float>(kNearRadius);
-    SetShaderValue(near_shader_, GetShaderLocation(near_shader_, "cells"), &cells,
-                   SHADER_UNIFORM_INT);
-    SetShaderValue(near_shader_, GetShaderLocation(near_shader_, "spacing"), &spacing,
-                   SHADER_UNIFORM_FLOAT);
-    SetShaderValue(near_shader_, GetShaderLocation(near_shader_, "fadeStart"), &fade_start,
-                   SHADER_UNIFORM_FLOAT);
-    SetShaderValue(near_shader_, GetShaderLocation(near_shader_, "radius"), &radius,
-                   SHADER_UNIFORM_FLOAT);
-    const float light[3] = {kLight.x, kLight.y, kLight.z};
-    SetShaderValue(near_shader_, GetShaderLocation(near_shader_, "light"), light,
-                   SHADER_UNIFORM_VEC3);
-    float colors[3 * sim::kSurfaceCount];
+std::array<Color, sim::kSurfaceCount> zone_colors() {
+    std::array<Color, sim::kSurfaceCount> colors{};
     for (int s = 0; s < sim::kSurfaceCount; ++s) {
-        const Color c = surface_color(static_cast<sim::Surface>(s));
-        colors[3 * s + 0] = c.r / 255.0f;
-        colors[3 * s + 1] = c.g / 255.0f;
-        colors[3 * s + 2] = c.b / 255.0f;
+        colors[static_cast<std::size_t>(s)] = surface_color(static_cast<sim::Surface>(s));
     }
-    SetShaderValueV(near_shader_, GetShaderLocation(near_shader_, "surfaceColors"), colors,
-                    SHADER_UNIFORM_VEC3, sim::kSurfaceCount);
-    near_material_ = LoadMaterialDefault();
-    near_material_.shader = near_shader_;
-    near_material_.maps[MATERIAL_MAP_DIFFUSE].texture =
-        Texture2D{near_texture_, n, n, 1, PIXELFORMAT_UNCOMPRESSED_R32G32B32A32};
-    history_.assign(kStatsFrames, 0.0);
+    return colors;
 }
 
-ZoneDraw::~ZoneDraw() {
-    unload_meshes();
-    UnloadMesh(near_);
-    UnloadMaterial(material_); // descarga también el shader
-    // La textura de la rejilla cercana se descarga aparte: el material no la descarga.
-    near_material_.maps[MATERIAL_MAP_DIFFUSE].texture = Texture2D{};
-    UnloadMaterial(near_material_);
-    rlUnloadTexture(near_texture_);
-}
+} // namespace
+
+ZoneDraw::ZoneDraw() : near_(kNearRadius, kNearFadeStart, kNearSpacing, zone_colors()) {}
+
+ZoneDraw::~ZoneDraw() { unload_meshes(); }
 
 void ZoneDraw::unload_meshes() {
     trees_.reset();
@@ -375,7 +200,7 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
     unload_meshes();
     zone_ = &zone;
     blind_ = blind;
-    near_valid_ = false; // la superficie de la pista ciega puede haber cambiado
+    near_.invalidate(); // la superficie de la pista ciega puede haber cambiado
     const auto color_of = [blind](sim::Surface surface) {
         return blind ? kBlindColor : surface_color(surface);
     };
@@ -650,129 +475,21 @@ void ZoneDraw::build(const sim::TestZone& zone, bool blind) {
     }
 }
 
-void ZoneDraw::update_near(const Vec3d& eye) {
-    using Clock = std::chrono::steady_clock;
-    const int n = near_cells_;
-    const auto floor_index = [](double v) {
-        return static_cast<std::int64_t>(std::floor(v / kNearSpacing));
-    };
-    const std::int64_t ax = floor_index(eye.x) - n / 2;
-    const std::int64_t az = floor_index(eye.z) - n / 2;
-    if (near_valid_ && ax == anchor_x_ && az == anchor_z_) {
-        return; // la rejilla no se ha movido: la textura sirve tal cual
-    }
-    const std::int64_t dx = ax - anchor_x_;
-    const std::int64_t dz = az - anchor_z_;
-    const bool full = !near_valid_ || dx <= -n || dx >= n || dz <= -n || dz >= n;
-    anchor_x_ = ax;
-    anchor_z_ = az;
-    const auto slot = [n](std::int64_t g) {
-        const std::int64_t m = g % n;
-        return static_cast<int>(m < 0 ? m + n : m);
-    };
-    // Geometría, h y superficie de la celda (gx, gz) del mundo, en su sitio del anillo.
-    const auto compute = [this, n](std::int64_t gx, std::int64_t gz, int sx, int sz) {
-        ++breakdown_.cells;
-        const double x = static_cast<double>(gx) * kNearSpacing;
-        const double z = static_cast<double>(gz) * kNearSpacing;
-        float* texel = texels_.data() + 4 * (static_cast<std::size_t>(sz) * n + sx);
-        const sim::TestZone::MicroSample micro = zone_->micro_sample(x, z);
-        texel[0] = static_cast<float>(zone_->ground_height(x, z));
-        texel[1] = static_cast<float>(micro.micro);
-        texel[2] = static_cast<float>(micro.surface);
-    };
-    const int format = RL_PIXELFORMAT_UNCOMPRESSED_R32G32B32A32;
-    if (full) {
-        // Al empezar o tras un salto (recolocar): toda la rejilla.
-        for (int j = 0; j < n; ++j) {
-            const std::int64_t gz = anchor_z_ + j;
-            const int sz = slot(gz);
-            for (int i = 0; i < n; ++i) {
-                const std::int64_t gx = anchor_x_ + i;
-                compute(gx, gz, slot(gx), sz);
-            }
-        }
-        const Clock::time_point t0 = Clock::now();
-        rlUpdateTexture(near_texture_, 0, 0, n, n, format, texels_.data());
-        breakdown_.upload_ms +=
-            std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        ++breakdown_.uploads;
-        near_valid_ = true;
-        return;
-    }
-    // Solo entran |dz| filas y |dx| columnas: las filas se suben enteras y las columnas, sin
-    // las celdas de las filas nuevas, también enteras.
-    const std::int64_t row_first = dz > 0 ? anchor_z_ + n - dz : anchor_z_;
-    const std::int64_t row_end = dz > 0 ? anchor_z_ + n : anchor_z_ - dz;
-    const std::int64_t col_first = dx > 0 ? anchor_x_ + n - dx : anchor_x_;
-    const std::int64_t col_end = dx > 0 ? anchor_x_ + n : anchor_x_ - dx;
-    for (std::int64_t gz = row_first; gz < row_end; ++gz) {
-        const int sz = slot(gz);
-        int sx = slot(anchor_x_);
-        for (int i = 0; i < n; ++i) {
-            compute(anchor_x_ + i, gz, sx, sz);
-            sx = sx + 1 == n ? 0 : sx + 1;
-        }
-        const Clock::time_point t0 = Clock::now();
-        rlUpdateTexture(near_texture_, 0, sz, n, 1, format,
-                        texels_.data() + static_cast<std::size_t>(4 * sz * n));
-        breakdown_.upload_ms +=
-            std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        ++breakdown_.uploads;
-    }
-    for (std::int64_t gx = col_first; gx < col_end; ++gx) {
-        const int sx = slot(gx);
-        int sz = slot(anchor_z_);
-        for (int j = 0; j < n; ++j) {
-            const std::int64_t gz = anchor_z_ + j;
-            if (gz < row_first || gz >= row_end) {
-                compute(gx, gz, sx, sz);
-            }
-            sz = sz + 1 == n ? 0 : sz + 1;
-        }
-        for (int r = 0; r < n; ++r) {
-            std::memcpy(column_.data() + 4 * r,
-                        texels_.data() + static_cast<std::size_t>(4 * (r * n + sx)),
-                        4 * sizeof(float));
-        }
-        const Clock::time_point t0 = Clock::now();
-        rlUpdateTexture(near_texture_, sx, 0, 1, n, format, column_.data());
-        breakdown_.upload_ms +=
-            std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-        ++breakdown_.uploads;
-    }
-}
-
 void ZoneDraw::draw_near(const Vec3d& eye, const Vec3d& origin) {
-    using Clock = std::chrono::steady_clock;
-    const Clock::time_point start = Clock::now();
-    update_near(eye);
-    breakdown_.near_ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-    const int n = near_cells_;
-    const auto slot = [n](std::int64_t g) {
-        const std::int64_t m = g % n;
-        return static_cast<int>(m < 0 ? m + n : m);
+    const sim::TestZone& zone = *zone_;
+    const auto sample = [&zone](double x, double z) {
+        const sim::TestZone::MicroSample micro = zone.micro_sample(x, z);
+        NearTexel texel;
+        texel.height = static_cast<float>(zone.ground_height(x, z));
+        texel.micro = static_cast<float>(micro.micro);
+        texel.surface = static_cast<float>(micro.surface);
+        return texel;
     };
-    const int anchor_slot[2] = {slot(anchor_x_), slot(anchor_z_)};
-    const Vec3d corner{static_cast<double>(anchor_x_) * kNearSpacing, 0.0,
-                       static_cast<double>(anchor_z_) * kNearSpacing};
-    const float eye_grid[2] = {static_cast<float>(eye.x - corner.x),
-                               static_cast<float>(eye.z - corner.z)};
-    SetShaderValue(near_shader_, loc_near_anchor_, anchor_slot, SHADER_UNIFORM_IVEC2);
-    SetShaderValue(near_shader_, loc_near_eye_, eye_grid, SHADER_UNIFORM_VEC2);
-    const Vec3f shift = relative_to_camera(corner, origin);
-    DrawMesh(near_, near_material_, MatrixTranslate(shift.x, shift.y, shift.z));
-}
-
-void ZoneDraw::draw_mesh(const Mesh& mesh, const Vec3d& origin, float radius, float side,
-                         const Vec3d& eye) {
-    const Vec3f eye_rel = relative_to_camera(eye, origin);
-    const float eye_xz[2] = {eye_rel.x, eye_rel.z};
-    SetShaderValue(shader_, loc_radius_, &radius, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader_, loc_side_, &side, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader_, loc_eye_, eye_xz, SHADER_UNIFORM_VEC2);
-    const Vec3f shift = relative_to_camera(Vec3d{}, origin);
-    DrawMesh(mesh, material_, MatrixTranslate(shift.x, shift.y, shift.z));
+    const NearStats stats = near_.draw(eye, origin, sample);
+    breakdown_.near_ms = stats.near_ms;
+    breakdown_.upload_ms = stats.upload_ms;
+    breakdown_.cells = stats.cells;
+    breakdown_.uploads = stats.uploads;
 }
 
 void ZoneDraw::draw(const Vec3d& eye, const Vec3d& origin) {
@@ -786,28 +503,20 @@ void ZoneDraw::draw(const Vec3d& eye, const Vec3d& origin) {
     // Sin la rejilla cercana (modo a ciegas), lo lejano llega hasta el ojo.
     const float far_radius = blind_ ? 0.0f : static_cast<float>(kNearRadius);
     for (const Mesh& mesh : ground_) {
-        draw_mesh(mesh, origin, far_radius, 1.0f, eye);
+        clip_.draw(mesh, origin, far_radius, 1.0f, eye);
     }
     if (!blind_) {
         draw_near(eye, origin);
     }
-    const bool offset = gl_polygon_offset != nullptr && gl_enable != nullptr;
-    if (offset) {
-        gl_enable(kGlPolygonOffsetFill);
-        gl_polygon_offset(-1.0f, -1.0f);
-    }
+    offset_.set(-1.0f, -1.0f);
     for (const Mesh& mesh : decals_) {
-        draw_mesh(mesh, origin, far_radius, 1.0f, eye);
+        clip_.draw(mesh, origin, far_radius, 1.0f, eye);
     }
-    if (offset) {
-        gl_polygon_offset(-2.0f, -2.0f);
-    }
+    offset_.set(-2.0f, -2.0f);
     for (const Mesh& mesh : lines_) {
-        draw_mesh(mesh, origin, 0.0f, 1.0f, eye);
+        clip_.draw(mesh, origin, 0.0f, 1.0f, eye);
     }
-    if (offset && gl_disable != nullptr) {
-        gl_disable(kGlPolygonOffsetFill);
-    }
+    offset_.off();
     // Conos y postes por las dos caras: no dependen del orden de sus vértices.
     rlDisableBackfaceCulling();
     draw_props(origin);
@@ -816,7 +525,7 @@ void ZoneDraw::draw(const Vec3d& eye, const Vec3d& origin) {
     if (trees_) {
         trees_->draw(relative_to_camera(trees_center_, origin));
     }
-    record_time(std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+    stats_.record(std::chrono::duration<double, std::milli>(Clock::now() - start).count());
 }
 
 void ZoneDraw::draw_props(const Vec3d& origin) const {
@@ -870,33 +579,6 @@ void ZoneDraw::draw_props(const Vec3d& origin) const {
         }
     }
     rlEnd();
-}
-
-void ZoneDraw::record_time(double ms) {
-    last_ms_ = ms;
-    history_[history_next_] = ms;
-    history_next_ = (history_next_ + 1) % history_.size();
-    double sum = 0.0;
-    double peak = 0.0;
-    for (const double v : history_) {
-        sum += v;
-        peak = std::max(peak, v);
-    }
-    mean_ms_ = sum / static_cast<double>(history_.size());
-    max_ms_ = peak;
-    total_ms_ += ms;
-    ++total_frames_;
-    total_max_ms_ = std::max(total_max_ms_, ms);
-}
-
-void ZoneDraw::reset_totals() {
-    total_ms_ = 0.0;
-    total_frames_ = 0;
-    total_max_ms_ = 0.0;
-}
-
-double ZoneDraw::total_mean_ms() const {
-    return total_frames_ > 0 ? total_ms_ / static_cast<double>(total_frames_) : 0.0;
 }
 
 } // namespace rally::platform

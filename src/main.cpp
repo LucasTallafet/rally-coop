@@ -122,6 +122,14 @@ int main(int argc, char** argv) {
             window.toggle_fullscreen();
             perf.set_visible(true);
             demo.start_zone_bench(true);
+        } else if (std::strcmp(argv[i], "--bench-stage") == 0 && !bench) {
+            // El tramo lazadas dibujado con la geometría de la física, de la salida a la meta a
+            // 60 km/h, y después la carretera de prueba como referencia
+            // (rendimiento_tramo_NNN.txt).
+            window.toggle_fullscreen();
+            demo.set_render_size(1920, 1080);
+            perf.set_visible(true);
+            demo.start_stage_bench();
         } else if (std::strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
             ++i; // ya leído
         } else if (std::strcmp(argv[i], "--hide-config") == 0) {

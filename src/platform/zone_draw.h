@@ -1,6 +1,8 @@
 #pragma once
 
 #include "platform/camera_space.h"
+#include "platform/draw_time_stats.h"
+#include "platform/near_grid.h"
 #include "platform/tree_instances.h"
 #include "sim/test_zone.h"
 
@@ -57,8 +59,8 @@ public:
     void draw(const Vec3d& eye, const Vec3d& origin);
 
     // CPU del último draw() y estadísticas de los últimos kStatsFrames fotogramas, en ms.
-    static constexpr int kStatsFrames = 240;
-    double last_cpu_ms() const { return last_ms_; }
+    static constexpr int kStatsFrames = DrawTimeStats::kFrames;
+    double last_cpu_ms() const { return stats_.last(); }
     // Desglose del último draw(): la rejilla cercana (celdas calculadas, subidas a la textura
     // y su tiempo) frente al total. Para --bench-zone.
     struct Breakdown {
@@ -68,49 +70,30 @@ public:
         int uploads = 0;
     };
     const Breakdown& last_breakdown() const { return breakdown_; }
-    double mean_cpu_ms() const { return mean_ms_; }
-    double max_cpu_ms() const { return max_ms_; }
+    double mean_cpu_ms() const { return stats_.mean(); }
+    double max_cpu_ms() const { return stats_.max(); }
     // Media y máximo desde reset_totals().
-    void reset_totals();
-    double total_mean_ms() const;
-    double total_max_ms() const { return total_max_ms_; }
+    void reset_totals() { stats_.reset_totals(); }
+    double total_mean_ms() const { return stats_.total_mean(); }
+    double total_max_ms() const { return stats_.total_max(); }
 
 private:
     void unload_meshes();
-    void update_near(const Vec3d& eye);
-    void draw_mesh(const Mesh& mesh, const Vec3d& origin, float radius, float side,
-                   const Vec3d& eye);
     void draw_near(const Vec3d& eye, const Vec3d& origin);
     void draw_props(const Vec3d& origin) const;
-    void record_time(double ms);
 
     const sim::TestZone* zone_ = nullptr;
     bool blind_ = false;
-    Shader shader_{};
-    Material material_{};
-    int loc_radius_ = -1;
-    int loc_side_ = -1;
-    int loc_eye_ = -1;
+    ClipShader clip_;
+    PolygonOffset offset_;
 
     // Capas lejanas: suelo (fondo y franjas con relieve), áreas llanas y líneas pintadas.
     std::vector<Mesh> ground_;
     std::vector<Mesh> decals_;
     std::vector<Mesh> lines_;
 
-    // Rejilla cercana: near_cells_² vértices fijos y su textura RGBA32F (geometría, h,
-    // superficie) en anillo.
-    int near_cells_ = 0;
-    Mesh near_{};
-    Shader near_shader_{};
-    Material near_material_{};
-    unsigned int near_texture_ = 0;
-    int loc_near_anchor_ = -1;
-    int loc_near_eye_ = -1;
-    std::vector<float> texels_; // 4 por celda, en el orden de la textura
-    std::vector<float> column_; // una columna de la textura, para subirla
-    bool near_valid_ = false;
-    std::int64_t anchor_x_ = 0; // índice de la rejilla del mundo del vértice (0, 0)
-    std::int64_t anchor_z_ = 0;
+    // Rejilla cercana (platform/near_grid): geometría, h y superficie en una textura en anillo.
+    NearGrid near_;
 
     // Conos y postes.
     std::vector<sim::AxisPoint> cones_;
@@ -119,15 +102,8 @@ private:
     std::unique_ptr<TreeInstances> trees_;
     Vec3d trees_center_{};
 
-    double last_ms_ = 0.0;
     Breakdown breakdown_;
-    double mean_ms_ = 0.0;
-    double max_ms_ = 0.0;
-    std::vector<double> history_;
-    std::size_t history_next_ = 0;
-    double total_ms_ = 0.0;
-    std::int64_t total_frames_ = 0;
-    double total_max_ms_ = 0.0;
+    DrawTimeStats stats_;
 };
 
 // Color plano de una superficie (01 §4) y el neutro del modo a ciegas.

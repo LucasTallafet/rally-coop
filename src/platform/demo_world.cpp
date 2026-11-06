@@ -8,6 +8,7 @@
 #include "platform/fixed_step_clock.h"
 #include "platform/keys_raylib.h"
 #include "platform/scene_draw.h"
+#include "platform/stage_draw.h"
 #include "platform/wheel_spin.h"
 #include "sim/check.h"
 #include "sim/demo_world.h"
@@ -599,7 +600,11 @@ void DemoWorld::draw_3d(DemoContext& ctx, const DemoFrame& /*frame*/) {
     const Vec3d& origin = ctx.frame_camera.origin;
     const ScenePoses& p = ctx.poses;
     if (ctx.mode.zone) {
-        zone_draw_.draw(ctx.frame_camera.eye, origin);
+        if (ctx.stage_draw != nullptr) {
+            ctx.stage_draw->draw(ctx.frame_camera.eye, origin);
+        } else {
+            zone_draw_.draw(ctx.frame_camera.eye, origin);
+        }
         for (std::size_t i = 0; i < p.drawn.size(); ++i) {
             draw_box(p.drawn[i], ctx.desc.bodies[i], body_color(ctx.desc, i), origin);
         }
