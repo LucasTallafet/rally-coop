@@ -24,6 +24,8 @@ public:
         Pause,
         Glyphs,
         Overflow,
+        Stage,       // el tramo: carga, errores y sucesos de la pasada (parciales, recolocaciones)
+        StageFinish, // la meta del tramo: su resultado, más tiempo en pantalla
         Car,
         Recording,
         Settings,

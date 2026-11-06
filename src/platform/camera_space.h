@@ -24,7 +24,8 @@ Vec3d rotate(const Quatd& q, const Vec3d& v);
 // con él, y la misma orientación.
 Pose attach(const Pose& body, const Vec3d& local_offset);
 
-// Tab: la vista siguiente de tres (0 ojo o asiento, 1 persecución, 2 fija o toda la zona).
-int next_camera_view(int view);
+// Tab: la vista siguiente de `views` (0 ojo o asiento, 1 persecución, 2 fija o toda la zona; en el
+// tramo son cuatro: 2 todo el tramo y 3 fija sobre la salida).
+int next_camera_view(int view, int views = 3);
 
 } // namespace rally::platform

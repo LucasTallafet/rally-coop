@@ -25,6 +25,7 @@ add_library(rally_loop STATIC
     copilot_args.cpp
     copilot_keys.cpp
     copilot_view.cpp
+    copilot_world.cpp
     debug_lines.cpp
     demo_actions_keys.cpp
     demo_camera_keys.cpp
@@ -45,10 +46,14 @@ add_library(rally_loop STATIC
     keys.cpp
     mouse_steer.cpp
     perf_stats.cpp
+    recording_header.cpp
     player_settings.cpp
     screen_layout.cpp
     seat.cpp
     slip.cpp
+    stage_hud.cpp
+    stage_mode.cpp
+    stage_overview.cpp
     surface_feel.cpp
     telemetry_history.cpp
     ui_text.cpp
@@ -72,6 +77,7 @@ add_library(rally_platform STATIC
     cockpit_draw.cpp
     near_grid.cpp
     stage_draw.cpp
+    stage_scene.cpp
     copilot_app.cpp
     demo_camera.cpp
     demo_driver_feel.cpp

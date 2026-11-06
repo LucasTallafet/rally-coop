@@ -35,7 +35,7 @@ constexpr KeyBinding kRows[] = {
      kNoAction,
      {},
      PadControl::None,
-     kContextZone | kContextArena,
+     kContextZone | kContextArena | kContextStage,
      KeyBlock::Debug,
      30,
      "Gráficas de la telemetría",

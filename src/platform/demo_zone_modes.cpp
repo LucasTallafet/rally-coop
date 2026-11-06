@@ -1,6 +1,8 @@
 #include "platform/demo_zone_modes.h"
 
+#include "io/recording.h"
 #include "platform/demo_common.h"
+#include "platform/demo_world.h"
 #include "platform/demo_zone_modes_keys.h"
 #include "platform/keys_raylib.h"
 
@@ -11,13 +13,39 @@ namespace rally::platform {
 
 using namespace demo;
 
+bool DemoZoneModes::advance(DemoContext& ctx) {
+    WorldMode& mode = ctx.mode;
+    const WorldKind current = mode.kind();
+    StageFile file;
+    if (cycle_world_kind(current, true) == WorldKind::Stage) {
+        file.path =
+            ctx.stage.path.empty() ? find_data_file("data/stages/lazadas.stage") : ctx.stage.path;
+        std::string bytes;
+        if (!file.path.empty()) {
+            if (io::read_file(file.path, bytes, file.error)) {
+                file.text = std::move(bytes);
+            }
+        }
+    }
+    const WorldStep step = step_world_kind(current, ctx.stage, file);
+    if (!step.message.empty()) {
+        ctx.overlay.set_message(Overlay::Message::Stage, step.message, kError, kSettingsMessageNs);
+    }
+    if (!step.changed) {
+        return false;
+    }
+    mode.set_kind(step.kind);
+    mode.blind = mode.blind && !step.clear_blind;
+    ctx.view = 0;
+    ctx.rebuild = Rebuild::Describe;
+    return true;
+}
+
 void DemoZoneModes::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounter& /*perf*/) {
     const std::uint8_t context = ctx.frame_key_context;
     WorldMode& mode = ctx.mode;
     if (action_pressed(action(ZoneModeAction::ToggleArena), context)) {
-        mode.zone = !mode.zone;
-        ctx.view = 0;
-        ctx.rebuild = Rebuild::Describe;
+        advance(ctx);
     }
     if (action_pressed(action(ZoneModeAction::BlindMode), context)) {
         // Al entrar empieza la serie desde la primera prueba; al salir, la pista vuelve a

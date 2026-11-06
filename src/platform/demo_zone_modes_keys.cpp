@@ -79,8 +79,9 @@ constexpr KeyBinding kRows[] = {
      kContextAll,
      KeyBlock::General,
      70,
-     "Zona de pruebas / recinto",
-     "el recinto es el de la fase 1; reconstruye el mundo y empieza otra grabación"},
+     "Zona de pruebas / tramo / recinto",
+     "recorre los tres; el tramo es data/stages/lazadas.stage o el de --tramo; el recinto es el de "
+     "la fase 1; reconstruye el mundo y empieza otra grabación"},
 };
 
 } // namespace

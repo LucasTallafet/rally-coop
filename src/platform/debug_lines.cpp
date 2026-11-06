@@ -57,17 +57,20 @@ constexpr double kPi = 3.14159265358979323846;
 } // namespace
 
 std::string debug_motor_line(const sim::DrivetrainOutput& d) {
+    return "motor: " + unsigned_field(static_cast<double>(d.engine_omega) * 30.0 / kPi, 4, 0) +
+           " rpm, " + signed_field(static_cast<double>(d.boost) * 1.0e-5, 1, 2) + " bar, " +
+           signed_field(static_cast<double>(d.engine_torque), 4, 0) + " N·m (acel. " +
+           unsigned_field(static_cast<double>(d.throttle), 1, 2) + ")";
+}
+
+std::string debug_clutch_line(const sim::DrivetrainOutput& d) {
     // Los cuatro estados, de la misma paridad de ancho para poder igualarlos.
     const std::string longest = "arranque, abierto";
     std::string state = d.clutch == sim::ClutchMode::Closed ? "cerrado" : "arranque";
     if (d.clutch_open) {
         state += ", abierto";
     }
-    return "motor: " + unsigned_field(static_cast<double>(d.engine_omega) * 30.0 / kPi, 4, 0) +
-           " rpm, " + signed_field(static_cast<double>(d.boost) * 1.0e-5, 1, 2) + " bar, " +
-           signed_field(static_cast<double>(d.engine_torque), 4, 0) + " N·m (acel. " +
-           unsigned_field(static_cast<double>(d.throttle), 1, 2) + "); embrague " +
-           pad_like(state, longest) + ", desliz. " +
+    return "embrague " + pad_like(state, longest) + ", desliz. " +
            signed_field(static_cast<double>(d.clutch_slip), 3, 1) + " rad/s, " +
            signed_field(static_cast<double>(d.clutch_torque), 4, 0) + " N·m";
 }

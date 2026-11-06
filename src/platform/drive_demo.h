@@ -80,6 +80,9 @@ public:
 
     // Recinto de la fase 1 en vez de la zona (--bench-forest mide el bosque alrededor de él).
     void use_arena();
+    // --tramo <archivo>: entra en el modo tramo con ese archivo. false (con el motivo en los
+    // mensajes) si no se puede leer o no vale; la demo sigue en la zona.
+    bool use_stage(const std::string& path);
     // Semilla de la serie de pruebas a ciegas (--blind-seed).
     void set_blind_seed(std::uint64_t seed) { zone_modes_.set_blind_seed(seed); }
     // --hide-config: la pantalla no dice qué configuración se lleva (F8 sigue cambiándola;

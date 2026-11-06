@@ -20,6 +20,12 @@ public:
     // La cámara del fotograma (ctx.frame_camera) según ctx.view, ctx.poses.drawn_car y ctx.mode.
     // La usa también la ventana del copiloto (platform/copilot_app), que no tiene partes.
     void update(DemoContext& ctx);
+    // Cuántas vistas recorre Tab: tres, y cuatro en el tramo (asiento, persecución, todo el tramo y
+    // fija sobre la salida).
+    static int camera_view_count(const WorldMode& mode) { return mode.stage ? 4 : 3; }
+
+private:
+    void stage_camera(DemoContext& ctx, FrameCamera& c);
 };
 
 } // namespace rally::platform

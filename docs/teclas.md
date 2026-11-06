@@ -84,7 +84,7 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | F5 | Releer el archivo del coche: reconstruye el mundo con el coche en el punto de recolocación más cercano (en el recinto, en su salida); si el archivo tiene un error, lo muestra con su línea y sigue el coche anterior |
 | F8 | Configuración siguiente: mid_awd_turbo, front_awd_turbo_5cyl, front_rwd_na y front_awd_turbo_groupa, por turnos, de la carpeta del coche; reconstruye el mundo; a ciegas o con --hide-config, la pantalla no dice cuál |
 | Retroceso | Reiniciar el mundo: cierra la grabación y empieza otra |
-| K | Zona de pruebas / recinto: el recinto es el de la fase 1; reconstruye el mundo y empieza otra grabación |
+| K | Zona de pruebas / tramo / recinto: recorre los tres; el tramo es data/stages/lazadas.stage o el de --tramo; el recinto es el de la fase 1; reconstruye el mundo y empieza otra grabación |
 | F11 o Alt+Intro | Pantalla completa sin bordes |
 | Esc | Salir |
 

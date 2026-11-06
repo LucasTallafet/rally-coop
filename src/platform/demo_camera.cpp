@@ -8,7 +8,9 @@
 #include "platform/head_look.h"
 #include "platform/keys_raylib.h"
 #include "platform/seat.h"
+#include "platform/stage_overview.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace rally::platform {
@@ -40,7 +42,7 @@ Vector3 to_vector(const Vec3f& v) { return Vector3{v.x, v.y, v.z}; }
 void DemoCamera::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounter& /*perf*/) {
     const std::uint8_t context = ctx.frame_key_context;
     if (action_pressed(action(CameraAction::Camera), context)) {
-        ctx.view = next_camera_view(ctx.view);
+        ctx.view = next_camera_view(ctx.view, camera_view_count(ctx.mode));
     }
     if (action_pressed(action(CameraAction::HeadMotion), context)) {
         ctx.settings.head_motion = !ctx.settings.head_motion;
@@ -78,6 +80,34 @@ void DemoCamera::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCounte
             }
         }
     }
+}
+
+void DemoCamera::stage_camera(DemoContext& ctx, FrameCamera& c) {
+    const sim::StageTrack& track = *ctx.stage_track;
+    if (ctx.view == 2) {
+        // Todo el tramo: la caja del eje encuadrada con el aspecto de la ventana (se recalcula si
+        // cambia el tamaño).
+        const double aspect = static_cast<double>(GetScreenWidth()) /
+                              static_cast<double>(std::max(1, GetScreenHeight()));
+        if (!ctx.stage_overview || std::fabs(aspect - ctx.stage_overview_aspect) > 1e-6) {
+            ctx.stage_overview = stage_overview(track, kFixedFovYDegrees, aspect);
+            ctx.stage_overview_aspect = aspect;
+        }
+        c.eye = ctx.stage_overview->eye;
+        c.forward = ctx.stage_overview->forward;
+        return;
+    }
+    // Fija sobre la salida: la diagonal de la vista fija del recinto, en el marco del tramo en
+    // s = 0 (30 m detrás de la línea y 26 m arriba, mirando 20 m delante).
+    const sim::StagePose start = track.pose(0.0);
+    const sim::StagePose ahead = track.pose(10.0);
+    const double dx = ahead.x - start.x;
+    const double dz = ahead.z - start.z;
+    const double length = std::sqrt(dx * dx + dz * dz);
+    const double ux = dx / length;
+    const double uz = dz / length;
+    c.eye = {start.x - ux * 30.0, start.y + 26.0, start.z - uz * 30.0};
+    c.forward = {ux * 50.0, -26.0, uz * 50.0};
 }
 
 void DemoCamera::begin_frame(DemoContext& ctx, const DemoFrame& /*frame*/) { update(ctx); }
@@ -118,7 +148,9 @@ void DemoCamera::update(DemoContext& ctx) {
         c.eye = attach(car, kChaseOffset).position;
         c.forward = {car.position.x - c.eye.x, car.position.y + 1.0 - c.eye.y,
                      car.position.z - c.eye.z};
-    } else if (!ctx.mode.zone) {
+    } else if (ctx.mode.stage && ctx.stage_track != nullptr) {
+        stage_camera(ctx, c);
+    } else if (ctx.mode.kind() == WorldKind::Arena) {
         const Vec3d world_offset{ctx.desc.bodies[0].x, 0.0, ctx.desc.bodies[0].z};
         c.eye = {world_offset.x + kFixedEye.x, kFixedEye.y, world_offset.z + kFixedEye.z};
         c.forward = {kFixedTarget.x - kFixedEye.x, kFixedTarget.y - kFixedEye.y,
@@ -141,7 +173,8 @@ void DemoCamera::update(DemoContext& ctx) {
                             camera_position.z + static_cast<float>(c.forward.z)};
     camera.up =
         Vector3{static_cast<float>(c.up.x), static_cast<float>(c.up.y), static_cast<float>(c.up.z)};
-    camera.fovy = ctx.view != 2 || ctx.zone_bench ? kFovYDegrees : kFixedFovYDegrees;
+    const bool fixed_view = ctx.view == 2 || (ctx.mode.stage && ctx.view == 3);
+    camera.fovy = !fixed_view || ctx.zone_bench ? kFovYDegrees : kFixedFovYDegrees;
     camera.projection = CAMERA_PERSPECTIVE;
     c.camera = camera;
 }

@@ -8,6 +8,8 @@
 #include "platform/overlay.h"
 #include "platform/perf_stats.h"
 #include "platform/player_settings.h"
+#include "platform/stage_mode.h"
+#include "platform/stage_overview.h"
 #include "sim/car_data.h"
 #include "sim/sim_input.h"
 #include "sim/sim_world.h"
@@ -35,6 +37,7 @@ class Gamepads;
 class PerfCounter;
 class RecordingSession;
 class StageDraw;
+class StageScene;
 class ZoneDraw;
 struct FrameSteps;
 
@@ -53,7 +56,8 @@ struct GoldenFrame {
 // Qué mundo se describe. Lo escriben los modos de la zona (y las medidas y la línea de órdenes);
 // lo leen el mundo (la descripción), la cámara, el conductor y la pantalla.
 struct WorldMode {
-    bool zone = true;                                        // K: zona de pruebas o recinto
+    bool zone = true;                                        // K: la zona de pruebas
+    bool stage = false;                                      // K: el tramo (lote 5); zone = false
     bool blind = false;                                      // M: modo a ciegas
     int blind_trial = 0;                                     // prueba en curso (0..14)
     sim::Surface blind_trial_surface = sim::Surface::Gravel; // la de esa prueba
@@ -64,6 +68,14 @@ struct WorldMode {
     bool hide_config = false;     // --hide-config
     // La configuración no se dice en pantalla: a ciegas o con --hide-config.
     bool config_hidden() const { return hide_config || blind; }
+    // K recorre zona → tramo → recinto: ninguno de los dos bools (recinto), `zone` o `stage`.
+    WorldKind kind() const {
+        return stage ? WorldKind::Stage : zone ? WorldKind::Zone : WorldKind::Arena;
+    }
+    void set_kind(WorldKind k) {
+        zone = k == WorldKind::Zone;
+        stage = k == WorldKind::Stage;
+    }
 };
 
 // Reconstrucción pedida por una parte: el compositor la hace una vez, tras las teclas.
@@ -125,6 +137,14 @@ struct DemoContext {
     // El tramo que se dibuja en lugar de la zona (tramo-dibujo; lo pone la medida --bench-stage y,
     // en tramo-modo, el modo tramo). null: se dibuja la zona.
     StageDraw* stage_draw = nullptr;
+    // El modo tramo (lote 5): el archivo elegido (--tramo o data/stages/lazadas.stage), ya
+    // validado, y la cámara de «todo el tramo» del mundo actual (vacía fuera del tramo). Los
+    // escriben los modos de la zona (K) y el mundo; los lee la cámara.
+    StageSelection stage;
+    const StageScene* stage_scene = nullptr;      // el dibujo del tramo (F3 lee su CPU)
+    const sim::StageTrack* stage_track = nullptr; // el del mundo actual (null fuera del tramo)
+    std::optional<StageOverview> stage_overview;  // calculada con stage_overview_aspect
+    double stage_overview_aspect = 0.0;
     ScenePoses poses;
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).
     int shift_up_presses = 0;
@@ -156,8 +176,8 @@ struct DemoContext {
     std::optional<std::pair<Vec3d, Vec3d>> camera_override;
 
     // Cámara (demo_camera; K vuelve al ojo).
-    int view =
-        0; // Tab: 0 ojo del conductor (copiloto: asiento), 1 persecución, 2 fija o toda la zona
+    int view = 0; // Tab: 0 ojo del conductor (copiloto: asiento), 1 persecución, 2 fija, toda la
+                  // zona o todo el tramo
     bool world_float = false; // J: dibujo en float del mundo en vez de relativo
     // Ventana del copiloto (copilot_app): la vista 0 es el asiento derecho. No sirve
     // camera_override: fija "arriba" al vertical del mundo y el asiento tiene que alabear con el

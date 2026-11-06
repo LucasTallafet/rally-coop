@@ -14,3 +14,4 @@ persecucion_zona.png | --golden tests/data/recordings/bench_lap.rrec 6000 {salid
 carretera.png | --golden tests/data/recordings/road_run.rrec 9300 {salida}
 interior_ayuda.png | --golden docs/manejo/sesiones/2026-10-14/20261014-165348.rrec 12000 {salida} --help-page 1
 interior_f3_t.png | --golden docs/manejo/sesiones/2026-10-14/20261014-165348.rrec 12000 {salida} --debug --graphs 1
+tramo_salida.png | --golden tests/data/recordings/stage_lazadas.rrec 1200 {salida}

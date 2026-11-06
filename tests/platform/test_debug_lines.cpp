@@ -46,18 +46,21 @@ sim::DrivetrainOutput state(int k, int mode) {
 
 } // namespace
 
-TEST_CASE("debug_lines: the motor, axle and differential lines measure the same in every state") {
+TEST_CASE(
+    "debug_lines: the motor, clutch, axle and differential lines measure the same in every state") {
     const sim::DrivetrainOutput first = state(0, 0);
     for (const int font : {10, 20}) {
         const int motor = debug_text_width(debug_motor_line(first), font);
+        const int clutch = debug_text_width(debug_clutch_line(first), font);
         const int axles = debug_text_width(debug_axles_line(first), font);
         const int lsd = debug_text_width(debug_lsd_line(first), font);
         for (int mode = 0; mode < 8; ++mode) {
             for (int k = 0; k < 64; ++k) {
                 const sim::DrivetrainOutput d = state(k, mode);
                 INFO("font ", font, " modo ", mode, " k ", k, ": ", debug_motor_line(d), " | ",
-                     debug_axles_line(d), " | ", debug_lsd_line(d));
+                     debug_clutch_line(d), " | ", debug_axles_line(d), " | ", debug_lsd_line(d));
                 CHECK(debug_text_width(debug_motor_line(d), font) == motor);
+                CHECK(debug_text_width(debug_clutch_line(d), font) == clutch);
                 CHECK(debug_text_width(debug_axles_line(d), font) == axles);
                 CHECK(debug_text_width(debug_lsd_line(d), font) == lsd);
             }
@@ -73,11 +76,13 @@ TEST_CASE("debug_lines: torques always carry a sign and rpm have four digits") {
     const std::string motor = debug_motor_line(d);
     CHECK(motor.find("motor: 0850 rpm") == 0);
     CHECK(motor.find("+0000 N") != std::string::npos);
-    CHECK(motor.find("-0120 N") != std::string::npos);
-    CHECK(motor.find("embrague arranque") != std::string::npos);
+    CHECK(motor.find("embrague") == std::string::npos); // va en su propia línea
+    d.clutch_torque = -120.0f;
+    CHECK(debug_clutch_line(d).find("embrague arranque") == 0);
+    CHECK(debug_clutch_line(d).find("-0120 N") != std::string::npos);
     d.clutch = sim::ClutchMode::Closed;
     d.clutch_open = true;
-    CHECK(debug_motor_line(d).find("embrague cerrado, abierto") != std::string::npos);
+    CHECK(debug_clutch_line(d).find("embrague cerrado, abierto") != std::string::npos);
     // Fuera de rango se recorta a las cifras del campo, sin ensanchar la línea.
     d.engine_torque = 123456.0f;
     CHECK(debug_motor_line(d).find("+9999 N") != std::string::npos);
@@ -111,7 +116,8 @@ TEST_CASE("debug_lines: the worst case of each line fits the F3 content width") 
     for (const auto res : {std::pair{1280, 720}, std::pair{1360, 768}, std::pair{1920, 1080}}) {
         const ScreenLayout layout = layout_screen(res.first, res.second);
         const int content = layout.rect(Layer::Debug).w - 2 * layout.m.padding;
-        for (const std::string& line : {debug_axles_line(d), debug_lsd_line(d)}) {
+        for (const std::string& line :
+             {debug_motor_line(d), debug_clutch_line(d), debug_axles_line(d), debug_lsd_line(d)}) {
             INFO(res.first, "x", res.second, " fuente ", layout.m.font, " ancho ",
                  debug_text_width(line, layout.m.font), " de ", content, ": ", line);
             CHECK(debug_text_width(line, layout.m.font) <= content);

@@ -54,8 +54,9 @@ public:
     bool built() const { return built_; }
 
     // Dentro de BeginMode3D, relativo a `origin`, como ZoneDraw::draw; `eye` es el ojo en el
-    // mundo. No reserva memoria salvo la rejilla cercana la primera vez.
-    void draw(const Vec3d& eye, const Vec3d& origin);
+    // mundo. No reserva memoria salvo la rejilla cercana la primera vez. `distance`: hasta dónde
+    // se dibujan los trozos (en planta, desde el ojo); la vista de todo el tramo pasa la suya.
+    void draw(const Vec3d& eye, const Vec3d& origin, double distance = kStageDrawDistance);
 
     // Altura del suelo del tramo (núcleo y terreno) en (x, z); false sin suelo.
     bool ground_height(double x, double z, double& y) const;

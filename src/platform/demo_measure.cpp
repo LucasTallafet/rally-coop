@@ -101,7 +101,7 @@ void DemoMeasure::set_render_size(DemoContext& ctx, int width, int height) {
 
 void DemoMeasure::start_zone_bench(DemoContext& ctx, bool road) {
     if (!ctx.mode.zone || ctx.mode.blind) {
-        ctx.mode.zone = true;
+        ctx.mode.set_kind(WorldKind::Zone);
         ctx.mode.blind = false;
         ctx.rebuild = Rebuild::Describe;
     }
@@ -289,8 +289,8 @@ void DemoMeasure::begin_frame(DemoContext& ctx, const DemoFrame& frame) {
 }
 
 void DemoMeasure::draw_3d(DemoContext& ctx, const DemoFrame& /*frame*/) {
-    if (ctx.mode.zone) {
-        return;
+    if (ctx.mode.kind() != WorldKind::Arena) {
+        return; // el bosque rodea el recinto: ni la zona ni el tramo tienen cuerpos (bodies[0])
     }
     // El bosque rodea el recinto: su centro es el del suelo.
     forest_.draw(ctx.forest_mode,
