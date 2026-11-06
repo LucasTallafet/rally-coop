@@ -79,7 +79,7 @@ std::string debug_axles_line(const sim::DrivetrainOutput& d) {
            signed_field(static_cast<double>(d.viscous_torque), 4, 0) + " N·m";
 }
 
-// Parte de debug_axles_line (arriba); no hay otra función que forme esta línea.
+// Línea de los autoblocantes (pares delantero y trasero) y las iteraciones del LCP.
 std::string debug_lsd_line(const sim::DrivetrainOutput& d) {
     const std::string failed = " SIN CONVERGER";
     return "autobl.: " + unsigned_field(static_cast<double>(d.lsd_torque[0]), 4, 0) + " / " +
