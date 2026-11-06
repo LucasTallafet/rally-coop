@@ -106,3 +106,32 @@ set_tests_properties(replay.info_zone_lap_no_actions PROPERTIES
     PASS_REGULAR_EXPRESSION
     "ayuda de dirección: +no.*caja de cambios: +automática.*ABS: +no.*control de tracción: +no.*suspensión: +media"
     FAIL_REGULAR_EXPRESSION "acciones|eventos|línea de tiempo|action =")
+
+# rally_replay info con el tramo (lote 5, replay-tramo). Valores exactos: el nombre y los 2887 B
+# son de data/stages/lazadas.stage (= tests/sim/stages/lazadas.stage, byte a byte, con sus CRLF);
+# el hash es kExpectedStageGroundHash (tests/sim/test_stage_ground.cpp); la pasada son 21 345
+# pasos (fragmento de grabacion-v8) = 88,9375 s, que m:ss,cc trunca a 1:28,93.
+add_test(NAME replay.info_stage_v8
+    COMMAND rally_replay info ${RALLY_TEST_DATA}/recordings/stage_lazadas.rrec)
+set_tests_properties(replay.info_stage_v8 PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "formato: +8\n.*\ntramo: +Lazadas \\(test\\), 1150\\.0 m, texto de 2887 bytes\nhash de la zona: +0x0000000000000000 \\(sin zona\\)\n.*\nhash del suelo: +0xdd438cd676e8c121\npasada: +1:28,93 \\(21345 pasos\\), 1 recolocaciones, 0 atajos\n")
+# Sin tramo, ni una línea más: una grabación de formato 6 y otra de formato 8 sin tramo (la de la
+# zona reescrita al formato actual: cada grabación de la zona que se haga de ahora en adelante).
+add_test(NAME replay.info_no_stage_v6
+    COMMAND rally_replay info ${RALLY_TEST_DATA}/recordings/zone_lap.rrec)
+set_tests_properties(replay.info_no_stage_v6 PROPERTIES
+    PASS_REGULAR_EXPRESSION "formato: +6\n"
+    FAIL_REGULAR_EXPRESSION "tramo:|hash del suelo|pasada:")
+set(_zone_v8 ${RALLY_TESTS_OUT}/zone_lap_v8.rrec)
+add_test(NAME replay.info_no_stage_v8_copy
+    COMMAND ${CMAKE_COMMAND} -E copy ${RALLY_TEST_DATA}/recordings/zone_lap.rrec ${_zone_v8})
+set_tests_properties(replay.info_no_stage_v8_copy PROPERTIES FIXTURES_SETUP zone_v8_copy)
+add_test(NAME replay.info_no_stage_v8_rewrite COMMAND rally_replay rewrite ${_zone_v8})
+set_tests_properties(replay.info_no_stage_v8_rewrite PROPERTIES
+    FIXTURES_REQUIRED zone_v8_copy FIXTURES_SETUP zone_v8)
+add_test(NAME replay.info_no_stage_v8 COMMAND rally_replay info ${_zone_v8})
+set_tests_properties(replay.info_no_stage_v8 PROPERTIES
+    FIXTURES_REQUIRED zone_v8
+    PASS_REGULAR_EXPRESSION "formato: +8\n"
+    FAIL_REGULAR_EXPRESSION "tramo:|hash del suelo|pasada:")

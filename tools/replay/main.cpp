@@ -2,7 +2,9 @@
 //   rally_replay info <archivo>              cabecera y pie; las ayudas de la simulación y los
 //                                            ajustes de la plataforma al empezar la grabación;
 //                                            con formato 7, las acciones, los primeros 10
-//                                            eventos y el hash de la línea de tiempo
+//                                            eventos y el hash de la línea de tiempo; con
+//                                            formato 8 y tramo, su nombre, longitud, hash del
+//                                            suelo y la pasada del pie (m:ss,cc truncado)
 //   rally_replay run <archivo> [--telemetry <salida.csv>] [--bench N]
 //                                            repite y dice "hash OK" o el primer problema;
 //                                            con --telemetry, CSV por paso; con --bench, N
@@ -33,6 +35,7 @@
 #include "sim/pcg32.h"
 #include "sim/sim_version.h"
 #include "sim/sim_world.h"
+#include "sim/stage_track.h"
 #include "sim/surface.h"
 #include "sim/test_zone.h"
 #include "sim/tire.h"
@@ -141,6 +144,39 @@ bool load(const char* path, std::string& bytes, Recording& recording) {
     return true;
 }
 
+// m:ss,cc de una duración en pasos; las centésimas se truncan (como un cronómetro).
+std::string format_clock(std::int64_t steps) {
+    const std::int64_t centis = steps * 100 / rally::sim::kStepsPerSecond;
+    char text[40];
+    std::snprintf(text, sizeof text, "%" PRId64 ":%02" PRId64 ",%02" PRId64, centis / 6000,
+                  centis / 100 % 60, centis % 100);
+    return text;
+}
+
+// Formato 8 con tramo: nombre y longitud del eje (StageTrack::build del texto del mundo).
+void print_stage(const rally::sim::WorldDesc& desc) {
+    rally::sim::StageTrack track;
+    const rally::sim::StageParseResult built =
+        rally::sim::StageTrack::build(desc.stage_text, track);
+    if (built.ok) {
+        std::printf("tramo:               %s, %.1f m, texto de %zu bytes\n",
+                    track.axis().name().c_str(), track.axis().length(), desc.stage_text.size());
+    } else {
+        std::printf("tramo:               no válido (%s)\n", built.error.c_str());
+    }
+}
+
+// Pasada por el tramo del pie: tiempo m:ss,cc o «sin meta», recolocaciones y atajos.
+void print_stage_run(const rally::io::StageResult& stage) {
+    if (stage.steps < 0) {
+        std::printf("pasada:              sin meta, %u recolocaciones, %u atajos\n", stage.resets,
+                    stage.shortcuts);
+    } else {
+        std::printf("pasada:              %s (%" PRId64 " pasos), %u recolocaciones, %u atajos\n",
+                    format_clock(stage.steps).c_str(), stage.steps, stage.resets, stage.shortcuts);
+    }
+}
+
 int info(const char* path) {
     std::string bytes;
     Recording recording;
@@ -189,6 +225,9 @@ int info(const char* path) {
         } else {
             std::printf("zona de pruebas:     no\n");
         }
+        if (!desc.stage_text.empty()) {
+            print_stage(desc);
+        }
     } else {
         std::printf("mundo:               no válido (%s)\n", error.c_str());
     }
@@ -218,6 +257,10 @@ int info(const char* path) {
     }
     print_timed("tiempo cronometrado:", f.timed_steps);
     print_road("carretera:          ", f.road);
+    if (world_ok && !desc.stage_text.empty()) {
+        std::printf("hash del suelo:      0x%016" PRIx64 "\n", h.stage_ground_hash);
+        print_stage_run(f.stage);
+    }
     if (h.format_version >= 7) {
         print_actions(recording);
     }
