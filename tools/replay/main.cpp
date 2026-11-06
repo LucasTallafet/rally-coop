@@ -177,6 +177,15 @@ void print_stage_run(const rally::io::StageResult& stage) {
     }
 }
 
+// La descripción del mundo de la grabación lleva un tramo (formato 8 con texto).
+bool has_stage(const Recording& recording) {
+    rally::sim::WorldDesc desc;
+    std::string error;
+    return rally::io::parse_world(recording.header.world, desc, error,
+                                  recording.header.format_version) &&
+           !desc.stage_text.empty();
+}
+
 int info(const char* path) {
     std::string bytes;
     Recording recording;
@@ -353,7 +362,7 @@ class CsvObserver final : public rally::io::StepObserver {
 public:
     explicit CsvObserver(rally::io::TelemetryCsvWriter& writer) : writer_(writer) {}
     void after_step(const rally::sim::SimWorld& world) override {
-        writer_.append(world.telemetry());
+        writer_.append(world.telemetry(), world.stage_run());
     }
 
 private:
@@ -412,10 +421,14 @@ int run(const char* path, int bench_repetitions, const char* telemetry_path) {
                 static_cast<double>(result.steps) / rally::sim::kStepsPerSecond, result.hash);
     print_timed("vuelta:", result.timed_steps);
     print_road("carretera:", result.road);
+    if (has_stage(recording)) {
+        print_stage_run(result.stage);
+    }
     int code = 0;
     if (result.hash_ok) {
         std::puts("hash OK");
-    } else if (result.incomplete || result.version_mismatch || result.zone_mismatch) {
+    } else if (result.incomplete || result.version_mismatch || result.zone_mismatch ||
+               result.stage_mismatch) {
         std::printf("aviso: %s\n", result.problem.c_str());
     } else {
         std::printf("FALLO: %s\n", result.problem.c_str());
