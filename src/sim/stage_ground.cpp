@@ -150,6 +150,12 @@ struct Acc {
     bool zone_overflow = false;
     bool core = false;
     Surface core_surface = Surface::Dirt;
+    // Solo diagnóstico (center_overflows): la menor distancia al vértice de las cuñas de un arco
+    // cuyo abanico tiene un pie aquí, y la menor y la mayor altura de los pies con peso y de las
+    // bandas de los pies en zona.
+    double center_dist = 0.0;
+    double foot_min = 0.0;
+    double foot_max = 0.0;
 
     void reset() {
         count = 0;
@@ -159,9 +165,14 @@ struct Acc {
         zone_count = 0;
         zone_overflow = false;
         core = false;
+        center_dist = std::numeric_limits<double>::infinity();
+        foot_min = std::numeric_limits<double>::infinity();
+        foot_max = -std::numeric_limits<double>::infinity();
     }
 
     void add_zone(double d, double band) {
+        foot_min = rmath::min(foot_min, band);
+        foot_max = rmath::max(foot_max, band);
         if (zone_count < kMaxZoneFeet) {
             zone[zone_count++] = ZoneFoot{d, band};
             return;
@@ -319,6 +330,8 @@ private:
         if (!(weight > 0.0)) {
             return;
         }
+        acc.foot_min = rmath::min(acc.foot_min, height);
+        acc.foot_max = rmath::max(acc.foot_max, height);
         if (acc.count < kMaxCandidates) {
             acc.candidates[acc.count++] = Candidate{d, weight, height};
             return;
@@ -375,6 +388,13 @@ private:
         const double reach = t >= 0.0 ? fan.reach_right : fan.reach_left;
         if (rmath::abs(t) > reach) {
             return;
+        }
+        if (a.curvature != 0.0 && a.curvature == b.curvature_in) {
+            // Abanico de un arco: el vértice de su cuña es el centro de curvatura, a 1/κ del eje
+            // por la normal derecha N = (−T_z, T_x) (κ < 0: a la izquierda). Solo diagnóstico.
+            const double vx = px - (a.x - a.tz / a.curvature);
+            const double vz = pz - (a.z + a.tx / a.curvature);
+            acc.center_dist = rmath::min(acc.center_dist, rmath::sqrt(vx * vx + vz * vz));
         }
         const double dist = rmath::sqrt(ex * ex + ez * ez);
         const double y = a.y + u * (b.y - a.y);
@@ -895,7 +915,11 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
                 tile.heights[k] = kStageNoCollision;
                 continue;
             }
-            g.candidate_overflows_ += a.overflow || a.zone_overflow ? 1 : 0;
+            // En el centro de curvatura de un arco, todos sus abanicos tienen un pie a la misma
+            // distancia: el desborde se cuenta aparte (abajo, con la altura) y no cambia nada.
+            const bool overflow = a.overflow || a.zone_overflow;
+            const bool at_center = overflow && a.center_dist < kStageArcCenterTolerance;
+            g.candidate_overflows_ += overflow && !at_center ? 1 : 0;
             double h = 0.0;
             if (a.core && kind == StageGroundKind::GridOnly) {
                 h = a.core_h;
@@ -919,6 +943,16 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
             }
             tile.heights[k] = static_cast<float>(h);
             any = true;
+            if (at_center) {
+                StageCenterOverflow c;
+                c.x = origin.x + grid.base_x + static_cast<double>(k % n) * cell;
+                c.z = origin.z + grid.base_z + static_cast<double>(k / n) * cell;
+                c.distance = a.center_dist;
+                c.height = h + origin.y;
+                c.foot_min = a.foot_min + origin.y;
+                c.foot_max = a.foot_max + origin.y;
+                g.center_overflows_.push_back(c);
+            }
         }
         if (any && kind == StageGroundKind::GridOnly) {
             Grid inner = grid;

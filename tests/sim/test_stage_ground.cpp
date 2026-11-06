@@ -484,8 +484,28 @@ TEST_CASE("stage_ground: every sample is finite and the strip has ground up to 5
                 " baldosas, ", collide, " muestras con colisión de ", g.sample_count(),
                 "; la más lejana a ", farthest, " m del eje, la más cercana sin colisión a ",
                 nearest_without, " m; sin peso (pie más cercano): ", g.nearest_fallbacks(),
-                "; con más pies de los que caben: ", g.candidate_overflows());
+                "; con más pies de los que caben: ", g.candidate_overflows(),
+                "; en el centro de un arco: ", g.center_overflows().size());
         CHECK(g.candidate_overflows() == 0);
+        // Respuesta del consultor a la parada de tramo-ajustes (lote 5): las del centro de
+        // curvatura de un arco se cuentan aparte; su altura queda entre las de sus pies.
+        for (const rally::sim::StageCenterOverflow& c : g.center_overflows()) {
+            char text[200];
+            std::snprintf(text, sizeof(text),
+                          "(%.3f, %.3f): a %.3g m del vértice; altura %.17g m, pies de %.17g a "
+                          "%.17g m (fuera del intervalo: %.3g m)",
+                          c.x, c.z, c.distance, c.height, c.foot_min, c.foot_max,
+                          std::max({0.0, c.foot_min - c.height, c.height - c.foot_max}));
+            MESSAGE("  centro de arco en ", text);
+            CHECK(c.distance < rally::sim::kStageArcCenterTolerance);
+            // En la precisión en que el suelo guarda la altura (float, respecto al origen): en
+            // double, la media ponderada de pies iguales puede salirse por el redondeo (un ulp).
+            const auto stored = [&g](double world_y) {
+                return static_cast<float>(world_y - g.origin_y());
+            };
+            CHECK(stored(c.height) >= stored(c.foot_min));
+            CHECK(stored(c.height) <= stored(c.foot_max));
+        }
         CHECK(bad == 0);
         CHECK(missing == 0);
         CHECK(extra == 0);
