@@ -135,3 +135,63 @@ set_tests_properties(replay.info_no_stage_v8 PROPERTIES
     FIXTURES_REQUIRED zone_v8
     PASS_REGULAR_EXPRESSION "formato: +8\n"
     FAIL_REGULAR_EXPRESSION "tramo:|hash del suelo|pasada:")
+
+# rally_replay run con el tramo (lote 5, replay-run). `run` imprime la pasada repetida con el
+# formato de `info`; el CSV de telemetría lleva las seis columnas del tramo con sus valores; un
+# tramo cambiado es un aviso (código 0), no un FALLO; y `info` dice «sin meta» y «mundo: no
+# válido» (con el tramo dentro) en vez de callar. Las copias modificadas las hace
+# make_rrec_variant.py sobre stage_lazadas.rrec, sin cambiar ninguna longitud.
+add_test(NAME replay.run_stage_pass
+    COMMAND rally_replay run ${RALLY_TEST_DATA}/recordings/stage_lazadas.rrec)
+set_tests_properties(replay.run_stage_pass PROPERTIES
+    PASS_REGULAR_EXPRESSION
+    "\npasada: +1:28,93 [(]21345 pasos[)], 1 recolocaciones, 0 atajos\n.*hash OK"
+    FAIL_REGULAR_EXPRESSION "FALLO|aviso")
+# Sin tramo, `run` no imprime la pasada.
+add_test(NAME replay.run_no_stage_pass
+    COMMAND rally_replay run ${RALLY_TEST_DATA}/recordings/zone_lap.rrec)
+set_tests_properties(replay.run_no_stage_pass PROPERTIES
+    PASS_REGULAR_EXPRESSION "hash OK"
+    FAIL_REGULAR_EXPRESSION "pasada:|FALLO")
+if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.12)
+    set(_stage_rrec ${RALLY_TEST_DATA}/recordings/stage_lazadas.rrec)
+    set(_stage_csv ${RALLY_TESTS_OUT}/stage_run.csv)
+    add_test(NAME replay.run_stage_csv
+        COMMAND rally_replay run ${_stage_rrec} --telemetry ${_stage_csv})
+    set_tests_properties(replay.run_stage_csv PROPERTIES
+        FIXTURES_SETUP stage_run_csv
+        PASS_REGULAR_EXPRESSION "139 columnas.*hash OK" FAIL_REGULAR_EXPRESSION "FALLO|aviso")
+    add_test(NAME replay.run_stage_csv_columns
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_stage_csv.py ${_stage_csv})
+    set_tests_properties(replay.run_stage_csv_columns PROPERTIES
+        FIXTURES_REQUIRED stage_run_csv PASS_REGULAR_EXPRESSION "CSV del tramo correcto: ")
+
+    set(_variant_py ${CMAKE_CURRENT_SOURCE_DIR}/make_rrec_variant.py)
+    foreach(_mode changed-stage invalid-stage no-finish)
+        add_test(NAME replay.variant_${_mode}
+            COMMAND ${Python3_EXECUTABLE} ${_variant_py} ${_mode} ${_stage_rrec}
+                    ${RALLY_TESTS_OUT}/stage_${_mode}.rrec)
+        set_tests_properties(replay.variant_${_mode} PROPERTIES FIXTURES_SETUP variant_${_mode})
+    endforeach()
+    # El texto del tramo cambiado: aviso, no FALLO, y código 0 (el test falla si no).
+    add_test(NAME replay.run_stage_changed
+        COMMAND rally_replay run ${RALLY_TESTS_OUT}/stage_changed-stage.rrec)
+    set_tests_properties(replay.run_stage_changed PROPERTIES
+        FIXTURES_REQUIRED variant_changed-stage
+        PASS_REGULAR_EXPRESSION "aviso: el tramo ha cambiado .*no se compara el hash"
+        FAIL_REGULAR_EXPRESSION "FALLO|hash OK")
+    add_test(NAME replay.info_stage_no_finish
+        COMMAND rally_replay info ${RALLY_TESTS_OUT}/stage_no-finish.rrec)
+    set_tests_properties(replay.info_stage_no_finish PROPERTIES
+        FIXTURES_REQUIRED variant_no-finish
+        PASS_REGULAR_EXPRESSION "\npasada: +sin meta, 1 recolocaciones, 0 atajos\n")
+    add_test(NAME replay.info_stage_invalid
+        COMMAND rally_replay info ${RALLY_TESTS_OUT}/stage_invalid-stage.rrec)
+    set_tests_properties(replay.info_stage_invalid PROPERTIES
+        FIXTURES_REQUIRED variant_invalid-stage
+        PASS_REGULAR_EXPRESSION "\nmundo: +no válido [(]descripción del mundo: tramo no válido: "
+        FAIL_REGULAR_EXPRESSION "\npasada:|\nhash del suelo:")
+else()
+    message(WARNING "Python 3.12 o posterior no encontrado: los tests replay.run_stage_csv*, "
+        "replay.variant_*, replay.run_stage_changed y replay.info_stage_* no se añaden")
+endif()
