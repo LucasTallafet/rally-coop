@@ -14,9 +14,10 @@ StageChunks StageChunks::build(const sim::StageGround& ground) {
     const auto chunk_of = [&](const sim::StageTriangle& t) {
         const std::uint32_t section =
             std::min({t.a, t.b, t.c}) / static_cast<std::uint32_t>(sim::kStageSectionVertices);
-        const double s = sections.empty() ? 0.0 : sections[std::min<std::size_t>(
-                                                      section, sections.size() - 1)];
-        return static_cast<std::int64_t>(std::floor((s - sections.front()) / kStageCoreChunkLength));
+        const double s =
+            sections.empty() ? 0.0 : sections[std::min<std::size_t>(section, sections.size() - 1)];
+        return static_cast<std::int64_t>(
+            std::floor((s - sections.front()) / kStageCoreChunkLength));
     };
     if (!triangles.empty() && !sections.empty()) {
         std::int64_t count = 1;

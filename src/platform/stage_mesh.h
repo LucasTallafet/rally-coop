@@ -20,9 +20,7 @@ struct StageMeshBuffers {
     std::vector<std::uint16_t> indices; // si `indexed`; si no, tres vértices por triángulo
     bool indexed = false;
     std::size_t vertex_count() const { return positions.size() / 3; }
-    std::size_t triangle_count() const {
-        return indexed ? indices.size() / 3 : vertex_count() / 3;
-    }
+    std::size_t triangle_count() const { return indexed ? indices.size() / 3 : vertex_count() / 3; }
 };
 
 // Color RGB de cada superficie (índice de sim::Surface).
