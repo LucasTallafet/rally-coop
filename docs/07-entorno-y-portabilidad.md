@@ -127,7 +127,7 @@ Como mucho **dos compilaciones a la vez en el PC**, con dos mutex con nombre de 
 - Con la variable de entorno puesta (`setx RALLY_DEPS_SRC D:\Proyectos\RallyCoop\deps-src`, en una ventana nueva), el configure usa esas fuentes si su sello coincide con el hash; si no, descarga como siempre y lo avisa.
 - Cada copia compila igualmente sus dependencias en su propio `build/`.
 
-**Capturas de referencia:** `tools\ci\golden.ps1 [-Regenerar]` saca con `rally.exe --golden` las capturas de `tests/platform/golden/comandos.txt` y las compara byte a byte. Solo valen en el mismo PC y sirven para reestructurar sin cambiar el dibujo (detalle en la cabecera de `comandos.txt`); no van en `comprobar.ps1`.
+**Capturas de referencia:** `tools\ci\golden.ps1 [-Regenerar]` saca con `rally.exe --golden` las capturas de `tests/platform/golden/comandos.txt` y las compara byte a byte. Entre ellas, `tramo_salida.png` (`stage_lazadas.rrec`, paso 1200). Solo valen en el mismo PC y sirven para reestructurar sin cambiar el dibujo (detalle en la cabecera de `comandos.txt`); no van en `comprobar.ps1`.
 
 **Comprobación de que el PC nuevo es equivalente:**
 
@@ -224,6 +224,7 @@ La tabla de teclas está en `docs/teclas.md`.
 | `--bench-zone` | Mide la CPU del dibujo del suelo de la zona en pantalla completa sin bordes, con la cámara por la pista ciega a 100 km/h (3 s de calentamiento y 20 s de medida); escribe `rendimiento_zona_NNN.txt` junto al exe y se cierra |
 | `--bench-road` | Lo mismo con la cámara por la carretera de prueba (con sus árboles), de la entrada a la frenada; escribe `rendimiento_carretera_NNN.txt` |
 | `--bench-stage` | Lazadas de s = −5 m a la meta a 60 km/h y, en la misma ejecución, la carretera de referencia; escribe `rendimiento_tramo_NNN.txt` junto al exe |
+| `--tramo <archivo .stage>` | Arranca en el modo tramo con ese archivo; sin él, K carga `data/stages/lazadas.stage` |
 | `--hide-config` | La pantalla no dice qué configuración del coche se lleva (F8 sigue cambiándola): bloque C del protocolo de la 2.10 |
 | `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
 | `--copiloto [dirección[:puerto]]` | Abre la segunda instancia, el copiloto (ventana de 640 × 360 siempre encima); se conecta al host en la dirección dada (por defecto 127.0.0.1:29470). Su tecla Z cambia la red simulada (no / media / mala) y solo existe en el copiloto. Arranca en la cámara del asiento derecho (mirada al frente); el stick derecho o el ratón giran la cabeza (el salpicadero, a unos 50° a la izquierda; botón central, al frente; solo con el foco; el ratón captura el cursor con el foco y Alt+Tab lo suelta); Tab cambia asiento / persecución / toda la zona. No escribe `ajustes.txt`. El juego normal hace de host al arrancar (no con `--golden` ni `--bench-*`); la «CPU red» de F1 y las 2 líneas de red de F3 solo salen con un copiloto conectado |

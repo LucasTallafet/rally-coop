@@ -297,6 +297,8 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
 
 **Dibujo del tramo (lote 5, `platform/stage_draw`).** `StageDraw` dibuja el tramo con la `StageGround` que calcula con la misma función que la física y comprueba su hash; la rejilla cercana (`NearGrid`, compartida con `ZoneDraw`) lleva la altura del suelo del tramo (`StageSurface`) y el microrrelieve de la rueda. Solo se dibuja la franja de ±60 m del terreno; trozos a menos de 600 m del ojo. La colisión de las baldosas es por triángulo (tres esquinas con colisión), no por celda con cuatro.
 
+**El tramo en el juego y en el copiloto (lote 5, `platform/stage_mode`, `stage_scene`, `stage_hud`, `stage_overview`).** K recorre zona → tramo → recinto. El modo tramo construye un mundo solo con `stage_text` y el coche parado en `stage_spawn(track, -5)`; `StageScene` dibuja con `StageDraw` (un solo dibujo para el juego y para el copiloto). El reloj del tramo cuenta pasos de la simulación entre 240 y se trunca a la centésima. El copiloto construye el mundo con `build_copilot_world`, compara `stage_ground_hash` y dibuja el recibido.
+
 **Sentido contrario:** el mundo es el mismo y no se recarga. Los datos que dependen del sentido ya se calcularon al validar; la pasada 2 empieza al instante.
 
 ## 7. Red
