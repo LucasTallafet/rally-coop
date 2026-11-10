@@ -58,6 +58,12 @@ public:
     // `margin` > 0, también hasta `margin` fuera del arcén (el microrrelieve del tramo, que mezcla
     // en esa franja; on_road de `out` dice entonces si está dentro del margen). Sin reservas.
     bool on_any_road(double x, double z, StageProjection& out, double margin = 0.0) const;
+    // Para la banda de entorno (sim/stage_ground.h, tarea formato-2): los pies perpendiculares de
+    // (x, z) en el eje (mínimos locales de la distancia, a ≤ 60 m de la celda del índice) con
+    // |s − s_self| > gap, es decir, en otra parte del tramo. Escribe hasta `capacity` en `out` y
+    // devuelve cuántos hay (más de `capacity` si no caben: desborde). Sin reservas.
+    int other_feet(double x, double z, double s_self, double gap, StageProjection* out,
+                   int capacity) const;
     // Memoria de las piezas, las muestras y el índice (bytes).
     std::size_t index_bytes() const;
 

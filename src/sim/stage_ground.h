@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace rally::sim {
@@ -68,20 +69,75 @@ inline constexpr double kStageCell = 0.75; // celda de la rejilla del diseño (m
 inline constexpr float kStageNoCollision = std::numeric_limits<float>::max();
 inline constexpr int kStageSectionVertices = 5;
 
+// --- Formato 2: banda de entorno (tarea formato-2, lote 6; mensajes/formato-2-plan.md §1) ------
+//
+// A cada lado de cada sección, desde el vértice del borde del arcén E (el del núcleo) por la
+// dirección del arcén en planta d = (E − R)/|E − R| (R, el borde de la calzada) y con la pendiente
+// lateral del arcén g, ambas de los vértices (nunca de los semianchos del eje: la capa de
+// irregularidad moverá los bordes y la banda los seguirá):
+// - cuneta en coseno de kStageDitchWidth × kStageDitchDepth sobre el plano del arcén prolongado,
+//   en `ditch_segments` tramos; su último vértice es la cabeza C;
+// - una tira de C al final F: hasta el eje medio con la pasada de enfrentada si está a ≤
+//   kStageBandMeet del borde (talud o muro, de cabeza a cabeza), una explanada en el plano del
+//   arcén hasta kStageBandFree si no hay ninguna a menos de kStageBandMeet + kStageBandRamp, y
+//   entre las dos, una rampa continua; en el interior de un arco cuyo eje medio es su centro,
+//   todas las secciones acaban en el centro (abanico).
+// Un tramo en el que la cuneta no cabe o el muro pasaría de 80° no carga (stage_band_error).
+inline constexpr double kStageDitchWidth = 1.5;  // ancho de la cuneta (m)
+inline constexpr double kStageDitchDepth = 0.25; // fondo de la cuneta (m)
+inline constexpr int kStageDitchSegments = 18;   // tramos de la cuneta: cuerda del coseno ≤ 2 mm
+// Pendiente máxima de cada material (dy/dx). Hoy solo la tierra: talud 1:1,5 (33,7°).
+inline constexpr double kStageDirtSlope = 1.0 / 1.5;
+inline constexpr double kStageWallMaxSlope = 5.6712818196177066; // tan 80°: el muro, como mucho
+inline constexpr double kStageBandFree = 5.0;     // banda libre: hasta aquí del borde del arcén (m)
+inline constexpr double kStageBandMeet = 10.0;    // eje medio a ≤ esto del borde: hasta él (m)
+inline constexpr double kStageBandRamp = 5.0;     // de enfrentada a libre en esto más (m)
+inline constexpr double kStageBandOverlap = 0.01; // la banda pasa del eje medio esto (m)
+inline constexpr double kStageBandMinTalud = 0.05; // talud mínimo entre cabeza y eje medio (m)
+inline constexpr double kStageBandSelfGap = 1.0;   // otra parte del tramo: |Δs| > esto (m)
+
 // Densidad de la malla del núcleo. La del juego son las constantes de arriba; la referencia del
-// criterio 3 en curva (respuesta del consultor a tramo-fisica, §2) es 4 veces más densa.
+// criterio 3 en curva (respuesta del consultor a tramo-fisica, §2) es 4 veces más densa, también
+// en la cuneta de la banda (formato-2).
 struct StageMeshDensity {
     double max_step = kStageMeshMaxStep;
     double chord_plan = kStageChordPlan;
     double chord_height = kStageChordHeight;
+    int ditch_segments = kStageDitchSegments;
 };
-inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005};
+inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005, 4 * kStageDitchSegments};
 
 // Design: núcleo en malla y terreno en baldosas (§2.6). GridOnly: todo en rejilla, el núcleo con
 // su superficie por celda y sin bajada; solo para la medida R de la parte A. NaturalOutside: como
 // Design, pero fuera de los núcleos el terreno natural N sin la banda ni el empalme; solo para el
-// diagnóstico del talud en los tests (quinta respuesta del consultor a tramo-fisica).
-enum class StageGroundKind : std::uint8_t { Design, GridOnly, NaturalOutside };
+// diagnóstico del talud en los tests (quinta respuesta del consultor a tramo-fisica). Band: la
+// malla del formato 2 (núcleo y banda) sobre el terreno de Design; prototipo de la parte A de
+// formato-2 (la rejilla aún no sigue a la banda).
+enum class StageGroundKind : std::uint8_t { Design, GridOnly, NaturalOutside, Band };
+
+// Aspecto de un triángulo para el dibujo (formato-2): el muro se dibuja de roca y es de tierra.
+enum class StageLook : std::uint8_t { Road, Shoulder, Ditch, Slope, Wall };
+
+// Cómo acaba la banda a un lado de una sección.
+enum class StageBandKind : std::uint8_t { Free, Meet, Ramp, Fan, Clamped };
+
+// La banda a un lado de una sección (diagnóstico de la parte A y de los tests).
+struct StageBandSide {
+    double s = 0.0;
+    int side = 0; // −1 izquierda, +1 derecha
+    StageBandKind kind = StageBandKind::Free;
+    double delta = 0.0;     // u del eje medio desde el borde del arcén (∞ sin él)
+    double other_s = 0.0;   // pie de la otra parte del tramo en el eje medio
+    double end_u = 0.0;     // u del final F
+    double rim_y = 0.0;     // altura de la cabeza (mundo)
+    double end_y = 0.0;     // altura de F (mundo)
+    double slope = 0.0;     // pendiente de la tira de la cabeza a F
+    double plane_gap = 0.0; // y_F − el plano del arcén prolongado en F (rampa y recortada)
+};
+
+// Si la banda no cabe en algún punto del tramo, «s = …: no cabe el talud entre pasadas» con la
+// primera s; vacío si cabe. Reserva memoria y tarda: al cargar.
+std::string stage_band_error(const StageTrack& track);
 
 // Vértice respecto al origen del suelo (StageGround::origin_*).
 struct StageVertex {
@@ -96,6 +152,8 @@ struct StageTriangle {
     std::uint32_t b = 0;
     std::uint32_t c = 0;
     Surface surface = Surface::Gravel;
+    std::uint32_t section = 0; // índice en sections() de la sección donde empieza
+    StageLook look = StageLook::Road;
 };
 
 // Baldosa (tx, tz): sus muestras son las globales (tx·63 + i, tz·63 + k), i, k en [0, 64), en
@@ -203,9 +261,24 @@ public:
     double cell() const { return cell_; }
     StageGroundKind kind() const { return kind_; }
 
-    // s de cada sección del núcleo (vacío en GridOnly); sus vértices son los 5 que empiezan en
-    // kStageSectionVertices · índice, de izquierda a derecha.
+    // s de cada sección del núcleo (vacío en GridOnly); sus vértices son los
+    // vertices_per_section() que empiezan en vertices_per_section() · índice, de izquierda a
+    // derecha (kStageSectionVertices en Design; con la banda, 2·ditch_segments + 7).
     const std::vector<double>& sections() const { return sections_; }
+    std::size_t vertices_per_section() const { return vertices_per_section_; }
+    // Solo Band: la banda a cada lado de cada sección (izquierda y derecha de la sección 0, …).
+    const std::vector<StageBandSide>& band_sides() const { return band_sides_; }
+    // Solo Band: puntos de la búsqueda del eje medio con más pies de otras partes del tramo de
+    // los que se miran (16). Si no es 0, algún δ puede estar mal.
+    std::size_t band_feet_overflows() const { return band_feet_overflows_; }
+    // Solo Band: el error de stage_band_error (vacío si cabe) y los triángulos de la banda que lo
+    // dan (invertidos, sin área o de más de 80°). Se construye igual, para el diagnóstico.
+    const std::string& band_error() const { return band_error_; }
+    std::size_t band_bad_triangles() const { return band_bad_triangles_; }
+    // Solo Band: pasadas que añadieron secciones por la cuerda del final de la banda y los puntos
+    // medios que aún la pasaban al acabar (0 si convergió).
+    int band_refine_passes() const { return band_refine_passes_; }
+    std::size_t band_refine_pending() const { return band_refine_pending_; }
     const std::vector<StageVertex>& vertices() const { return vertices_; }
     const std::vector<StageTriangle>& triangles() const { return triangles_; }
     // Baldosas con alguna muestra con colisión, en orden de (tz, tx).
@@ -240,6 +313,13 @@ private:
     double cell_ = kStageCell;
     StageGroundKind kind_ = StageGroundKind::Design;
     std::vector<double> sections_;
+    std::size_t vertices_per_section_ = kStageSectionVertices;
+    std::vector<StageBandSide> band_sides_;
+    std::size_t band_feet_overflows_ = 0;
+    std::string band_error_;
+    std::size_t band_bad_triangles_ = 0;
+    int band_refine_passes_ = 0;
+    std::size_t band_refine_pending_ = 0;
     std::vector<StageVertex> vertices_;
     std::vector<StageTriangle> triangles_;
     std::vector<StageTile> tiles_;

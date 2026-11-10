@@ -5,6 +5,7 @@
 // por paso con el 205 (reference.car) y el conductor de test a 50–90 km/h. Se lanza a mano en
 // Release; escribe la tabla en la salida.
 
+#include "band_report.h"
 #include "car_worlds.h"
 #include "io/replay.h"
 #include "sim/jolt_runtime.h"
@@ -30,11 +31,18 @@ struct Variant {
     rally::sim::StageGroundKind kind;
 };
 
+// Con «f2» en la línea de órdenes (formato-2, parte A): el formato 1 (M 0,75) y el prototipo del
+// formato 2 (malla con la banda sobre el terreno de M 0,75); sin ella, las del lote 4.
 constexpr Variant kVariants[] = {
     {"M 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
     {"M 1,5", StageGroundVariant::CoarseTiles, 1.5, rally::sim::StageGroundKind::Design},
     {"R 0,75", StageGroundVariant::GridOnly, 0.75, rally::sim::StageGroundKind::GridOnly},
 };
+constexpr Variant kFormat2Variants[] = {
+    {"M 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
+    {"F2", StageGroundVariant::Band, 0.75, rally::sim::StageGroundKind::Band},
+};
+bool g_format2 = false;
 
 struct PassCost {
     double mean = 0.0;
@@ -115,7 +123,11 @@ void measure(const char* stage_name, const std::string& text, double start_s, do
     std::printf("%-7s | %9s | %9s | %9s | %8s | %6s | %10s | %8s | %8s | %8s | %6s\n", "suelo",
                 "carga ms", "geom. ms", "Jolt MB", "triáng.", "bald.", "muestras", "media ms",
                 "p99 ms", "máx ms", "km/h");
-    for (const Variant& v : kVariants) {
+    std::vector<Variant> variants(std::begin(kVariants), std::end(kVariants));
+    if (g_format2) {
+        variants.assign(std::begin(kFormat2Variants), std::end(kFormat2Variants));
+    }
+    for (const Variant& v : variants) {
         // Geometría sola.
         const auto g0 = Clock::now();
         const rally::sim::StageGround ground =
@@ -258,9 +270,45 @@ void relief_cost() {
                 std::chrono::duration<double, std::micro>(t3 - t2).count() / kCalls, sum);
 }
 
-int main() {
+int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     const rally::sim::JoltRuntime runtime;
+    // «f2»: la geometría de la banda y el coste; «f2geo»: solo la geometría.
+    const std::string mode = argc > 1 ? std::string(argv[1]) : std::string();
+    g_format2 = mode == "f2" || mode == "f2geo";
+    rally::tests::g_band_debug = argc > 2 && std::string(argv[2]) == "debug";
+    if (g_format2) {
+        rally::tests::band_report();
+    }
+    if (mode == "f2geo") {
+        return 0;
+    }
+    if (mode == "f2sides" && argc >= 5) {
+        // Los lados de la banda en [s0, s1] de un tramo (lazadas, hairpin o 30km): diagnóstico.
+        const std::string which = argv[2];
+        const std::string text = which == "30km" ? rally::tests::synthetic_stage_30km()
+                                 : which == "hairpin"
+                                     ? rally::tests::stage_file("hairpin_flat.stage")
+                                 : which == "stacked3" ? rally::tests::stacked_stage(0.03)
+                                                       : rally::tests::lazadas_stage_text();
+        rally::sim::StageTrack track;
+        rally::sim::StageTrack::build(text, track);
+        const rally::sim::StageGround g = rally::sim::StageGround::build(
+            track, rally::sim::kStageCell, rally::sim::StageGroundKind::Band);
+        const double s0 = std::stod(argv[3]);
+        const double s1 = std::stod(argv[4]);
+        for (const rally::sim::StageBandSide& b : g.band_sides()) {
+            if (b.s < s0 || b.s > s1) {
+                continue;
+            }
+            const rally::sim::StagePose p = track.pose(b.s);
+            std::printf("s %9.3f lado %+d %-10s delta %8.4f enfr %9.3f end_u %7.3f cabeza %8.3f "
+                        "final %8.3f pend %6.3f kappa %8.5f\n",
+                        b.s, b.side, rally::tests::band_kind_name(b.kind), b.delta, b.other_s,
+                        b.end_u, b.rim_y, b.end_y, b.slope, p.curvature);
+        }
+        return 0;
+    }
     relief_cost();
     measure("lazadas.stage", rally::tests::lazadas_stage_text(), 0.0, 1150.0);
     measure("sintético 30 km", rally::tests::synthetic_stage_30km(), 1000.0, 4000.0);

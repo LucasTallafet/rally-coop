@@ -6,7 +6,11 @@
 #include "sim/test_zone.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
+#include <charconv>
+#include <limits>
+#include <string>
 #include <utility>
 
 namespace rally::sim {
@@ -545,8 +549,10 @@ bool blend(const Acc& a, double& h) {
 }
 
 // s de las secciones del núcleo: en cada marca del eje y, entre dos, n partes iguales con el
-// paso más largo que cumple los errores de cuerda, el alabeo y el paso máximo.
-std::vector<double> section_positions(const StageTrack& track, const StageMeshDensity& density) {
+// paso más largo que cumple los errores de cuerda, el alabeo y el paso máximo. La cuerda en planta
+// se mide `reach` más allá del borde del arcén (la banda libre del formato 2; 0 en Design).
+std::vector<double> section_positions(const StageTrack& track, const StageMeshDensity& density,
+                                      double reach = 0.0) {
     std::vector<double> marks;
     marks.push_back(track.s_begin());
     for (const double b : track.axis().breaks()) {
@@ -576,7 +582,7 @@ std::vector<double> section_positions(const StageTrack& track, const StageMeshDe
                        rmath::max(rmath::abs(pm.curvature), rmath::abs(pb.curvature)));
         const double half = rmath::max(rmath::max(pa.half_width_left, pa.half_width_right),
                                        rmath::max(pb.half_width_left, pb.half_width_right));
-        const double edge = half + kStageShoulderWidth;
+        const double edge = half + kStageShoulderWidth + reach;
         const double bank_rate = rmath::abs(pb.bank - pa.bank) / span;
         const double width_rate =
             rmath::max(rmath::abs(pb.half_width_left - pa.half_width_left),
@@ -623,7 +629,604 @@ double surface_hessian(const StagePose& p, double curvature_rate, double bank_ra
     return 0.5 * (rmath::abs(a) + rmath::sqrt(a * a + 4.0 * c * c));
 }
 
+// --- Banda del formato 2 ---------------------------------------------------------------------
+
+// Un final a menos de esto del centro de un arco con abanico es ese centro (m).
+constexpr double kFanSnap = 0.02;
+// Una raíz del eje medio a menos de esto del centro de curvatura propio es el centro: a ~1 mm
+// de él, los extremos del arco ya pasan por pies perpendiculares de «otra parte» (m).
+constexpr double kFocalRoot = 0.01;
+// La cuerda del final de la banda no parte tramos de menos de 2 veces esto (m), y como mucho en
+// tantas pasadas.
+constexpr double kStageBandMinRefine = 0.05;
+constexpr int kBandRefinePasses = 6;
+// Sin eje medio antes del centro de curvatura (no debería pasar fuera de un arco), el rayo para
+// esto antes (m).
+constexpr double kFocalMargin = 0.05;
+// Pies de otras partes del tramo que se miran en cada punto.
+constexpr int kMaxOtherFeet = 16;
+// Raíz del eje medio: iteraciones y anchura final del intervalo (m).
+constexpr int kRootIterations = 200;
+constexpr double kRootTolerance = 1.0e-9;
+constexpr double kTwoPiBand = 6.283185307179586;
+
+std::string fixed2(double value) {
+    std::array<char, 64> buffer{};
+    const std::to_chars_result r = std::to_chars(buffer.data(), buffer.data() + buffer.size(),
+                                                 value, std::chars_format::fixed, 2);
+    return std::string(buffer.data(), r.ptr);
+}
+
+struct BandPoint {
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+};
+
+// La malla del formato 2 en el mundo, antes del origen: secciones, K puntos por sección y la
+// banda de cada lado.
+struct BandLayout {
+    std::vector<double> sections;
+    int ditch = 0;
+    std::size_t per_section = 0;
+    std::vector<BandPoint> points;
+    std::vector<StageBandSide> sides;     // izquierda y derecha de cada sección
+    std::vector<std::uint32_t> end_index; // el vértice F de cada lado (el centro de un abanico)
+    std::vector<StageTriangle> triangles; // índices en points
+    std::size_t feet_overflows = 0;       // puntos con más pies de otras partes que kMaxOtherFeet
+    std::size_t bad_triangles = 0;        // de la banda: invertidos, sin área o de más de 80°
+    int refine_passes = 0;                // pasadas con secciones añadidas por la cuerda del final
+    std::size_t refine_pending = 0;       // puntos medios que aún pedían sección al acabar
+    std::string error;                    // «s = …: no cabe el talud entre pasadas»
+};
+
+// Índices de la sección (K = 2n + 7): F izq, cuneta izq de la cabeza (k = n) al borde (k = 1), E
+// izq, R izq, eje, R der, E der, cuneta der del borde (k = 1) a la cabeza (k = n), F der.
+std::size_t band_end_index(int n, int side) {
+    return side < 0 ? 0 : static_cast<std::size_t>(2 * n + 6);
+}
+std::size_t band_ditch_index(int n, int side, int k) {
+    return side < 0 ? static_cast<std::size_t>(n + 1 - k) : static_cast<std::size_t>(n + 5 + k);
+}
+std::size_t band_edge_index(int n, int side) {
+    return side < 0 ? static_cast<std::size_t>(n + 1) : static_cast<std::size_t>(n + 5);
+}
+std::size_t band_road_index(int n, int side) {
+    return side < 0 ? static_cast<std::size_t>(n + 2) : static_cast<std::size_t>(n + 4);
+}
+
+// Índice de la primitiva de arco de curvatura `curvature` que contiene s o empieza o acaba a
+// menos de 1 µm de s (las secciones de las juntas); −1 si no hay.
+int arc_at(const StageTrack& track, double s, double curvature) {
+    constexpr double kJoint = 1.0e-6;
+    const std::vector<StagePrimitive>& prims = track.axis().primitives();
+    if (prims.empty() || s < -kJoint || s > track.axis().length() + kJoint) {
+        return -1;
+    }
+    const auto is_arc = [&](std::size_t k) {
+        return prims[k].curvature0 == prims[k].curvature1 && prims[k].curvature0 != 0.0 &&
+               rmath::abs(prims[k].curvature0 - curvature) <= 1.0e-12;
+    };
+    for (std::size_t k = 0; k < prims.size(); ++k) {
+        const double s1 = k + 1 < prims.size() ? prims[k + 1].s0 : track.axis().length();
+        if (s >= prims[k].s0 - kJoint && s <= s1 + kJoint && is_arc(k)) {
+            return static_cast<int>(k);
+        }
+    }
+    return -1;
+}
+
+// Núcleo de una sección en s: los 5 puntos (borde del arcén izquierdo, de la calzada, eje, …).
+void core_points(const StageTrack& track, double s, BandPoint* out, double& curvature) {
+    const StagePose p = track.pose(s);
+    curvature = p.curvature;
+    const double nx = rmath::cos(p.heading);
+    const double nz = rmath::sin(p.heading);
+    const double ts[kStageSectionVertices] = {-(p.half_width_left + kStageShoulderWidth),
+                                              -p.half_width_left, 0.0, p.half_width_right,
+                                              p.half_width_right + kStageShoulderWidth};
+    for (int j = 0; j < kStageSectionVertices; ++j) {
+        out[j] = BandPoint{p.x + ts[j] * nx, p.y + p.bank * ts[j], p.z + ts[j] * nz};
+    }
+}
+
+// Una pasada de la malla del formato 2 con las secciones dadas. `refine` recibe las s de los
+// puntos medios de los tramos entre secciones donde el final de la banda se aparta de la cuerda
+// de sus dos extremos más que los errores de cuerda de la malla (en planta y en alzado).
+BandLayout band_pass(const StageTrack& track, const StageMeshDensity& density,
+                     const std::vector<double>& sections, std::vector<double>& refine) {
+    BandLayout out;
+    out.sections = sections;
+    const int n = density.ditch_segments;
+    out.ditch = n;
+    const auto per = static_cast<std::size_t>(2 * n + 7);
+    out.per_section = per;
+    const std::size_t count = sections.size();
+    out.points.assign(count * per, BandPoint{});
+    out.sides.assign(count * 2, StageBandSide{});
+    // Por lado (0 izquierda, 1 derecha): distancia en planta del eje a E y altura de la cabeza.
+    std::vector<double> edge[2];
+    std::vector<double> rim[2];
+    std::vector<double> curvature(count, 0.0);
+    for (int k = 0; k < 2; ++k) {
+        edge[k].assign(count, 0.0);
+        rim[k].assign(count, 0.0);
+    }
+    const auto point = [&](std::size_t i, std::size_t j) -> BandPoint& {
+        return out.points[i * per + j];
+    };
+    // La cuneta de un lado desde E y R: escribe sus n puntos con `put(k, punto)`; da la cabeza.
+    const auto ditch = [&](const BandPoint& e, const BandPoint& r, auto&& put) {
+        const double dx = e.x - r.x;
+        const double dz = e.z - r.z;
+        const double len = rmath::sqrt(dx * dx + dz * dz);
+        const double ux = dx / len;
+        const double uz = dz / len;
+        const double grade = (e.y - r.y) / len;
+        double y = e.y;
+        for (int k = 1; k <= n; ++k) {
+            const double u = kStageDitchWidth * static_cast<double>(k) / static_cast<double>(n);
+            const double dip =
+                0.5 * kStageDitchDepth * (1.0 - rmath::cos(kTwoPiBand * u / kStageDitchWidth));
+            y = e.y + grade * u - dip;
+            put(k, BandPoint{e.x + u * ux, y, e.z + u * uz});
+        }
+        return y;
+    };
+
+    // Núcleo y cuneta.
+    for (std::size_t i = 0; i < count; ++i) {
+        BandPoint core[kStageSectionVertices];
+        core_points(track, sections[i], core, curvature[i]);
+        for (int j = 0; j < kStageSectionVertices; ++j) {
+            point(i, static_cast<std::size_t>(n + 1 + j)) = core[j];
+        }
+        const BandPoint axis = core[2];
+        for (const int side : {-1, 1}) {
+            const BandPoint e = point(i, band_edge_index(n, side));
+            const BandPoint r = point(i, band_road_index(n, side));
+            const int lane = side < 0 ? 0 : 1;
+            edge[lane][i] =
+                rmath::sqrt((e.x - axis.x) * (e.x - axis.x) + (e.z - axis.z) * (e.z - axis.z));
+            rim[lane][i] = ditch(e, r, [&](int k, const BandPoint& q) {
+                point(i, band_ditch_index(n, side, k)) = q;
+            });
+        }
+    }
+
+    // Interpolación lineal en s de un valor por sección.
+    const auto interpolate = [&](const std::vector<double>& values, double s) {
+        const auto it = std::upper_bound(sections.begin(), sections.end(), s);
+        if (it == sections.begin()) {
+            return values.front();
+        }
+        if (it == sections.end()) {
+            return values.back();
+        }
+        const auto i = static_cast<std::size_t>(it - sections.begin()) - 1;
+        const double f = (s - sections[i]) / (sections[i + 1] - sections[i]);
+        return values[i] + f * (values[i + 1] - values[i]);
+    };
+    // Distancia de (x, z) al núcleo más cercano de otra parte del tramo, y su pie.
+    struct Foot {
+        double s = 0.0;
+        int lane = 0;
+    };
+    const auto other_distance = [&](double x, double z, double s_self, Foot& foot) {
+        StageProjection feet[kMaxOtherFeet];
+        const int m = track.other_feet(x, z, s_self, kStageBandSelfGap, feet, kMaxOtherFeet);
+        double best = std::numeric_limits<double>::infinity();
+        for (int k = 0; k < rmath::min(m, kMaxOtherFeet); ++k) {
+            const int lane = feet[k].t >= 0.0 ? 1 : 0;
+            const double d = rmath::abs(feet[k].t) - interpolate(edge[lane], feet[k].s);
+            if (d < best) {
+                best = d;
+                foot = Foot{feet[k].s, lane};
+            }
+        }
+        if (m > kMaxOtherFeet) {
+            ++out.feet_overflows; // pies que no caben: el δ podría estar mal
+        }
+        return best;
+    };
+
+    // Centros de los arcos con abanico: (primitiva, lado) → punto, calculado una vez, y el índice
+    // del vértice F que lo lleva (el de la primera sección que acaba en él).
+    struct Apex {
+        int arc = -1;
+        int side = 0;
+        BandPoint at;
+        std::uint32_t index = std::numeric_limits<std::uint32_t>::max();
+    };
+    std::vector<Apex> apexes;
+    const std::vector<StagePrimitive>& prims = track.axis().primitives();
+    // Altura del centro de un arco: la media de las cabezas de su lado en sus dos extremos.
+    const auto apex_height = [&](int arc, int side) {
+        const StagePrimitive& prim = prims[static_cast<std::size_t>(arc)];
+        const double s1 = static_cast<std::size_t>(arc) + 1 < prims.size()
+                              ? prims[static_cast<std::size_t>(arc) + 1].s0
+                              : track.axis().length();
+        const int lane = side < 0 ? 0 : 1;
+        return 0.5 * (interpolate(rim[lane], prim.s0) + interpolate(rim[lane], s1));
+    };
+    const auto apex_of = [&](int arc, int side) -> std::size_t {
+        for (std::size_t k = 0; k < apexes.size(); ++k) {
+            if (apexes[k].arc == arc && apexes[k].side == side) {
+                return k;
+            }
+        }
+        const StagePrimitive& prim = prims[static_cast<std::size_t>(arc)];
+        const StagePose p = track.pose(prim.s0);
+        const double radius = 1.0 / prim.curvature0; // con signo: + centro a la derecha
+        Apex a;
+        a.arc = arc;
+        a.side = side;
+        a.at.x = p.x + radius * rmath::cos(p.heading);
+        a.at.z = p.z + radius * rmath::sin(p.heading);
+        a.at.y = apex_height(arc, side);
+        apexes.push_back(a);
+        return apexes.size() - 1;
+    };
+
+    // El final de la banda de un lado en s, desde E, R, la cabeza, la distancia del eje a E y la
+    // curvatura. `apex`: el centro del abanico en que acaba (−1 si no); `bad`: no cabe.
+    struct SideEnd {
+        StageBandSide band;
+        BandPoint end;
+        BandPoint medial;
+        int apex = -1;
+        bool bad = false;
+    };
+    const double search = kStageBandMeet + kStageBandRamp;
+    const auto solve = [&](double s, int side, const BandPoint& e, const BandPoint& r, double rim_y,
+                           double edge_own, double kappa) {
+        SideEnd out_side;
+        StageBandSide& band = out_side.band;
+        band.s = s;
+        band.side = side;
+        band.rim_y = rim_y;
+        const double len = rmath::sqrt((e.x - r.x) * (e.x - r.x) + (e.z - r.z) * (e.z - r.z));
+        const double ux = (e.x - r.x) / len;
+        const double uz = (e.z - r.z) / len;
+        const double grade = (e.y - r.y) / len;
+        // Centro de curvatura propio: en el lado interior, a 1/|κ| − e del borde.
+        double focal = std::numeric_limits<double>::infinity();
+        if (kappa * static_cast<double>(side) > 0.0) {
+            focal = 1.0 / rmath::abs(kappa) - edge_own;
+        }
+        const double limit = rmath::min(search, focal);
+        const auto f = [&](double u, Foot& foot) {
+            return u - other_distance(e.x + u * ux, e.z + u * uz, s, foot);
+        };
+        Foot foot_hi;
+        double hi = limit;
+        double f_hi = f(hi, foot_hi);
+        bool found = false;
+        if (f_hi >= 0.0) {
+            Foot foot_lo;
+            double lo = 0.0;
+            double f_lo = f(lo, foot_lo);
+            if (f_lo >= 0.0) {
+                // Otro núcleo toca este borde: ni la cuneta cabe.
+                out_side.bad = true;
+                hi = 0.0;
+                foot_hi = foot_lo;
+            } else {
+                // Illinois: f es no decreciente; la raíz es el primer punto con f ≥ 0.
+                int last = 0;
+                for (int it = 0; it < kRootIterations && hi - lo > kRootTolerance; ++it) {
+                    double u = hi - f_hi * (hi - lo) / (f_hi - f_lo);
+                    if (!(u > lo && u < hi)) {
+                        u = 0.5 * (lo + hi);
+                    }
+                    Foot foot;
+                    const double fu = f(u, foot);
+                    if (fu >= 0.0) {
+                        hi = u;
+                        f_hi = fu;
+                        foot_hi = foot;
+                        if (last > 0) {
+                            f_lo *= 0.5;
+                        }
+                        last = 1;
+                    } else {
+                        lo = u;
+                        f_lo = fu;
+                        if (last < 0) {
+                            f_hi *= 0.5;
+                        }
+                        last = -1;
+                    }
+                }
+            }
+            found = true;
+        }
+        band.delta = found ? hi : std::numeric_limits<double>::infinity();
+        band.other_s = found ? foot_hi.s : 0.0;
+        out_side.medial = BandPoint{e.x + hi * ux, 0.0, e.z + hi * uz};
+
+        const auto plane = [&](double u) { return e.y + grade * u; };
+        BandPoint& end = out_side.end;
+        // El rayo llega a su centro de curvatura (cerca de él, los extremos de un arco ya
+        // cuentan como pies de otra parte: de ahí la tolerancia).
+        const bool near_focal = focal <= search && (!found || focal - hi <= kFocalRoot);
+        const int arc = near_focal ? arc_at(track, s, kappa) : -1;
+        // En un arco, el centro; fuera de un arco, solo si no hay eje medio (recortado).
+        const bool at_focal = near_focal && (arc >= 0 || !found);
+        if (at_focal && focal < kStageDitchWidth + kStageBandMinTalud) {
+            // La cuneta y un talud mínimo tienen que caber antes del centro de curvatura.
+            out_side.bad = true;
+        }
+        if (at_focal && arc >= 0 && focal <= kStageBandMeet) {
+            band.kind = StageBandKind::Fan;
+            const std::size_t a = apex_of(arc, side);
+            out_side.apex = static_cast<int>(a);
+            end = apexes[a].at;
+            band.end_u = focal;
+        } else if (at_focal && arc < 0) {
+            band.kind = StageBandKind::Clamped;
+            band.end_u = rmath::max(kStageDitchWidth, focal - kFocalMargin);
+            end = BandPoint{e.x + band.end_u * ux, plane(band.end_u), e.z + band.end_u * uz};
+        } else if (!found && !at_focal) {
+            band.kind = StageBandKind::Free;
+            band.end_u = kStageBandFree;
+            end = BandPoint{e.x + band.end_u * ux, plane(band.end_u), e.z + band.end_u * uz};
+        } else {
+            // Eje medio con otra parte del tramo o, en un arco cuyo centro queda más allá de
+            // kStageBandMeet, el centro (con la altura del abanico, sin llegar a él).
+            const double delta = at_focal ? focal : hi;
+            const double other_rim =
+                interpolate(rim[foot_hi.lane], foot_hi.s); // la cabeza de enfrente
+            const double mid = at_focal ? apex_height(arc, side) : 0.5 * (rim_y + other_rim);
+            const double run = delta - kStageDitchWidth;
+            if (run < kStageBandMinTalud) {
+                out_side.bad = true;
+            }
+            const double line_run = rmath::max(run, kStageBandMinTalud);
+            // La recta de la tira, de la cabeza (W, y_C) al eje medio (δ, y_M): F sigue en ella
+            // también en el solape, así que las dos bandas coinciden allí.
+            const auto line = [&](double u) {
+                return rim_y + (mid - rim_y) * (u - kStageDitchWidth) / line_run;
+            };
+            if (delta <= kStageBandMeet) {
+                band.kind = StageBandKind::Meet;
+                band.end_u = rmath::min(delta + kStageBandOverlap, focal);
+                end = BandPoint{e.x + band.end_u * ux, line(band.end_u), e.z + band.end_u * uz};
+            } else {
+                band.kind = StageBandKind::Ramp;
+                const double w = smoothstep((search - delta) / kStageBandRamp);
+                band.end_u = kStageBandFree + w * (kStageBandMeet - kStageBandFree);
+                const double y = plane(band.end_u) + w * (line(band.end_u) - plane(band.end_u));
+                end = BandPoint{e.x + band.end_u * ux, y, e.z + band.end_u * uz};
+            }
+        }
+        band.plane_gap = end.y - plane(band.end_u);
+        return out_side;
+    };
+
+    // Índice del vértice F de cada lado (el propio o el del centro de su abanico) y el punto del
+    // eje medio (para pegar al centro los que caen a menos de kFanSnap).
+    out.end_index.assign(count * 2, 0);
+    std::vector<BandPoint> medial(count * 2, BandPoint{});
+    std::vector<int> side_apex(count * 2, -1);
+    double error_s = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < count; ++i) {
+        for (const int side : {-1, 1}) {
+            const int lane = side < 0 ? 0 : 1;
+            const std::size_t slot = i * 2 + static_cast<std::size_t>(lane);
+            out.end_index[slot] = static_cast<std::uint32_t>(i * per + band_end_index(n, side));
+            const SideEnd r = solve(sections[i], side, point(i, band_edge_index(n, side)),
+                                    point(i, band_road_index(n, side)), rim[lane][i], edge[lane][i],
+                                    curvature[i]);
+            out.sides[slot] = r.band;
+            medial[slot] = r.medial;
+            side_apex[slot] = r.apex;
+            point(i, band_end_index(n, side)) = r.end;
+            if (r.bad) {
+                error_s = rmath::min(error_s, sections[i]);
+            }
+        }
+    }
+    // Lados cuyo eje medio cae a menos de kFanSnap del centro de un abanico de su lado (las
+    // secciones de la junta de un arco con una recta): acaban en el centro.
+    for (std::size_t slot = 0; slot < count * 2; ++slot) {
+        if (side_apex[slot] >= 0 || out.sides[slot].kind == StageBandKind::Free) {
+            continue;
+        }
+        for (std::size_t a = 0; a < apexes.size(); ++a) {
+            const double dx = medial[slot].x - apexes[a].at.x;
+            const double dz = medial[slot].z - apexes[a].at.z;
+            if (apexes[a].side == out.sides[slot].side &&
+                dx * dx + dz * dz <= kFanSnap * kFanSnap) {
+                side_apex[slot] = static_cast<int>(a);
+                out.sides[slot].kind = StageBandKind::Fan;
+                point(slot / 2, band_end_index(n, out.sides[slot].side)) = apexes[a].at;
+            }
+        }
+    }
+    // Un solo vértice por centro: el F de la primera sección que acaba en él; los demás F de ese
+    // abanico quedan sin usar y sus triángulos degenerados no se emiten.
+    for (std::size_t slot = 0; slot < count * 2; ++slot) {
+        if (side_apex[slot] < 0) {
+            continue;
+        }
+        Apex& a = apexes[static_cast<std::size_t>(side_apex[slot])];
+        if (a.index == std::numeric_limits<std::uint32_t>::max()) {
+            a.index = out.end_index[slot];
+        }
+        out.end_index[slot] = a.index;
+    }
+    for (std::size_t slot = 0; slot < count * 2; ++slot) {
+        StageBandSide& band = out.sides[slot];
+        const BandPoint c = point(slot / 2, band_ditch_index(n, band.side, n));
+        const BandPoint end = out.points[out.end_index[slot]];
+        const double run =
+            rmath::sqrt((end.x - c.x) * (end.x - c.x) + (end.z - c.z) * (end.z - c.z));
+        band.end_y = end.y;
+        band.slope =
+            run > 0.0 ? rmath::abs(end.y - c.y) / run : std::numeric_limits<double>::infinity();
+    }
+
+    // Error de cuerda del final de la banda (fuera de la banda libre y de los abanicos): en el
+    // punto medio de cada tramo entre secciones, el final de verdad frente a la cuerda.
+    refine.clear();
+    for (std::size_t i = 0; i + 1 < count; ++i) {
+        const double sm = 0.5 * (sections[i] + sections[i + 1]);
+        if (sections[i + 1] - sections[i] < 2.0 * kStageBandMinRefine) {
+            continue;
+        }
+        BandPoint core[kStageSectionVertices];
+        double kappa = 0.0;
+        bool computed = false;
+        bool split = false;
+        for (const int side : {-1, 1}) {
+            const int lane = side < 0 ? 0 : 1;
+            const StageBandSide& a = out.sides[i * 2 + static_cast<std::size_t>(lane)];
+            const StageBandSide& b = out.sides[(i + 1) * 2 + static_cast<std::size_t>(lane)];
+            if ((a.kind == StageBandKind::Free && b.kind == StageBandKind::Free) ||
+                (a.kind == StageBandKind::Fan && b.kind == StageBandKind::Fan) || split) {
+                continue;
+            }
+            if (!computed) {
+                core_points(track, sm, core, kappa);
+                computed = true;
+            }
+            const BandPoint e = core[side < 0 ? 0 : 4];
+            const BandPoint r = core[side < 0 ? 1 : 3];
+            const BandPoint axis = core[2];
+            const double edge_m =
+                rmath::sqrt((e.x - axis.x) * (e.x - axis.x) + (e.z - axis.z) * (e.z - axis.z));
+            const double rim_m = ditch(e, r, [](int, const BandPoint&) {});
+            const SideEnd m = solve(sm, side, e, r, rim_m, edge_m, kappa);
+            const BandPoint& p0 = out.points[out.end_index[i * 2 + static_cast<std::size_t>(lane)]];
+            const BandPoint& p1 =
+                out.points[out.end_index[(i + 1) * 2 + static_cast<std::size_t>(lane)]];
+            // Distancia en planta de m a la cuerda p0–p1 y diferencia de altura con su punto
+            // medio.
+            const double cx = p1.x - p0.x;
+            const double cz = p1.z - p0.z;
+            const double clen = rmath::sqrt(cx * cx + cz * cz);
+            const double plan =
+                clen > 0.0 ? rmath::abs((m.end.x - p0.x) * cz - (m.end.z - p0.z) * cx) / clen
+                           : rmath::sqrt((m.end.x - p0.x) * (m.end.x - p0.x) +
+                                         (m.end.z - p0.z) * (m.end.z - p0.z));
+            const double height = rmath::abs(m.end.y - 0.5 * (p0.y + p1.y));
+            // En un muro, un error en planta es un error en alzado de pendiente veces más: la
+            // costura con la banda de enfrente lo ve.
+            const double steep = rmath::max(a.slope, b.slope);
+            if (plan > density.chord_plan || height > density.chord_height ||
+                plan * steep > density.chord_height) {
+                split = true;
+            }
+        }
+        if (split) {
+            refine.push_back(sm);
+        }
+    }
+
+    // Triángulos: por cada tramo entre dos secciones, las K − 1 tiras de izquierda a derecha, dos
+    // triángulos por tira con la normal hacia arriba; el que tiene dos vértices iguales (el
+    // abanico) no se emite. Cada triángulo de la banda se valida como el criterio 5: hacia
+    // arriba, área en planta > 1e-6 m² y ≤ 80°.
+    const double cos80 = 1.0 / rmath::sqrt(1.0 + kStageWallMaxSlope * kStageWallMaxSlope);
+    out.triangles.reserve((count - 1) * 2 * (per - 1));
+    for (std::size_t i = 0; i + 1 < count; ++i) {
+        const Surface road = track.pose(0.5 * (sections[i] + sections[i + 1])).surface;
+        const auto base = static_cast<std::uint32_t>(i * per);
+        const auto next = static_cast<std::uint32_t>(base + per);
+        // El F de cada lado, por su índice (el centro de un abanico es uno solo).
+        const auto vertex = [&](std::uint32_t section_base, std::size_t section, std::uint32_t k) {
+            if (k == 0) {
+                return out.end_index[section * 2];
+            }
+            if (k + 1 == per) {
+                return out.end_index[section * 2 + 1];
+            }
+            return section_base + k;
+        };
+        for (std::uint32_t j = 0; j + 1 < per; ++j) {
+            const auto strip = static_cast<int>(j);
+            StageLook look = StageLook::Ditch;
+            Surface surface = Surface::Dirt;
+            if (strip == 0 || strip == 2 * n + 5) {
+                look = StageLook::Slope; // o muro, por la pendiente de cada triángulo
+            } else if (strip == n + 1 || strip == n + 4) {
+                look = StageLook::Shoulder;
+                surface = Surface::Sand;
+            } else if (strip == n + 2 || strip == n + 3) {
+                look = StageLook::Road;
+                surface = road;
+            }
+            const std::uint32_t va = vertex(base, i, j);
+            const std::uint32_t vb = vertex(base, i, j + 1);
+            const std::uint32_t vc = vertex(next, i + 1, j);
+            const std::uint32_t vd = vertex(next, i + 1, j + 1);
+            for (const std::array<std::uint32_t, 3>& t :
+                 {std::array<std::uint32_t, 3>{va, vb, vc},
+                  std::array<std::uint32_t, 3>{vb, vd, vc}}) {
+                if (t[0] == t[1] || t[1] == t[2] || t[0] == t[2]) {
+                    continue; // el abanico del centro de un arco
+                }
+                const BandPoint& a = out.points[t[0]];
+                const BandPoint& b = out.points[t[1]];
+                const BandPoint& c = out.points[t[2]];
+                const double ux = b.x - a.x;
+                const double uy = b.y - a.y;
+                const double uz = b.z - a.z;
+                const double wx = c.x - a.x;
+                const double wy = c.y - a.y;
+                const double wz = c.z - a.z;
+                const double nx = uy * wz - uz * wy;
+                const double ny = uz * wx - ux * wz;
+                const double nz = ux * wy - uy * wx;
+                const double norm = rmath::sqrt(nx * nx + ny * ny + nz * nz);
+                const double horizontal = rmath::sqrt(nx * nx + nz * nz);
+                // Cuneta o talud con más pendiente que la tierra: muro (en el interior de las
+                // horquillas, la cuneta sube en espiral con la pendiente del eje).
+                StageLook tri_look = look;
+                if ((look == StageLook::Slope || look == StageLook::Ditch) &&
+                    horizontal > kStageDirtSlope * rmath::abs(ny)) {
+                    tri_look = StageLook::Wall;
+                }
+                const bool band_tri = look == StageLook::Ditch || look == StageLook::Slope;
+                if (band_tri && (!(ny > 0.0) || 0.5 * ny <= 1.0e-6 || ny < cos80 * norm)) {
+                    error_s = rmath::min(error_s, sections[i]);
+                    ++out.bad_triangles;
+                }
+                out.triangles.push_back(StageTriangle{t[0], t[1], t[2], surface,
+                                                      static_cast<std::uint32_t>(i), tri_look});
+            }
+        }
+    }
+    if (error_s < std::numeric_limits<double>::infinity()) {
+        out.error = "s = " + fixed2(error_s) + ": no cabe el talud entre pasadas";
+    }
+    return out;
+}
+
+// La malla del formato 2: las secciones del núcleo y, donde el final de la banda se aparta de su
+// cuerda más que la malla del núcleo, secciones en los puntos medios, hasta kBandRefinePasses
+// veces.
+BandLayout build_band_layout(const StageTrack& track, const StageMeshDensity& density) {
+    std::vector<double> sections = section_positions(track, density, kStageBandFree);
+    std::vector<double> refine;
+    for (int pass = 0;; ++pass) {
+        BandLayout out = band_pass(track, density, sections, refine);
+        out.refine_passes = pass;
+        if (refine.empty() || pass == kBandRefinePasses) {
+            out.refine_pending = refine.size();
+            return out;
+        }
+        sections.insert(sections.end(), refine.begin(), refine.end());
+        std::sort(sections.begin(), sections.end());
+    }
+}
+
 } // namespace
+
+std::string stage_band_error(const StageTrack& track) {
+    return build_band_layout(track, StageMeshDensity{}).error;
+}
 
 StageCellError::StageCellError(const StageTrack& track) {
     s0_ = track.s_begin();
@@ -749,7 +1352,16 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
     StageGround g;
     g.cell_ = cell;
     g.kind_ = kind;
-    const std::vector<double> sections = section_positions(track, density);
+    BandLayout band;
+    if (kind == StageGroundKind::Band) {
+        band = build_band_layout(track, density);
+        g.band_error_ = band.error;
+        g.band_bad_triangles_ = band.bad_triangles;
+        g.band_refine_passes_ = band.refine_passes;
+        g.band_refine_pending_ = band.refine_pending;
+    }
+    const std::vector<double> sections =
+        kind == StageGroundKind::Band ? band.sections : section_positions(track, density);
 
     // Origen: centro de la caja del eje con las prolongaciones, redondeado al metro.
     {
@@ -774,8 +1386,43 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
     }
     const Origin origin{g.origin_x_, g.origin_y_, g.origin_z_};
 
-    // Núcleo.
-    if (kind != StageGroundKind::GridOnly) {
+    // Núcleo y banda del formato 2.
+    if (kind == StageGroundKind::Band) {
+        g.sections_ = sections;
+        g.vertices_per_section_ = band.per_section;
+        g.band_sides_ = band.sides;
+        g.band_feet_overflows_ = band.feet_overflows;
+        g.vertices_.reserve(band.points.size());
+        for (const BandPoint& p : band.points) {
+            g.vertices_.push_back(StageVertex{static_cast<float>(p.x - origin.x),
+                                              static_cast<float>(p.y - origin.y),
+                                              static_cast<float>(p.z - origin.z)});
+        }
+        g.triangles_ = band.triangles;
+        // El aspecto de muro, con los vértices tal como quedan (float respecto al origen): lo que
+        // ven el dibujo y los tests (en 30 km, el redondeo mueve la pendiente en la 5.ª cifra).
+        for (StageTriangle& t : g.triangles_) {
+            if (t.look != StageLook::Ditch && t.look != StageLook::Slope &&
+                t.look != StageLook::Wall) {
+                continue;
+            }
+            const StageVertex& a = g.vertices_[t.a];
+            const StageVertex& b = g.vertices_[t.b];
+            const StageVertex& c = g.vertices_[t.c];
+            const double ux = static_cast<double>(b.x) - a.x;
+            const double uy = static_cast<double>(b.y) - a.y;
+            const double uz = static_cast<double>(b.z) - a.z;
+            const double wx = static_cast<double>(c.x) - a.x;
+            const double wy = static_cast<double>(c.y) - a.y;
+            const double wz = static_cast<double>(c.z) - a.z;
+            const double nx = uy * wz - uz * wy;
+            const double ny = uz * wx - ux * wz;
+            const double nz = ux * wy - uy * wx;
+            if (rmath::sqrt(nx * nx + nz * nz) > kStageDirtSlope * rmath::abs(ny)) {
+                t.look = StageLook::Wall;
+            }
+        }
+    } else if (kind != StageGroundKind::GridOnly) {
         g.sections_ = sections;
         g.vertices_.reserve(sections.size() * kStageSectionVertices);
         for (const double s : sections) {
@@ -806,8 +1453,12 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
                 const std::uint32_t vb = base + j + 1;
                 const std::uint32_t vc = next + j;
                 const std::uint32_t vd = next + j + 1;
-                g.triangles_.push_back(StageTriangle{va, vb, vc, surface});
-                g.triangles_.push_back(StageTriangle{vb, vd, vc, surface});
+                const StageLook look = j == 0 || j + 2 == kStageSectionVertices
+                                           ? StageLook::Shoulder
+                                           : StageLook::Road;
+                const auto section = static_cast<std::uint32_t>(i);
+                g.triangles_.push_back(StageTriangle{va, vb, vc, surface, section, look});
+                g.triangles_.push_back(StageTriangle{vb, vd, vc, surface, section, look});
             }
         }
     }
@@ -928,7 +1579,7 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
                 h = a.nearest_h;
                 ++g.nearest_fallbacks_;
             }
-            if (kind == StageGroundKind::Design) {
+            if (kind == StageGroundKind::Design || kind == StageGroundKind::Band) {
                 if (!a.core) {
                     const double jump = zone_boundary_jump(a, h);
                     if (jump > g.zone_jump_) {

@@ -143,7 +143,9 @@ double stage_cell(StageGroundVariant variant) {
     if (variant == StageGroundVariant::CoarseTiles) {
         return 2.0 * kStageCell;
     }
-    return variant == StageGroundVariant::DenseMesh ? 0.5 * kStageCell : kStageCell;
+    return variant == StageGroundVariant::DenseMesh || variant == StageGroundVariant::BandDense
+               ? 0.5 * kStageCell
+               : kStageCell;
 }
 
 } // namespace
@@ -348,9 +350,16 @@ void SimWorld::build(const WorldDesc& desc) {
             desc.stage_variant == StageGroundVariant::GridOnly ? StageGroundKind::GridOnly
             : desc.stage_variant == StageGroundVariant::NaturalTerrain
                 ? StageGroundKind::NaturalOutside
+            : desc.stage_variant == StageGroundVariant::Band ||
+                    desc.stage_variant == StageGroundVariant::BandDense
+                ? StageGroundKind::Band
                 : StageGroundKind::Design,
-            desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
-                                                                : StageMeshDensity{});
+            desc.stage_variant == StageGroundVariant::DenseMesh ||
+                    desc.stage_variant == StageGroundVariant::BandDense
+                ? kStageDenseMesh
+                : StageMeshDensity{});
+        RALLY_CHECK(ground.band_error().empty(),
+                    "SimWorld::build: no cabe el talud entre pasadas (formato 2)");
         w.stage_ground_hash = ground.hash();
         const JPH::Ref<JPH::Shape> shape =
             stage_shape(ground, desc.stage_variant != StageGroundVariant::TerrainOnly,

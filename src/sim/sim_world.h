@@ -64,14 +64,18 @@ struct CarSpawn {
 // medida de la parte A (baldosas de 1,5 m, y todo en rejilla de 0,75 m con la superficie por
 // celda), la referencia de los criterios 3 y 4 (la malla 4 veces más densa y la rejilla de
 // 0,375 m), el terreno solo, sin la malla (la altura de la rejilla con la cuantización de Jolt), y
-// el terreno natural fuera de los núcleos, sin la banda del borde (el diagnóstico del talud).
+// el terreno natural fuera de los núcleos, sin la banda del borde (el diagnóstico del talud). Band
+// y BandDense: la malla del formato 2 (núcleo y banda de entorno) y su referencia 4 veces más
+// densa, sobre el terreno de Design (prototipo de la parte A de formato-2).
 enum class StageGroundVariant : std::uint8_t {
     Design,
     CoarseTiles,
     GridOnly,
     DenseMesh,
     TerrainOnly,
-    NaturalTerrain
+    NaturalTerrain,
+    Band,
+    BandDense
 };
 
 // Descripción del mundo. Primero el suelo y los muros de la zona de pruebas o el suelo del tramo
