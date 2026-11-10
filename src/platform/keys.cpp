@@ -73,6 +73,8 @@ std::string_view key_block_name(KeyBlock block) {
         return "Depuración";
     case KeyBlock::General:
         return "General";
+    case KeyBlock::Tablet:
+        return "Tablet del copiloto";
     case KeyBlock::Count:
         break;
     }
@@ -192,6 +194,8 @@ std::string_view pad_text_doc(PadControl pad) {
         return "hombro izquierdo (LB, L1, L)";
     case PadControl::RightShoulder:
         return "hombro derecho (RB, R1, R)";
+    case PadControl::DPadVertical:
+        return "cruceta arriba / abajo";
     case PadControl::None:
         break;
     }
@@ -216,6 +220,8 @@ std::string_view pad_text_short(PadControl pad) {
         return "hombro izq.";
     case PadControl::RightShoulder:
         return "hombro der.";
+    case PadControl::DPadVertical:
+        return "cruceta";
     case PadControl::None:
         break;
     }

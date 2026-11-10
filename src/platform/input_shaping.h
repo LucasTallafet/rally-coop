@@ -84,6 +84,8 @@ struct PadReading {
     bool shift_up = false;
     bool shift_down = false;
     bool reset = false;
+    bool dpad_up = false; // cruceta arriba (el cursor de la tablet del copiloto)
+    bool dpad_down = false;
     bool any_button = false; // cualquier botón pulsado
 };
 
@@ -100,6 +102,8 @@ struct PadState {
     bool shift_up = false;
     bool shift_down = false;
     bool reset = false;
+    bool dpad_up = false; // cruceta arriba y abajo: el cursor de la tablet del copiloto
+    bool dpad_down = false;
 };
 
 // Mando activo = el último que ha movido un eje (también el stick derecho) por encima de su zona

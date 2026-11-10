@@ -70,6 +70,10 @@ TEST_CASE("screen_layout: with every layer visible no two rectangles overlap") {
             const UiRect& ra = layout.rects[static_cast<std::size_t>(a)];
             INFO(res.width, "×", res.height, " ",
                  std::string(rally::platform::layer_name(Layer(a))), " ", describe(ra));
+            if (Layer(a) == Layer::Tablet) {
+                CHECK(ra.w == 0); // la tablet no existe en la pantalla del juego
+                continue;
+            }
             CHECK(ra.w > 0);
             CHECK(ra.h > 0);
             CHECK(rally::platform::contains(screen, ra));
@@ -90,6 +94,9 @@ TEST_CASE("screen_layout: each layer's worst case text fits in its rectangle") {
         const ScreenLayout layout = layout_screen(res.width, res.height);
         for (int a = 0; a < kLayerCount; ++a) {
             const Layer layer = static_cast<Layer>(a);
+            if (layer == Layer::Tablet) {
+                continue;
+            }
             const UiRect content = inner(layout.rect(layer), padding_of(layer, layout));
             INFO(res.width, "×", res.height, " ", std::string(rally::platform::layer_name(layer)),
                  " ", describe(content));
@@ -222,7 +229,7 @@ TEST_CASE("screen_layout: the game help does not show the copilot's key Z") {
 
 TEST_CASE("screen_layout: the copilot screen at 640x360 and 1920x1080 has no overlaps and fits") {
     using namespace rally::platform;
-    constexpr Resolution kCopilotResolutions[] = {{640, 360}, {1920, 1080}};
+    constexpr Resolution kCopilotResolutions[] = {{640, 360}, {1280, 720}, {1920, 1080}};
     for (const Resolution res : kCopilotResolutions) {
         const ScreenLayout layout = layout_screen(res.width, res.height, ScreenKind::Copilot);
         const UiRect screen{0, 0, res.width, res.height};
@@ -259,7 +266,9 @@ TEST_CASE("screen_layout: the copilot screen at 640x360 and 1920x1080 has no ove
         for (const std::string_view sample : layer_samples(Layer::Debug, ScreenKind::Copilot)) {
             copilot_blocks.push_back({1, text_width(sample, layout.m.font)});
         }
-        CHECK(plan_debug(copilot_blocks, layout).pages.size() == 1);
+        // Con la tablet debajo, F3 acaba encima de ella: a 640 × 360 caben 9 líneas y las del
+        // copiloto (con su título) pasan a dos páginas; con más alto, una.
+        CHECK(plan_debug(copilot_blocks, layout).pages.size() == (res.height < 540 ? 2u : 1u));
         CHECK(kMessageLines * layout.m.line <= layout.rect(Layer::Messages).h);
         // F1 es el contador de siempre: sus filas y su gráfica caben.
         const UiRect perf = inner(layout.rect(Layer::Perf), layout.m.padding);
