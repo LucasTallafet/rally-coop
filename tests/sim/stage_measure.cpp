@@ -31,16 +31,13 @@ struct Variant {
     rally::sim::StageGroundKind kind;
 };
 
-// Con «f2» en la línea de órdenes (formato-2, parte A): el formato 1 (M 0,75) y el prototipo del
-// formato 2 (malla con la banda sobre el terreno de M 0,75); sin ella, las del lote 4.
+// Desde la parte B de formato-2, un solo suelo: el del juego (malla con la banda y rejilla de 0,75
+// m).
 constexpr Variant kVariants[] = {
-    {"M 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
-    {"M 1,5", StageGroundVariant::CoarseTiles, 1.5, rally::sim::StageGroundKind::Design},
-    {"R 0,75", StageGroundVariant::GridOnly, 0.75, rally::sim::StageGroundKind::GridOnly},
+    {"F2 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
 };
 constexpr Variant kFormat2Variants[] = {
-    {"M 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
-    {"F2", StageGroundVariant::Band, 0.75, rally::sim::StageGroundKind::Band},
+    {"F2 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
 };
 bool g_format2 = false;
 
@@ -101,11 +98,15 @@ rally::sim::WorldDesc stage_world(const std::string& text, StageGroundVariant va
 
 void measure(const char* stage_name, const std::string& text, double start_s, double drive_m) {
     rally::sim::StageTrack track;
+    const auto v0 = Clock::now();
     const rally::sim::StageParseResult parsed = rally::sim::StageTrack::build(text, track);
+    const auto v1 = Clock::now();
     if (!parsed.ok) {
         std::printf("%s: el tramo no vale: %s\n", stage_name, parsed.error.c_str());
         return;
     }
+    std::printf("%s: StageTrack::build (con la banda) %.1f ms\n", stage_name,
+                std::chrono::duration<double, std::milli>(v1 - v0).count());
     double x0 = 1e18;
     double x1 = -1e18;
     double z0 = 1e18;
@@ -283,6 +284,39 @@ int main(int argc, char** argv) {
     if (mode == "f2geo") {
         return 0;
     }
+    if (mode == "f2probe" && argc >= 4) {
+        // La rejilla sola (TerrainOnly) a lo largo de la normal de lazadas en s, de t0 a t1 cada
+        // 0,25 m, frente al plano del eje con el peralte: diagnóstico.
+        rally::sim::StageTrack track;
+        rally::sim::StageTrack::build(rally::tests::lazadas_stage_text(), track);
+        rally::sim::WorldDesc desc;
+        desc.stage_text = rally::tests::lazadas_stage_text();
+        desc.stage_variant = rally::sim::StageGroundVariant::TerrainOnly;
+        rally::sim::SimWorld world;
+        world.build(desc);
+        world.seal();
+        rally::sim::WorldDesc mesh_desc = desc;
+        mesh_desc.stage_variant = rally::sim::StageGroundVariant::Design;
+        rally::sim::SimWorld mesh;
+        mesh.build(mesh_desc);
+        mesh.seal();
+        const double s = std::stod(argv[2]);
+        const double t0 = std::stod(argv[3]);
+        const double t1 = argc >= 5 ? std::stod(argv[4]) : t0 + 10.0;
+        const rally::sim::StagePose p = track.pose(s);
+        const double step = argc >= 6 ? std::stod(argv[5]) : 0.25;
+        for (double t = t0; t <= t1 + 1e-9; t += step) {
+            const double x = p.x + t * std::cos(p.heading);
+            const double z = p.z + t * std::sin(p.heading);
+            const rally::sim::GroundProbe g = world.probe_ground(x, z);
+            const rally::sim::GroundProbe m = mesh.probe_ground(x, z);
+            std::printf(
+                "t %7.3f rejilla %9.4f suelo %9.4f (sup %d) plano %9.4f diferencia %8.2f mm\n", t,
+                g.y, m.y, static_cast<int>(m.surface), p.y + p.bank * t,
+                1000.0 * (g.y - (p.y + p.bank * t)));
+        }
+        return 0;
+    }
     if (mode == "f2sides" && argc >= 5) {
         // Los lados de la banda en [s0, s1] de un tramo (lazadas, hairpin o 30km): diagnóstico.
         const std::string which = argv[2];
@@ -293,8 +327,8 @@ int main(int argc, char** argv) {
                                                        : rally::tests::lazadas_stage_text();
         rally::sim::StageTrack track;
         rally::sim::StageTrack::build(text, track);
-        const rally::sim::StageGround g = rally::sim::StageGround::build(
-            track, rally::sim::kStageCell, rally::sim::StageGroundKind::Band);
+        const rally::sim::StageGround g =
+            rally::sim::StageGround::build(track, rally::sim::kStageCell);
         const double s0 = std::stod(argv[3]);
         const double s1 = std::stod(argv[4]);
         for (const rally::sim::StageBandSide& b : g.band_sides()) {

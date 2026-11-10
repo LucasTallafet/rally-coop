@@ -3,6 +3,7 @@
 #include "sim/check.h"
 #include "sim/fnv1a.h"
 #include "sim/rmath.h"
+#include "sim/stage_ground.h"
 
 #include <algorithm>
 #include <array>
@@ -422,6 +423,11 @@ StageParseResult StageTrack::build(std::string_view text, StageTrack& out) {
         return parsed;
     }
     std::string error = track.prepare();
+    if (error.empty()) {
+        // Validación 3 (formato 2): la banda de entorno cabe entre las pasadas; se guarda para
+        // StageGround::build.
+        error = stage_band_attach(track);
+    }
     if (!error.empty()) {
         StageParseResult result;
         result.error = std::move(error);

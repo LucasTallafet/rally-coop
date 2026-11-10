@@ -38,7 +38,8 @@ namespace {
 
 // state_hash() tras la secuencia fija del test de reproducibilidad (criterio 6): el mismo en
 // Debug y en Release. Cambia si cambia la física del tramo, el coche de referencia o lazadas.
-constexpr std::uint64_t kExpectedStageStateHash = 0x0627'0f27'dd85'0330ull;
+// Formato 2 (formato-2, lote 6): 0x06270f27dd850330 → 0x3d08dcb86b41ad6f.
+constexpr std::uint64_t kExpectedStageStateHash = 0x3d08'dcb8'6b41'ad6full;
 
 constexpr int kSteps = rally::sim::kStepsPerSecond;
 constexpr double kGravity = 9.81;
@@ -361,177 +362,8 @@ TEST_CASE("stage_world: on a flat mesh the load jumps are those of a slab") {
     }
 }
 
-// --- Criterio 4: salir del arcén y volver
-// -----------------------------------------------------------
-
-namespace {
-
-struct EdgeRun {
-    LoadStats loads;
-    bool left_road = false;
-    bool back_on_road = false;
-};
-
-// 3 s (2 s en Debug) a la velocidad de la salida, sin dirección, en `desc`.
-EdgeRun drive_across(const WorldDesc& desc) {
-    SimWorld world;
-    world.build(desc);
-    world.seal();
-    EdgeRun run;
-    const double speed = desc.car_spawn.speed;
-    run.loads = measure_loads(world, kSteps / 4, kCriterionSteps - kSteps / 4, [&](SimWorld& w) {
-        const bool on_road = w.stage_run()->on_road;
-        run.left_road = run.left_road || !on_road;
-        run.back_on_road = run.back_on_road || (run.left_road && on_road);
-        return hold_speed(w.car_velocity(), speed);
-    });
-    const bool on_road = world.stage_run()->on_road;
-    run.left_road = run.left_road || !on_road;
-    run.back_on_road = run.back_on_road || (run.left_road && on_road);
-    return run;
-}
-
-// Recta (s 20), 8° hacia fuera desde t = 1,5; curva de R 80 (peralte −5 %), recto desde
-// t = −1,5, sale por fuera; de vuelta desde el terreno, 8° hacia dentro desde t = −7; y, solo en
-// la parte (A) (tercera y cuarta respuestas del consultor, §3), la horquilla de R 6 (s 742, 8 % y
-// −6 %) a 20 km/h: por el borde interior, 60° hacia dentro desde t = 2,9, y 30° desde t = 2,6,
-// que sale por el borde exterior. En Debug, la recta desde t = 2,5 y la horquilla por dentro
-// (2 s).
-constexpr const char* kEdgeNames[5] = {"recta", "curva", "vuelta", "horquilla por dentro",
-                                       "horquilla por fuera"};
-#ifdef NDEBUG
-constexpr int kEdgeCases = 3;
-constexpr int kGeometryCases[] = {0, 1, 2, 3, 4};
-constexpr double kStraightStart = 1.5;
-#else
-constexpr int kEdgeCases = 1;
-constexpr int kGeometryCases[] = {0, 3};
-constexpr double kStraightStart = 2.5;
-#endif
-
-rally::sim::CarSpawn edge_spawn(int c) {
-    const StageTrack& track = lazadas();
-    const float speed = static_cast<float>(30.0 / 3.6);
-    constexpr double kDegree = 3.14159265358979323846 / 180.0;
-    constexpr double kTurn = 8.0 * kDegree;
-    const auto hairpin_speed = static_cast<float>(20.0 / 3.6);
-    if (c == 0) {
-        return spawn_at(track, 20.0, kStraightStart, speed, kTurn);
-    }
-    if (c == 1) {
-        return spawn_at(track, 150.0, -1.5, speed);
-    }
-    if (c == 3) {
-        return spawn_at(track, 742.0, 2.9, hairpin_speed, 60.0 * kDegree);
-    }
-    if (c == 4) {
-        return spawn_at(track, 742.0, 2.6, hairpin_speed, 30.0 * kDegree);
-    }
-    return spawn_at(track, 20.0, -7.0, speed, kTurn);
-}
-
-} // namespace
-
-TEST_CASE("stage_world: without micro relief leaving and coming back over the shoulder at 30 kmh") {
-    // Segunda respuesta del consultor, §2 (A), y cuarta, §3: la geometría del borde sola.
-    // - Fuera de las horquillas: ningún episodio sin carga de más de 2 pasos e impacto ≤ 1 m/s.
-    // - En la horquilla de R 6 (el coche parado en su calzada ya pierde una rueda): frente a la
-    //   misma salida con la malla densa y la rejilla de 0,375 m, pasos-rueda sin carga ≤ la
-    //   referencia + 0,5 puntos, episodio más largo ≤ la referencia + 12, impacto ≤ 1 m/s.
-    // - La salida por fuera de la horquilla, solo diagnóstico (quinta respuesta).
-    const rally::sim::JoltRuntime runtime;
-    for (const int c : kGeometryCases) {
-        const EdgeRun run = drive_across(
-            lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::Design, false));
-        const std::string name(kEdgeNames[c]);
-        if (c == 4) {
-            // Quinta respuesta del consultor: saliendo por fuera de la horquilla 1, el coche
-            // choca contra el talud del terreno natural hacia la curva de salida (10,6 m más
-            // arriba). Mide el talud, no el borde: solo diagnóstico, con sus tres cifras.
-            const EdgeRun dense = drive_across(
-                lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh, false));
-            const EdgeRun natural = drive_across(
-                lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::NaturalTerrain, false));
-            MESSAGE("diagnóstico, ", name, ": impacto máximo ", run.loads.max_impact,
-                    " m/s; con la malla densa ", dense.loads.max_impact,
-                    " m/s; con el terreno natural solo fuera de los núcleos ",
-                    natural.loads.max_impact, " m/s; pasos-rueda sin carga ", run.loads.percent(),
-                    " % (densa ", dense.loads.percent(), " %), episodio más largo ",
-                    run.loads.longest, " (", dense.loads.longest, ")");
-            continue;
-        }
-        CHECK((c == 2 ? run.back_on_road : run.left_road));
-        CHECK(run.loads.max_impact <= 1.0);
-        if (c < 3) {
-            MESSAGE("sin microrrelieve, ", name, ": impacto máximo ", run.loads.max_impact,
-                    " m/s; pasos-rueda sin carga ", run.loads.unloaded, ", episodio más largo ",
-                    run.loads.longest);
-            CHECK(run.loads.longest <= 2);
-            continue;
-        }
-        const EdgeRun ref = drive_across(
-            lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh, false));
-        MESSAGE("sin microrrelieve, ", name, ": impacto máximo ", run.loads.max_impact,
-                " m/s (malla densa ", ref.loads.max_impact, "); pasos-rueda sin carga ",
-                run.loads.percent(), " % (", ref.loads.percent(), " %), episodio más largo ",
-                run.loads.longest, " (", ref.loads.longest, ")");
-        CHECK(run.loads.percent() <= ref.loads.percent() + 0.5);
-        CHECK(run.loads.longest <= ref.loads.longest + 12);
-    }
-}
-
-#ifdef NDEBUG
-TEST_CASE("stage_world: with micro relief the shoulder crossings match the dense reference") {
-    // Segunda respuesta del consultor, §2 (B): el mismo cruce con MicroRelief::Stage frente a la
-    // malla 4 veces más densa y la rejilla de 0,375 m; los tres casos se suman.
-    const rally::sim::JoltRuntime runtime;
-    LoadStats stage;
-    LoadStats dense;
-    for (int c = 0; c < kEdgeCases; ++c) {
-        const EdgeRun run = drive_across(lazadas_desc(edge_spawn(c)));
-        const EdgeRun ref =
-            drive_across(lazadas_desc(edge_spawn(c), rally::sim::StageGroundVariant::DenseMesh));
-        MESSAGE("con microrrelieve, ", std::string(kEdgeNames[c]), ": impacto máximo ",
-                run.loads.max_impact, " m/s; pasos-rueda sin carga ", run.loads.unloaded,
-                " (malla densa ", ref.loads.unloaded, "), episodio más largo ", run.loads.longest,
-                " (", ref.loads.longest, ")");
-        CHECK(run.loads.max_impact <= 1.0);
-        stage.add(run.loads);
-        dense.add(ref.loads);
-    }
-    MESSAGE("cruces del arcén con microrrelieve: ", stage.percent(),
-            " % de pasos-rueda sin carga "
-            "y episodio de ",
-            stage.longest, " pasos (malla densa ", dense.percent(), " % y ", dense.longest, ")");
-    CHECK(stage.percent() <= dense.percent() + 0.5);
-    CHECK(stage.longest <= dense.longest + 12);
-
-    // Escalón efectivo (geometría + microrrelieve mezclado del tramo) al cruzar las líneas
-    // calzada–arcén y arcén–terreno de lazadas, de 30 cm dentro a 30 cm fuera: al informe.
-    const StageTrack& track = lazadas();
-    const rally::sim::TestZone noise;
-    double road_shoulder = 0.0;
-    double shoulder_terrain = 0.0;
-    for (double s = 0.0; s <= track.axis().length(); s += 0.5) {
-        const StagePose p = track.pose(s);
-        for (const double side : {-1.0, 1.0}) {
-            const double w = side > 0.0 ? p.half_width_right : p.half_width_left;
-            const double e = w + rally::sim::kStageShoulderWidth;
-            const auto h = [&](double t) {
-                const double x = p.x + side * t * std::cos(p.heading);
-                const double z = p.z + side * t * std::sin(p.heading);
-                const rally::sim::StageReliefFrame f =
-                    rally::sim::stage_relief_frame(track, s, x, z);
-                return rally::sim::stage_relief_height(f, noise, f.s, f.t, x, z);
-            };
-            road_shoulder = std::max(road_shoulder, std::abs(h(w + 0.3) - h(w - 0.3)));
-            shoulder_terrain = std::max(shoulder_terrain, std::abs(h(e + 0.3) - h(e - 0.3)));
-        }
-    }
-    MESSAGE("diferencia de h de 30 cm dentro a 30 cm fuera: calzada–arcén ", 100.0 * road_shoulder,
-            " cm, arcén–terreno ", 100.0 * shoulder_terrain, " cm");
-}
-#endif
+// --- Salir del arcén y volver: el criterio 1 de formato-2 (test_stage_exits.cpp), con las salidas
+// guionizadas de common/stage_exits.h, sustituye a los cruces del arcén del formato 1.
 
 // --- Criterio 5: seguimiento en el mundo
 // ------------------------------------------------------------
@@ -632,13 +464,15 @@ TEST_CASE("stage_world: a shortcut driven over the terrain puts the car back at 
         }
     }
     MESSAGE("atajo: recoloca en s = ", exit_s, "; impacto máximo por el terreno ", max_impact,
-            " m/s");
+            " m/s; pasos-rueda sin contacto ", unloaded, " (las dos cunetas a 30 km/h)");
     REQUIRE(shortcut);
     CHECK(world.stage_run()->shortcuts == 1);
     // El paso del atajo también cuenta (consultor §3).
     CHECK(world.stage_run()->steps == world_steps);
+    // Formato 2: el atajo cruza dos cunetas, que hacen botar (y deben): las ruedas sin contacto
+    // ya no son 0 y solo se informan; cómo bota fuera de la calzada lo deciden las salidas
+    // guionizadas (test_stage_exits.cpp). El impacto sigue acotado.
     CHECK(max_impact <= 1.0);
-    CHECK(unloaded == 0);
 }
 
 namespace {

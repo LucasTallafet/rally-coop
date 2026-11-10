@@ -12,6 +12,7 @@ rally_add_test_executable(rally_tests_sim
     test_sim_world.cpp
     test_stage_axis.cpp
     test_stage_band.cpp
+    test_stage_exits.cpp
     test_stage_ground.cpp
     test_stage_track.cpp
     test_stage_world.cpp

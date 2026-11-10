@@ -1,7 +1,7 @@
 #pragma once
 
 // La banda de entorno del formato 2 (tarea formato-2, lote 6): las cifras de las premisas P1, P2,
-// P3 y P6 de la parte A sobre un StageGround con la banda (StageGroundKind::Band), y los tramos de
+// P3 y P6 sobre el StageGround del juego (la malla con la banda), y los tramos de
 // test que las miden. Lo usan stage_measure.cpp (a mano, «f2») y los tests de la banda.
 
 #include "sim/jolt_runtime.h"
@@ -339,11 +339,14 @@ inline double seam_step(const sim::StageGround& g, const sim::StageTrack& track,
     return worst;
 }
 
-// Pregunta 1 para el consultor (revisión del plan): la mayor pendiente de la rejilla del formato 1
-// entre muestras vecinas con colisión, por la distancia de la muestra al borde del núcleo más
-// cercano: (5, 10], (10, 15], (15, 30] y (30, 60] m. Fuera de 10 m no llega ninguna banda.
+// Respuesta del consultor a la parte A, §2.1 (diagnóstico): la mayor pendiente de la rejilla a la
+// vista (ni la muestra ni la vecina bajo la malla) entre muestras vecinas con colisión, por la
+// distancia de la muestra al borde del núcleo más cercano: (5, 10], (10, 15], (15, 30] y (30, 60]
+// m.
 inline void grid_slopes(const std::string& text, const sim::StageTrack& track) {
     const sim::StageGround g = sim::StageGround::build(track);
+    const MeshQuery query(g);
+    std::vector<double> covered;
     constexpr int n = sim::kStageTileSamples;
     constexpr double kLimits[] = {5.0, 10.0, 15.0, 30.0, 60.0};
     double worst[4] = {0.0, 0.0, 0.0, 0.0};
@@ -360,14 +363,22 @@ inline void grid_slopes(const std::string& text, const sim::StageTrack& track) {
                                  static_cast<double>(tile.tx * sim::kStageTileCells + i) * g.cell();
                 const double z = g.origin_z() +
                                  static_cast<double>(tile.tz * sim::kStageTileCells + k) * g.cell();
+                // Solo la rejilla a la vista: ni la muestra ni la vecina bajo la malla.
+                const auto visible = [&](double vx, double vz) {
+                    query.heights(vx, vz, covered);
+                    return covered.empty();
+                };
+                if (!visible(x, z)) {
+                    continue;
+                }
                 double slope = 0.0;
-                if (i + 1 < n) {
+                if (i + 1 < n && visible(x + g.cell(), z)) {
                     const float r = tile.heights[static_cast<std::size_t>(k * n + i + 1)];
                     if (r != sim::kStageNoCollision) {
                         slope = std::max(slope, std::abs(static_cast<double>(r - hv)) / g.cell());
                     }
                 }
-                if (k + 1 < n) {
+                if (k + 1 < n && visible(x, z + g.cell())) {
                     const float d = tile.heights[static_cast<std::size_t>((k + 1) * n + i)];
                     if (d != sim::kStageNoCollision) {
                         slope = std::max(slope, std::abs(static_cast<double>(d - hv)) / g.cell());
@@ -377,6 +388,11 @@ inline void grid_slopes(const std::string& text, const sim::StageTrack& track) {
                 const double d = p.distance - track.core_half_width(p.s, p.t >= 0.0 ? 1 : -1);
                 for (int b = 0; b < 4; ++b) {
                     if (d > kLimits[b] && d <= kLimits[b + 1] && slope > worst[b]) {
+                        if (g_band_debug && slope > 5.0) {
+                            std::printf(
+                                "    pendiente %.2f en (%.2f, %.2f) h %.3f (s %.2f t %.2f)\n",
+                                slope, x, z, hv + g.origin_y(), p.s, p.t);
+                        }
                         worst[b] = slope;
                         where_x[b] = x;
                         where_z[b] = z;
@@ -403,8 +419,7 @@ inline void band_report_stage(const char* name, const std::string& text, bool ta
         std::printf("%s: el tramo no vale: %s\n", name, parsed.error.c_str());
         return;
     }
-    const sim::StageGround g =
-        sim::StageGround::build(track, sim::kStageCell, sim::StageGroundKind::Band);
+    const sim::StageGround g = sim::StageGround::build(track);
     const BandGeometry b = band_geometry(g);
     std::printf("\n%s: %zu secciones de %zu vértices, %zu triángulos (%zu de la banda)\n", name,
                 g.sections().size(), g.vertices_per_section(), b.triangles, b.band_triangles);

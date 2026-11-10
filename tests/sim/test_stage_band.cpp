@@ -9,9 +9,9 @@
 #include <cmath>
 #include <string>
 
-// Prototipo de la banda de entorno del formato 2 (tarea formato-2, lote 6, parte A;
-// mensajes/formato-2-plan.md): StageGroundKind::Band, que aún no es el suelo del juego. Las
-// premisas P1, P2 y P3 y el criterio 9 sobre la geometría, sin Jolt.
+// La banda de entorno del formato 2 (tarea formato-2, lote 6; mensajes/formato-2-plan.md): las
+// premisas P1, P2 y P3 y los criterios 3, 4, 5, 6 y 9 sobre la geometría del suelo del juego, sin
+// Jolt.
 
 using rally::sim::StageGround;
 using rally::sim::StageTrack;
@@ -32,9 +32,7 @@ StageTrack load(const std::string& text) {
     return track;
 }
 
-StageGround band(const StageTrack& track) {
-    return StageGround::build(track, rally::sim::kStageCell, rally::sim::StageGroundKind::Band);
-}
+StageGround band(const StageTrack& track) { return StageGround::build(track); }
 
 void check_faces(const char* name, const std::string& text) {
     const StageTrack track = load(text);
@@ -124,28 +122,31 @@ TEST_CASE("stage_band: the wall between the arms of lazadas stays under 80 degre
     CHECK(b.walls > 0);
 }
 
-TEST_CASE("stage_band: two passes that need a wall over 80 degrees do not fit and the error has "
+TEST_CASE("stage_band: two passes that need a wall over 80 degrees do not load and the error has "
           "its s") {
     // Criterio 9: al 10 % entre brazos de una horquilla de R 6 con 2 m entre cabezas de cuneta, el
-    // muro pasa de 80°; al 3 %, cabe.
-    const StageTrack steep = load(rally::tests::stacked_stage(0.10));
-    const std::string error = rally::sim::stage_band_error(steep);
-    MESSAGE("al 10 %: ", error);
-    CHECK(error.rfind("s = ", 0) == 0);
-    CHECK(error.find("no cabe el talud entre pasadas") != std::string::npos);
+    // muro pasa de 80° y StageTrack::build no carga, con la s; al 3 %, carga. Y dos núcleos a 2,9 m
+    // (la validación de 1,5 m los deja; respuesta del consultor a la parte A, §2.2): la cuneta no
+    // cabe. Con error, el StageTrack de salida queda como estaba.
+    const auto fails = [](const std::string& text, const char* name) {
+        StageTrack track;
+        const rally::sim::StageParseResult r = StageTrack::build(text, track);
+        MESSAGE(std::string(name), ": ", r.error);
+        CHECK_FALSE(r.ok);
+        CHECK(r.error.rfind("s = ", 0) == 0);
+        CHECK(r.error.find("no cabe el talud entre pasadas") != std::string::npos);
+        CHECK(track.band_cache() == nullptr);
+    };
+    fails(rally::tests::stacked_stage(0.10), "horquilla apilada al 10 %");
     const StageTrack gentle = load(rally::tests::stacked_stage(0.03));
     CHECK(rally::sim::stage_band_error(gentle).empty());
-    // Dos núcleos a 2,9 m (hoy valen: validación de 1,5 m): la cuneta no cabe.
     const std::string plan = "straight 100\narc " +
                              rally::tests::stage_number(10.0 * 3.14159265358979323846) +
                              " 10\narc 30 100\narc 30 -100\nstraight 20\narc " +
                              rally::tests::stage_number(15.0 * 3.14159265358979323846) + " -30\n";
     const double length =
         100.0 + 10.0 * 3.14159265358979323846 + 60.0 + 20.0 + 15.0 * 3.14159265358979323846;
-    const StageTrack close = load(rally::tests::simple_stage(plan, length));
-    const std::string close_error = rally::sim::stage_band_error(close);
-    MESSAGE("núcleos a 2,9 m: ", close_error);
-    CHECK(close_error.find("no cabe el talud entre pasadas") != std::string::npos);
+    fails(rally::tests::simple_stage(plan, length), "núcleos a 2,9 m");
 }
 
 TEST_CASE("stage_band: other_feet sees the other arm and counts what does not fit") {

@@ -89,15 +89,11 @@ JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground, bool with_mesh, Micr
     dirt.push_back(materials[static_cast<std::size_t>(Surface::Dirt)]);
     const auto cell = static_cast<float>(ground.cell());
     for (const StageTile& tile : ground.tiles()) {
-        const bool by_cell = !tile.surfaces.empty();
         JPH::HeightFieldShapeSettings settings(tile.heights.data(), JPH::Vec3::sZero(),
                                                JPH::Vec3(cell, 1.0f, cell), kStageTileSamples,
-                                               by_cell ? tile.surfaces.data() : nullptr,
-                                               by_cell ? materials : JPH::PhysicsMaterialList());
-        if (!by_cell) {
-            // Sin índices, Jolt usa el único material de la lista (el constructor la ignora).
-            settings.mMaterials = dirt;
-        }
+                                               nullptr, JPH::PhysicsMaterialList());
+        // Sin índices, Jolt usa el único material de la lista (el constructor la ignora).
+        settings.mMaterials = dirt;
         settings.mBlockSize = kGroundBlockSize;
         settings.mBitsPerSample = settings.CalculateBitsPerSampleForError(kStageTileMaxError);
         const JPH::ShapeSettings::ShapeResult result = settings.Create();
@@ -140,12 +136,7 @@ JPH::Quat on_road_plane(const StagePose& p, float yaw) {
 }
 
 double stage_cell(StageGroundVariant variant) {
-    if (variant == StageGroundVariant::CoarseTiles) {
-        return 2.0 * kStageCell;
-    }
-    return variant == StageGroundVariant::DenseMesh || variant == StageGroundVariant::BandDense
-               ? 0.5 * kStageCell
-               : kStageCell;
+    return variant == StageGroundVariant::DenseMesh ? 0.5 * kStageCell : kStageCell;
 }
 
 } // namespace
@@ -346,20 +337,10 @@ void SimWorld::build(const WorldDesc& desc) {
         // Suelo del tramo: un cuerpo estático, antes de los de la descripción. La geometría se
         // calcula aquí, va a Jolt y se libera; queda su hash.
         const StageGround ground = StageGround::build(
-            *w.stage, stage_cell(desc.stage_variant),
-            desc.stage_variant == StageGroundVariant::GridOnly ? StageGroundKind::GridOnly
-            : desc.stage_variant == StageGroundVariant::NaturalTerrain
-                ? StageGroundKind::NaturalOutside
-            : desc.stage_variant == StageGroundVariant::Band ||
-                    desc.stage_variant == StageGroundVariant::BandDense
-                ? StageGroundKind::Band
-                : StageGroundKind::Design,
-            desc.stage_variant == StageGroundVariant::DenseMesh ||
-                    desc.stage_variant == StageGroundVariant::BandDense
-                ? kStageDenseMesh
-                : StageMeshDensity{});
-        RALLY_CHECK(ground.band_error().empty(),
-                    "SimWorld::build: no cabe el talud entre pasadas (formato 2)");
+            *w.stage, stage_cell(desc.stage_variant), StageGroundKind::Design,
+            desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
+                                                                : StageMeshDensity{});
+        RALLY_CHECK(ground.band_error().empty(), "SimWorld::build: no cabe el talud entre pasadas");
         w.stage_ground_hash = ground.hash();
         const JPH::Ref<JPH::Shape> shape =
             stage_shape(ground, desc.stage_variant != StageGroundVariant::TerrainOnly,

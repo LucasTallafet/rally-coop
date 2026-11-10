@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -27,6 +28,8 @@ inline constexpr double kSplitSpacing = 1000.0;      // un parcial en cada múlt
 inline constexpr double kSplitFinishGap = 200.0;     // …salvo a menos de esto de la meta
 inline constexpr double kRunStartDistance = 0.10;    // la pasada empieza al pasar esta s (m)
 inline constexpr int kMaxSplits = 64;
+
+struct StageBandCache; // sim/stage_ground.h
 
 struct StageProjection {
     double s = 0.0;        // en [s_begin(), s_end()]
@@ -66,8 +69,12 @@ public:
                    int capacity) const;
     // Memoria de las piezas, las muestras y el índice (bytes).
     std::size_t index_bytes() const;
+    // La banda de entorno del formato 2 calculada al validar el tramo (sim/stage_ground.h), que
+    // StageGround::build reutiliza; nullptr en un StageTrack sin construir.
+    const StageBandCache* band_cache() const { return band_cache_.get(); }
 
 private:
+    friend std::string stage_band_attach(StageTrack& track);
     // Tramo del eje entre s0 y s1 con una sola fórmula: la prolongación de entrada, cada
     // primitiva de StageAxis y la de frenada.
     struct Piece {
@@ -114,6 +121,7 @@ private:
     std::vector<Cell> cells_;         // ordenadas por key
     std::vector<Interval> intervals_; // de las celdas, lejanos y cercanos
     double core_max_ = 0.0;           // el mayor semiancho + arcén del tramo
+    std::shared_ptr<const StageBandCache> band_cache_;
 };
 
 // Cómo se ha recolocado el coche (placed).

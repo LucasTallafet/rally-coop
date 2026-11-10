@@ -128,9 +128,11 @@ inline double outside_road_edge(const sim::StageTrack& track, double x, double z
 // La salida `place` a `kmh` sobre el suelo `variant` de `text` (lazadas), con el microrrelieve del
 // juego: place.seconds (las primeras 0,25 s no se cuentan) o hasta que el coche está a más de
 // 45 m fuera o la pasada lo recoloca. Con `step_ms`, el tiempo de cada paso (ms; solo medida).
+// `micro_relief` = false apaga el microrrelieve del tramo (el criterio 1a de formato-2; el
+// recorrido y el conductor no cambian).
 inline ExitStats run_exit(const std::string& text, const sim::StageTrack& track,
                           sim::StageGroundVariant variant, const ExitPlace& place, double kmh,
-                          std::vector<double>* step_ms = nullptr) {
+                          std::vector<double>* step_ms = nullptr, bool micro_relief = true) {
     constexpr double kPi = 3.14159265358979323846;
     constexpr int kSteps = sim::kStepsPerSecond;
     const double speed = kmh / 3.6;
@@ -144,6 +146,7 @@ inline ExitStats run_exit(const std::string& text, const sim::StageTrack& track,
     sim::WorldDesc desc;
     desc.stage_text = text;
     desc.stage_variant = variant;
+    desc.stage_micro_relief = micro_relief;
     desc.car = true;
     desc.car_data = reference_car();
     desc.car_spawn = spawn;

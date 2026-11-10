@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(argv[1], "variant_without_stage") == 0) {
         // Una variante de medida del suelo del tramo sin tramo.
         rally::sim::WorldDesc desc;
-        desc.stage_variant = rally::sim::StageGroundVariant::GridOnly;
+        desc.stage_variant = rally::sim::StageGroundVariant::DenseMesh;
         world.build(desc);
     } else {
         std::puts("caso desconocido");
