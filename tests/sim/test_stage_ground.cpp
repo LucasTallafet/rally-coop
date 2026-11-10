@@ -34,8 +34,9 @@ namespace {
 
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella. Formato 2
-// (formato-2, lote 6): 0xdd438cd676e8c121 → 0x56180e49eb1ff6a8.
-constexpr std::uint64_t kExpectedStageGroundHash = 0x5618'0e49'eb1f'f6a8ull;
+// (formato-2, lote 6): 0xdd438cd676e8c121 → 0x56180e49eb1ff6a8; con 40 tramos de cuneta y la
+// regla de la rejilla por lado (respuesta a la parada de la parte B), → 0xfce2b56c48cd9d1c.
+constexpr std::uint64_t kExpectedStageGroundHash = 0xfce2'b56c'48cd'9d1cull;
 
 constexpr double kMm = 1.0e-3;
 
@@ -661,7 +662,7 @@ double free_end_g(const StageTrack& track, const StageCellError& error, double s
     const double end = half_width(p, t) + kStageShoulderWidth + kStageBandFree;
     const double d = std::abs(t) - end;
     const double surface = p.y + p.bank * t;
-    const double band = surface - kStageTerrainDrop - error.at(s);
+    const double band = surface - kStageTerrainDrop - error.at(s, t >= 0.0 ? 1 : -1);
     if (d <= kStageEdgeBand) {
         return band;
     }
@@ -839,7 +840,7 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
             out.step = stp;
             out.step_s = s;
             out.step_side = side;
-            out.step_e = error.at(s);
+            out.step_e = error.at(s, side > 0.0 ? 1 : -1);
         }
         if (s >= 100.0 && s <= 160.0 && side < 0.0) {
             out.step_r80 = std::max(out.step_r80, stp);
@@ -882,6 +883,38 @@ TEST_CASE("stage_ground: the grid never shows above the band or the core") {
                 m.step_r80 / kMm, " mm");
         CHECK(m.above == 0);
         CHECK(m.lowest > 0.0);
+    }
+}
+
+TEST_CASE(
+    "stage_ground: the step from the band to the grid is at most 40 mm along the whole seam") {
+    // Invariante 7b (respuesta del consultor a la parada de la parte B de formato-2, §2): en cada
+    // lado expuesto (libre, rampa o recortado) de cada sección, la malla menos la rejilla de Jolt
+    // 2 cm dentro del final ≤ 40 mm (el mayor escalón aceptado del formato 1, 38,6 mm, docs/02
+    // §6.6). En Debug, lazadas, hairpin_flat y el peralte; los 30 km, solo en Release.
+    const rally::sim::JoltRuntime runtime;
+    struct Case {
+        const char* name;
+        std::string text;
+    };
+    std::vector<Case> cases = {
+        {"lazadas", rally::tests::lazadas_stage_text()},
+        {"hairpin_flat", hairpin_text()},
+        {"peralte 10 %", max_bank_text()},
+    };
+    if constexpr (kFull) {
+        cases.push_back({"sintético 30 km", rally::tests::synthetic_stage_30km()});
+    }
+    for (const Case& c : cases) {
+        const rally::tests::SeamScan scan = rally::tests::seam_scan(c.text, 0.040);
+        MESSAGE(std::string(c.name), ": ", scan.sides, " lados expuestos; escalón máximo ",
+                scan.worst.step / kMm, " mm (s = ", scan.worst.s, ", lado ", scan.worst.side, ", ",
+                std::string(rally::tests::band_kind_name(scan.worst.kind)),
+                "); de más de 40 mm: ", scan.over.size(), "; margen mínimo dentro del final ",
+                scan.lowest / kMm, " mm");
+        CHECK(scan.sides > 100);
+        CHECK(scan.over.empty());
+        CHECK(scan.lowest > 0.0);
     }
 }
 

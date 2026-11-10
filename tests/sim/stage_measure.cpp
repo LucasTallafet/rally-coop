@@ -278,10 +278,95 @@ int main(int argc, char** argv) {
     const std::string mode = argc > 1 ? std::string(argv[1]) : std::string();
     g_format2 = mode == "f2" || mode == "f2geo";
     rally::tests::g_band_debug = argc > 2 && std::string(argv[2]) == "debug";
+    if (mode == "f2trace" && argc >= 5) {
+        // Premisa PB: lo que decide la altura de las muestras de la rejilla a menos de 1,1 m del
+        // final del lado `side` en s (lazadas o 30km), y la malla en el final.
+        const std::string which = argv[2];
+        const std::string text = which == "30km" ? rally::tests::synthetic_stage_30km()
+                                                 : rally::tests::lazadas_stage_text();
+        const double s = std::stod(argv[3]);
+        const int side = std::stoi(argv[4]);
+        rally::sim::StageTrack track;
+        rally::sim::StageTrack::build(text, track);
+        const rally::sim::StageGround plain = rally::sim::StageGround::build(track);
+        const rally::sim::StageBandSide* found = nullptr;
+        for (const rally::sim::StageBandSide& b : plain.band_sides()) {
+            if (b.side == side &&
+                (found == nullptr || std::abs(b.s - s) < std::abs(found->s - s))) {
+                found = &b;
+            }
+        }
+        const rally::sim::StagePose p = track.pose(found->s);
+        const double edge = side > 0 ? p.half_width_right : p.half_width_left;
+        const double t = side * (edge + rally::sim::kStageShoulderWidth + found->end_u);
+        const double fx = p.x + t * std::cos(p.heading);
+        const double fz = p.z + t * std::sin(p.heading);
+        std::printf("s %.3f lado %+d %s: final en t %.3f (%.3f, %.3f), y %.4f, end_u %.3f, "
+                    "pendiente %.3f\n",
+                    found->s, side, rally::tests::band_kind_name(found->kind), t, fx, fz,
+                    found->end_y, found->end_u, found->slope);
+        {
+            // La malla (sus triángulos), el mundo y la rejilla sola, hacia dentro del final.
+            rally::sim::WorldDesc desc;
+            desc.stage_text = text;
+            rally::sim::SimWorld world;
+            world.build(desc);
+            world.seal();
+            desc.stage_variant = rally::sim::StageGroundVariant::TerrainOnly;
+            rally::sim::SimWorld terrain;
+            terrain.build(desc);
+            terrain.seal();
+            const rally::tests::MeshQuery query(plain);
+            std::vector<double> hs;
+            for (double depth = -0.5; depth <= 1.5001; depth += 0.125) {
+                const double td = t - side * depth;
+                const double x = p.x + td * std::cos(p.heading);
+                const double z = p.z + td * std::sin(p.heading);
+                query.heights(x, z, hs);
+                std::printf("  %6.3f m dentro: mundo %9.4f rejilla %9.4f malla", depth,
+                            world.probe_ground(x, z).y, terrain.probe_ground(x, z).y);
+                for (const double y : hs) {
+                    std::printf(" %9.4f", y);
+                }
+                std::printf("\n");
+            }
+        }
+        std::vector<rally::sim::StageSampleTrace> traces;
+        rally::sim::StageGround::trace(track, {fx, fz}, 1.1, traces);
+        for (const rally::sim::StageSampleTrace& tr : traces) {
+            const rally::sim::StageProjection q = track.acquire(tr.x, tr.z);
+            std::printf("  muestra (%.3f, %.3f) s %.3f t %.3f: rejilla %.4f, N %.4f; %s%s d %.3f "
+                        "junto %.4f bajo %.4f; zona %d:",
+                        tr.x, tr.z, q.s, q.t, tr.height, tr.natural,
+                        tr.core ? "bajo banda" : "fuera", tr.exposed ? " expuesta" : "", tr.core_d,
+                        tr.core_band, tr.core_h, tr.zone_count);
+            for (int k = 0; k < tr.zone_count && k < 8; ++k) {
+                std::printf(" [d %.3f B %.4f]", tr.zone_d[k], tr.zone_band[k]);
+            }
+            std::printf("\n");
+        }
+        return 0;
+    }
+    if (mode == "f2seam") {
+        // Invariante 7b: el escalón banda–rejilla en toda la costura, y los de más de 40 mm.
+        const double limit = argc >= 3 ? std::stod(argv[2]) / 1000.0 : 0.040;
+        rally::tests::seam_report("lazadas", rally::tests::lazadas_stage_text(), limit);
+        rally::tests::seam_report("hairpin_flat", rally::tests::stage_file("hairpin_flat.stage"),
+                                  limit);
+        rally::tests::seam_report("peralte 10 %", rally::tests::max_bank_stage(), limit);
+        rally::tests::seam_report("sintético 30 km", rally::tests::synthetic_stage_30km(), limit);
+        return 0;
+    }
     if (g_format2) {
         rally::tests::band_report();
     }
     if (mode == "f2geo") {
+        return 0;
+    }
+    if (mode == "f2edges") {
+        // Premisa PA: el ángulo entre caras vecinas, por categorías, con 18, 36, 38 y 72 tramos.
+        const double active = argc >= 3 ? std::stod(argv[2]) : 5.0;
+        rally::tests::edge_report(rally::tests::lazadas_stage_text(), active);
         return 0;
     }
     if (mode == "f2probe" && argc >= 4) {
@@ -331,15 +416,19 @@ int main(int argc, char** argv) {
             rally::sim::StageGround::build(track, rally::sim::kStageCell);
         const double s0 = std::stod(argv[3]);
         const double s1 = std::stod(argv[4]);
+        const rally::sim::StageCellError cell_error(track);
         for (const rally::sim::StageBandSide& b : g.band_sides()) {
             if (b.s < s0 || b.s > s1) {
                 continue;
             }
             const rally::sim::StagePose p = track.pose(b.s);
-            std::printf("s %9.3f lado %+d %-10s delta %8.4f enfr %9.3f end_u %7.3f cabeza %8.3f "
-                        "final %8.3f pend %6.3f kappa %8.5f\n",
-                        b.s, b.side, rally::tests::band_kind_name(b.kind), b.delta, b.other_s,
-                        b.end_u, b.rim_y, b.end_y, b.slope, p.curvature);
+            std::printf(
+                "s %9.3f lado %+d %-10s delta %8.4f enfr %9.3f end_u %7.3f cabeza %8.3f "
+                "final %8.3f pend %6.3f kappa %8.5f e %6.1f mm (sin suavizar %6.1f) peralte %7.4f "
+                "pendiente %7.4f\n",
+                b.s, b.side, rally::tests::band_kind_name(b.kind), b.delta, b.other_s, b.end_u,
+                b.rim_y, b.end_y, b.slope, p.curvature, 1000.0 * cell_error.at(b.s, b.side),
+                1000.0 * cell_error.raw_at(b.s), p.bank, p.grade);
         }
         return 0;
     }

@@ -56,6 +56,10 @@ constexpr double kMinFreeRho = 0.25;
 // Bajo la banda, la rejilla queda bajo su menor altura en ±esto en lateral (m): más que la
 // diagonal de una celda.
 constexpr double kUnderWindow = 1.1;
+// La cota de las rampas, a lo largo del final en planta: meseta y rampa (m). La meseta cubre los
+// vértices de una celda que cruza el final (d₁) con holgura.
+constexpr double kRampExtraPlateau = 1.5;
+constexpr double kRampExtraRamp = 1.5;
 
 // Pies que una muestra guarda fuera del núcleo (los más cercanos a su borde).
 constexpr int kMaxCandidates = 6;
@@ -447,7 +451,8 @@ private:
                     run;
                 acc.core_h =
                     profile_min(band, abs_t, kUnderWindow) - rate * kUnderWindow - kStageCoreDrop;
-                acc.core_band = profile(band, abs_t) - drop_ - error_->at(s) - band.extra;
+                acc.core_band =
+                    profile(band, abs_t) - drop_ - error_->at(s, lane > 0 ? 1 : -1) - band.extra;
                 acc.core_exposed = band.exposed > 0.5;
             }
             (void)y;
@@ -463,7 +468,8 @@ private:
             // Más allá del final, su última tira prolongada (con la pendiente de la tierra como
             // mucho).
             const double slope = rmath::clamp(band.slope, -kStageDirtSlope, kStageDirtSlope);
-            acc.add_zone(past, band.y_end + slope * past - drop_ - error_->at(s) - band.extra);
+            acc.add_zone(past, band.y_end + slope * past - drop_ -
+                                   error_->at(s, lane > 0 ? 1 : -1) - band.extra);
         }
         add_outside(c * fade(dist) * edge_weight(d), dist, d, band.y_end - drop_, acc);
     }
@@ -495,7 +501,8 @@ private:
             // del último segmento del abanico).
             const FanPoint& q = start ? points_[1] : points_[points_.size() - 2];
             const double grade = (p.y - q.y) / (p.s - q.s);
-            acc.add_zone(d_edge, h + grade * along - drop_ - error_->at(p.s) - band.extra);
+            acc.add_zone(d_edge, h + grade * along - drop_ - error_->at(p.s, tc >= 0.0 ? 1 : -1) -
+                                     band.extra);
         }
         add_outside(fade(dist) * edge_weight(d), dist, d, h - drop_, acc);
     }
@@ -695,10 +702,11 @@ std::vector<double> section_positions(const StageTrack& track, const StageMeshDe
     return out;
 }
 
-// Norma espectral de la hessiana en planta de S = y(s) + peralte(s)·t en (s, t), en el marco
+// Mayor autovalor (≥ 0) de la hessiana en planta de S = y(s) + peralte(s)·t en (s, t), en el marco
 // (avance, normal), con ρ = 1 − κ·t (coordenadas ortogonales con h_s = ρ, h_t = 1):
 //   H_ττ = (y'' + κ'·t·S_s/ρ − ρ·κ·peralte)/ρ²,  H_τn = (peralte' + κ·S_s/ρ)/ρ,  H_nn = 0,
-// con S_s = pendiente + peralte'·t (peralte lineal a trozos: sin peralte'').
+// con S_s = pendiente + peralte'·t (peralte lineal a trozos: sin peralte''). Solo él deja la
+// cuerda de una celda por encima de S: I(f) − f = ½·Σ λᵢ·(vᵢ − x)ᵀH(vᵢ − x) ≤ ½·R²·máx(0, λ).
 double surface_hessian(const StagePose& p, double curvature_rate, double bank_rate, double t) {
     constexpr double kMinRho = 0.05;
     const double rho = rmath::max(1.0 - p.curvature * t, kMinRho);
@@ -707,7 +715,7 @@ double surface_hessian(const StagePose& p, double curvature_rate, double bank_ra
         (p.vertical_curvature + curvature_rate * t * along / rho - rho * p.curvature * p.bank) /
         (rho * rho);
     const double c = (bank_rate + p.curvature * along / rho) / rho;
-    return 0.5 * (rmath::abs(a) + rmath::sqrt(a * a + 4.0 * c * c));
+    return 0.5 * (a + rmath::sqrt(a * a + 4.0 * c * c));
 }
 
 // --- Banda del formato 2 ---------------------------------------------------------------------
@@ -1438,7 +1446,9 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
     const double s1 = track.s_end();
     const auto count =
         static_cast<std::size_t>(rmath::ceil((s1 - s0_) / kStageCellErrorStep)) + std::size_t{1};
-    raw_.assign(count, 0.0);
+    for (int lane = 0; lane < 2; ++lane) {
+        raw_[lane].assign(count, 0.0);
+    }
     // ½·M·R², con R² = (kStageCell/√2)².
     const double half_r2 = 0.25 * kStageCell * kStageCell;
     constexpr double kProbe = 0.01;
@@ -1454,8 +1464,8 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
         const StagePose ph = track.pose(hi);
         const double bank_rate = (ph.bank - pl.bank) / (hi - lo);
         const double curvature_rate = (ph.curvature - pl.curvature) / (hi - lo);
-        double m = 0.0;
         for (const int side : {-1, 1}) {
+            double m = 0.0;
             const double edge = side_edge(p, side);
             // La banda del lado del núcleo, de edge − d₁ a edge.
             for (int k = 0; k <= 4; ++k) {
@@ -1469,8 +1479,8 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
                 }
                 m = rmath::max(m, surface_hessian(p, curvature_rate, bank_rate, t));
             }
+            raw_[side > 0 ? 1 : 0][i] = half_r2 * m;
         }
-        raw_[i] = half_r2 * m;
     }
     // Juntas donde salta ∂S/∂s (pendiente o rampa del peralte): J·d₁/4 en la muestra más cercana.
     constexpr double kSide = 0.05;
@@ -1485,58 +1495,67 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
         const double bank_after = (track.pose(b + kSide).bank - after.bank) / (kSide - kJoint);
         const double jump_grade = after.grade - before.grade;
         const double jump_bank = bank_after - bank_before;
-        double jump = rmath::abs(jump_grade);
-        for (const int side : {-1, 1}) {
-            const double t = static_cast<double>(side) * side_edge(after, side);
-            jump = rmath::max(jump, rmath::abs(jump_grade + jump_bank * t));
-        }
         const auto index =
             static_cast<std::size_t>(rmath::floor((b - s0_) / kStageCellErrorStep + 0.5));
-        raw_[index < count ? index : count - 1] += 0.25 * kStageEdgeBand * jump;
+        for (const int side : {-1, 1}) {
+            // Solo un quiebro que sube (∂S/∂s crece) deja la cuerda por encima de S: el mayor en
+            // la banda de ±d₁ del lado de dentro del final.
+            const double t = static_cast<double>(side) * side_edge(after, side);
+            const double t_in = t - static_cast<double>(side) * kStageEdgeBand;
+            const double jump = rmath::max(
+                0.0, rmath::max(jump_grade + jump_bank * t_in, jump_grade + jump_bank * t));
+            raw_[side > 0 ? 1 : 0][index < count ? index : count - 1] +=
+                0.25 * kStageEdgeBand * jump;
+        }
     }
     // Máximo en meseta con rampa: continua en s y ≥ la cota en ±kStageCellErrorPlateau.
-    e_.assign(count, 0.0);
     const auto reach = static_cast<std::ptrdiff_t>(
         rmath::ceil((kStageCellErrorPlateau + kStageCellErrorRamp) / kStageCellErrorStep));
-    for (std::size_t i = 0; i < count; ++i) {
-        double best = 0.0;
-        const auto ii = static_cast<std::ptrdiff_t>(i);
-        const std::ptrdiff_t j0 = ii - reach < 0 ? 0 : ii - reach;
-        const auto last = static_cast<std::ptrdiff_t>(count) - 1;
-        const std::ptrdiff_t j1 = ii + reach > last ? last : ii + reach;
-        for (std::ptrdiff_t j = j0; j <= j1; ++j) {
-            const double gap = rmath::abs(static_cast<double>(j - ii)) * kStageCellErrorStep;
-            const double w = rmath::clamp((kStageCellErrorPlateau + kStageCellErrorRamp - gap) /
-                                              kStageCellErrorRamp,
-                                          0.0, 1.0);
-            best = rmath::max(best, w * raw_[static_cast<std::size_t>(j)]);
+    for (int lane = 0; lane < 2; ++lane) {
+        e_[lane].assign(count, 0.0);
+        for (std::size_t i = 0; i < count; ++i) {
+            double best = 0.0;
+            const auto ii = static_cast<std::ptrdiff_t>(i);
+            const std::ptrdiff_t j0 = ii - reach < 0 ? 0 : ii - reach;
+            const auto last = static_cast<std::ptrdiff_t>(count) - 1;
+            const std::ptrdiff_t j1 = ii + reach > last ? last : ii + reach;
+            for (std::ptrdiff_t j = j0; j <= j1; ++j) {
+                const double gap = rmath::abs(static_cast<double>(j - ii)) * kStageCellErrorStep;
+                const double w = rmath::clamp((kStageCellErrorPlateau + kStageCellErrorRamp - gap) /
+                                                  kStageCellErrorRamp,
+                                              0.0, 1.0);
+                best = rmath::max(best, w * raw_[lane][static_cast<std::size_t>(j)]);
+            }
+            e_[lane][i] = best;
         }
-        e_[i] = best;
     }
 }
 
-double StageCellError::at(double s) const {
-    if (e_.empty()) {
+double StageCellError::at(double s, int side) const {
+    const std::vector<double>& e = e_[side > 0 ? 1 : 0];
+    if (e.empty()) {
         return 0.0;
     }
     const double f = rmath::max(0.0, (s - s0_) / kStageCellErrorStep);
     const auto i = static_cast<std::size_t>(rmath::floor(f));
-    if (i + 1 >= e_.size()) {
-        return e_.back();
+    if (i + 1 >= e.size()) {
+        return e.back();
     }
     const double u = f - static_cast<double>(i);
-    return e_[i] + u * (e_[i + 1] - e_[i]);
+    return e[i] + u * (e[i + 1] - e[i]);
 }
 
+double StageCellError::at(double s) const { return rmath::max(at(s, -1), at(s, 1)); }
+
 double StageCellError::raw_at(double s) const {
-    if (raw_.empty()) {
+    if (raw_[0].empty()) {
         return 0.0;
     }
     const double f = rmath::max(0.0, (s - s0_) / kStageCellErrorStep + 0.5);
     const auto i = static_cast<std::size_t>(rmath::floor(f));
-    return raw_[i < raw_.size() ? i : raw_.size() - 1];
+    const std::size_t k = i < raw_[0].size() ? i : raw_[0].size() - 1;
+    return rmath::max(raw_[0][k], raw_[1][k]);
 }
-
 namespace {
 
 // Salto de la combinación de pasadas cuando un pie a menos de kNearBoundary del final de su
@@ -1559,6 +1578,19 @@ double zone_boundary_jump(const Acc& a, double natural) {
 
 StageGround StageGround::build(const StageTrack& track, double cell, StageGroundKind kind,
                                const StageMeshDensity& density) {
+    return build_impl(track, cell, kind, density, nullptr, 0.0, nullptr);
+}
+
+StageGround StageGround::trace(const StageTrack& track, const std::vector<double>& at,
+                               double radius, std::vector<StageSampleTrace>& out) {
+    out.clear();
+    return build_impl(track, kStageCell, StageGroundKind::Design, StageMeshDensity{}, &at, radius,
+                      &out);
+}
+
+StageGround StageGround::build_impl(const StageTrack& track, double cell, StageGroundKind kind,
+                                    const StageMeshDensity& density, const std::vector<double>* at,
+                                    double radius, std::vector<StageSampleTrace>* out) {
     RALLY_CHECK(cell > 0.0, "StageGround::build: celda no válida");
     (void)kind; // un solo generador de suelo
     StageGround g;
@@ -1661,10 +1693,14 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
         }
     }
     // Cota de la rejilla en los finales libres que no son el plano del arcén (rampas y
-    // recortados): ½·M·R², con M de la segunda diferencia de la altura del final a lo largo del
-    // final (en planta) y de la diferencia de su pendiente lateral, con pasos de una celda (los
-    // vértices del final, a centímetros en las rampas del exterior de las horquillas, no cuentan su
-    // quiebro de cuerda como curvatura), y el máximo en ±(meseta + rampa) de s.
+    // recortados): ½·R²·máx(0, λ), con λ el mayor autovalor de la hessiana de la última tira junto
+    // al final: a lo largo del final (en planta), la segunda diferencia de su altura, con signo;
+    // cruzada, la diferencia de su pendiente lateral; a lo ancho, 0 (la tira es plana). Solo una
+    // hessiana con un autovalor > 0 deja la cuerda de una celda por encima de la malla. Pasos de
+    // una celda (los vértices del final, a centímetros en las rampas del exterior de las
+    // horquillas, no cuentan su quiebro de cuerda como curvatura). Se extiende a lo largo del final
+    // en planta (no en s: en el exterior de una horquilla, 4 m de s son 10 m del final): meseta de
+    // kRampExtraPlateau y rampa de kRampExtraRamp, continua.
     {
         const double half_r2 = 0.25 * kStageCell * kStageCell;
         std::vector<double> raw(count * 2, 0.0);
@@ -1703,27 +1739,41 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
                 const StageBandEnd& p0 = cache->ends[s0];
                 const StageBandEnd& p1 = cache->ends[slot];
                 const StageBandEnd& p2 = cache->ends[s2];
-                const double second =
-                    rmath::abs((p2.y - p1.y) / h1 - (p1.y - p0.y) / h0) / (0.5 * (h0 + h1));
-                const double cross = rmath::abs(edges[s2].slope - edges[s0].slope) / (h0 + h1);
-                raw[slot] = half_r2 * (second + 2.0 * cross);
+                const double along = ((p2.y - p1.y) / h1 - (p1.y - p0.y) / h0) / (0.5 * (h0 + h1));
+                const double cross = (edges[s2].slope - edges[s0].slope) / (h0 + h1);
+                const double lambda =
+                    0.5 * along + rmath::sqrt(0.25 * along * along + cross * cross);
+                raw[slot] = half_r2 * rmath::max(0.0, lambda);
             }
         }
-        constexpr double kReach = kStageCellErrorPlateau + kStageCellErrorRamp;
+        // Longitud del final en planta hasta cada sección, por lado.
+        std::vector<double> length(count * 2, 0.0);
+        for (std::size_t i = 1; i < count; ++i) {
+            for (int lane = 0; lane < 2; ++lane) {
+                const std::size_t slot = i * 2 + static_cast<std::size_t>(lane);
+                length[slot] = length[slot - 2] + plan(slot - 2, slot);
+            }
+        }
+        constexpr double kReach = kRampExtraPlateau + kRampExtraRamp;
         for (std::size_t i = 0; i < count; ++i) {
             for (int lane = 0; lane < 2; ++lane) {
+                const std::size_t slot = i * 2 + static_cast<std::size_t>(lane);
                 double best = 0.0;
-                for (std::size_t j = i; j-- > 0 && sections[i] - sections[j] <= kReach;) {
-                    best = rmath::max(best, raw[j * 2 + static_cast<std::size_t>(lane)]);
+                const auto weigh = [&](std::size_t j) {
+                    const std::size_t other = j * 2 + static_cast<std::size_t>(lane);
+                    const double gap = rmath::abs(length[other] - length[slot]);
+                    const double w = rmath::clamp((kReach - gap) / kRampExtraRamp, 0.0, 1.0);
+                    best = rmath::max(best, w * raw[other]);
+                    return gap <= kReach;
+                };
+                for (std::size_t j = i; j-- > 0 && weigh(j);) {
                 }
-                for (std::size_t j = i; j < count && sections[j] - sections[i] <= kReach; ++j) {
-                    best = rmath::max(best, raw[j * 2 + static_cast<std::size_t>(lane)]);
+                for (std::size_t j = i; j < count && weigh(j); ++j) {
                 }
-                edges[i * 2 + static_cast<std::size_t>(lane)].extra = best;
+                edges[slot].extra = best;
             }
         }
     }
-
     // Puntos de los abanicos: cada tramo entre secciones en partes de ≤ kStageFanStep, con la
     // banda interpolada entre sus dos secciones.
     std::vector<FanPoint> points;
@@ -1857,8 +1907,37 @@ StageGround StageGround::build(const StageTrack& track, double cell, StageGround
                     g.zone_jump_z_ = origin.z + grid.base_z + static_cast<double>(k / n) * cell;
                 }
             }
+            const double natural = h;
             h = design_height(a, h);
             tile.heights[k] = static_cast<float>(h);
+            if (at != nullptr) {
+                const double sx = origin.x + grid.base_x + static_cast<double>(k % n) * cell;
+                const double sz = origin.z + grid.base_z + static_cast<double>(k / n) * cell;
+                for (std::size_t q = 0; q + 1 < at->size(); q += 2) {
+                    const double dx = sx - (*at)[q];
+                    const double dz = sz - (*at)[q + 1];
+                    if (dx * dx + dz * dz > radius * radius) {
+                        continue;
+                    }
+                    StageSampleTrace tr;
+                    tr.x = sx;
+                    tr.z = sz;
+                    tr.height = h + origin.y;
+                    tr.natural = natural + origin.y;
+                    tr.core = a.core;
+                    tr.exposed = a.core_exposed;
+                    tr.core_d = a.core_d;
+                    tr.core_band = a.core_band + origin.y;
+                    tr.core_h = a.core_h + origin.y;
+                    tr.zone_count = a.zone_count;
+                    for (int z = 0; z < a.zone_count && z < 8; ++z) {
+                        tr.zone_d[z] = a.zone[z].d;
+                        tr.zone_band[z] = a.zone[z].band + origin.y;
+                    }
+                    out->push_back(tr);
+                    break;
+                }
+            }
             any = true;
             if (at_center && !a.core) {
                 StageCenterOverflow c;

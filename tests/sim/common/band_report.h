@@ -517,6 +517,262 @@ inline void band_report_stage(const char* name, const std::string& text, bool ta
     }
 }
 
+// Aristas de la malla entre dos triángulos (premisa PA de la respuesta del consultor a la parte
+// B): el ángulo entre sus normales, por el aspecto de los dos triángulos. Jolt deja activa una
+// arista convexa si las caras forman más de `active_deg` (MeshShapeSettings: 5° por defecto); una
+// cóncava, nunca (MeshShape::sFindActiveEdges).
+struct EdgeAngles {
+    // Categorías: 0 núcleo–núcleo, 1 núcleo–cuneta (E), 2 cuneta–cuneta, 3 cuneta–talud/muro
+    // (cabeza), 4 talud/muro–talud/muro.
+    double max_deg[5] = {0, 0, 0, 0, 0};
+    int active[5] = {0, 0, 0, 0, 0};
+    int edges[5] = {0, 0, 0, 0, 0};
+    // Solo las aristas laterales (entre tiras vecinas de la misma sección): el ángulo de la cuneta.
+    double ditch_lateral_max = 0.0;
+    // La mayor convexa cuneta–cuneta, su sección y cuántas pasan de ctive_deg por sección.
+    double ditch_convex_max = 0.0;
+    double ditch_convex_s = 0.0;
+    int ditch_convex_sections = 0;
+};
+
+inline const char* edge_category_name(int c) {
+    static const char* names[5] = {"núcleo–núcleo", "núcleo–cuneta (E)", "cuneta–cuneta",
+                                   "cuneta–talud/muro (cabeza)", "talud/muro–talud/muro"};
+    return names[c];
+}
+
+inline EdgeAngles edge_angles(const sim::StageGround& g, double active_deg) {
+    EdgeAngles out;
+    const std::vector<sim::StageVertex>& v = g.vertices();
+    const std::vector<sim::StageTriangle>& tris = g.triangles();
+    std::vector<std::array<double, 3>> normals(tris.size());
+    for (std::size_t i = 0; i < tris.size(); ++i) {
+        const sim::StageVertex& a = v[tris[i].a];
+        const sim::StageVertex& b = v[tris[i].b];
+        const sim::StageVertex& c = v[tris[i].c];
+        const double ux = static_cast<double>(b.x) - a.x;
+        const double uy = static_cast<double>(b.y) - a.y;
+        const double uz = static_cast<double>(b.z) - a.z;
+        const double wx = static_cast<double>(c.x) - a.x;
+        const double wy = static_cast<double>(c.y) - a.y;
+        const double wz = static_cast<double>(c.z) - a.z;
+        const double nx = uy * wz - uz * wy;
+        const double ny = uz * wx - ux * wz;
+        const double nz = ux * wy - uy * wx;
+        const double len = std::sqrt(nx * nx + ny * ny + nz * nz);
+        normals[i] = {nx / len, ny / len, nz / len};
+    }
+    // (vértice menor, vértice mayor, triángulo), ordenado: las dos caras de cada arista seguidas.
+    struct Entry {
+        std::uint32_t lo, hi, tri;
+    };
+    std::vector<Entry> entries;
+    entries.reserve(tris.size() * 3);
+    for (std::uint32_t i = 0; i < tris.size(); ++i) {
+        const std::uint32_t ids[3] = {tris[i].a, tris[i].b, tris[i].c};
+        for (int k = 0; k < 3; ++k) {
+            const std::uint32_t p = ids[k];
+            const std::uint32_t q = ids[(k + 1) % 3];
+            entries.push_back({std::min(p, q), std::max(p, q), i});
+        }
+    }
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+        return a.lo != b.lo ? a.lo < b.lo : (a.hi != b.hi ? a.hi < b.hi : a.tri < b.tri);
+    });
+    const auto group = [](sim::StageLook l) {
+        return l == sim::StageLook::Road || l == sim::StageLook::Shoulder ? 0
+               : l == sim::StageLook::Ditch                               ? 1
+                                                                          : 2;
+    };
+    const std::size_t per = g.vertices_per_section();
+    const double cos_active = std::cos(active_deg * 3.14159265358979323846 / 180.0);
+    for (std::size_t k = 0; k + 1 < entries.size(); ++k) {
+        if (entries[k].lo != entries[k + 1].lo || entries[k].hi != entries[k + 1].hi) {
+            continue;
+        }
+        const std::uint32_t t0 = entries[k].tri;
+        const std::uint32_t t1 = entries[k + 1].tri;
+        const auto& n0 = normals[t0];
+        const auto& n1 = normals[t1];
+        const double dot = std::clamp(n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2], -1.0, 1.0);
+        // Convexa si el vértice de t1 fuera de la arista queda bajo el plano de t0.
+        const std::uint32_t ids1[3] = {tris[t1].a, tris[t1].b, tris[t1].c};
+        std::uint32_t far = ids1[0];
+        for (const std::uint32_t id : ids1) {
+            if (id != entries[k].lo && id != entries[k].hi) {
+                far = id;
+            }
+        }
+        const sim::StageVertex& o = v[tris[t0].a];
+        const double below = n0[0] * (static_cast<double>(v[far].x) - o.x) +
+                             n0[1] * (static_cast<double>(v[far].y) - o.y) +
+                             n0[2] * (static_cast<double>(v[far].z) - o.z);
+        const bool convex = below < 0.0;
+        const double deg = std::acos(dot) * 180.0 / 3.14159265358979323846;
+        const int g0 = group(tris[t0].look);
+        const int g1 = group(tris[t1].look);
+        int cat = 0;
+        if (g0 == 0 && g1 == 0) {
+            cat = 0;
+        } else if ((g0 == 0) != (g1 == 0)) {
+            cat = 1;
+        } else if (g0 == 1 && g1 == 1) {
+            cat = 2;
+        } else if (g0 == 2 && g1 == 2) {
+            cat = 4;
+        } else {
+            cat = 3;
+        }
+        ++out.edges[cat];
+        out.active[cat] += convex && dot < cos_active ? 1 : 0;
+        out.max_deg[cat] = std::max(out.max_deg[cat], deg);
+        // Arista lateral: sus dos vértices en la misma sección.
+        if (cat == 2 && convex && deg > out.ditch_convex_max) {
+            out.ditch_convex_max = deg;
+            out.ditch_convex_s = g.sections()[tris[t0].section];
+        }
+        if (cat == 2 && entries[k].lo / per == entries[k].hi / per) {
+            out.ditch_lateral_max = std::max(out.ditch_lateral_max, deg);
+        }
+    }
+    return out;
+}
+
+inline void edge_report(const std::string& text, double active_deg) {
+    sim::StageTrack track;
+    sim::StageTrack::build(text, track);
+    for (const int segments : {18, 36, 38, 40, 44, 48, 72}) {
+        sim::StageMeshDensity density;
+        density.ditch_segments = segments;
+        const sim::StageGround g =
+            sim::StageGround::build(track, sim::kStageCell, sim::StageGroundKind::Design, density);
+        const EdgeAngles e = edge_angles(g, active_deg);
+        std::printf(
+            "cuneta de %d tramos: %zu triángulos; ángulo lateral máximo en la cuneta %.2f°; "
+            "convexa máxima %.2f° (s %.3f)\n",
+            segments, g.triangles().size(), e.ditch_lateral_max, e.ditch_convex_max,
+            e.ditch_convex_s);
+        for (int c = 0; c < 5; ++c) {
+            std::printf("  %-28s %7d aristas, máx. %6.2f°, activas (convexas > %.0f°) %6d\n",
+                        edge_category_name(c), e.edges[c], e.max_deg[c], active_deg, e.active[c]);
+        }
+    }
+}
+
+// Invariante 7b (respuesta del consultor a la parada de la parte B, §2): el escalón de la malla a
+// la rejilla de Jolt (cuantizada: un mundo con el terreno solo) 2 cm dentro del final de cada lado
+// expuesto (libre, rampa o recortada) de cada sección: toda la costura, no una muestra.
+struct SeamStep {
+    double s = 0.0;
+    int side = 0;
+    sim::StageBandKind kind = sim::StageBandKind::Free;
+    double step = 0.0;      // malla − rejilla (m)
+    double from_edge = 0.0; // del borde de la calzada al final (m)
+    double end_u = 0.0;
+    double slope = 0.0;     // la tira de la cabeza al final
+    double plane_gap = 0.0; // el final − el plano del arcén prolongado
+    double e = 0.0;         // e(s)
+};
+
+struct SeamScan {
+    int sides = 0;
+    SeamStep worst;
+    // El menor margen de la malla sobre la rejilla de 2 cm a d₁ dentro del final (< 0: la rejilla
+    // asoma) y dónde.
+    double lowest = 1e9;
+    double lowest_s = 0.0;
+    int lowest_side = 0;
+    double lowest_depth = 0.0;
+    std::vector<SeamStep> over; // los de más de `limit`
+};
+
+inline SeamScan seam_scan(const std::string& text, double limit) {
+    sim::StageTrack track;
+    sim::StageTrack::build(text, track);
+    const sim::StageGround g = sim::StageGround::build(track);
+    sim::WorldDesc desc;
+    desc.stage_text = text;
+    sim::SimWorld mesh;
+    mesh.build(desc);
+    mesh.seal();
+    desc.stage_variant = sim::StageGroundVariant::TerrainOnly;
+    sim::SimWorld terrain;
+    terrain.build(desc);
+    terrain.seal();
+    const sim::StageCellError error(track);
+    SeamScan out;
+    for (const sim::StageBandSide& b : g.band_sides()) {
+        if (b.kind != sim::StageBandKind::Free && b.kind != sim::StageBandKind::Ramp &&
+            b.kind != sim::StageBandKind::Clamped) {
+            continue;
+        }
+        if (b.s <= track.s_begin() + 2.0 || b.s >= track.s_end() - 2.0) {
+            continue;
+        }
+        const sim::StagePose p = track.pose(b.s);
+        const double edge = b.side > 0 ? p.half_width_right : p.half_width_left;
+        const double t =
+            static_cast<double>(b.side) * (edge + sim::kStageShoulderWidth + b.end_u - 0.02);
+        const double x = p.x + t * std::cos(p.heading);
+        const double z = p.z + t * std::sin(p.heading);
+        const sim::GroundProbe m = mesh.probe_ground(x, z);
+        const sim::GroundProbe r = terrain.probe_ground(x, z);
+        if (!m.hit || !r.hit) {
+            continue;
+        }
+        ++out.sides;
+        SeamStep st;
+        st.s = b.s;
+        st.side = b.side;
+        st.kind = b.kind;
+        st.step = m.y - r.y;
+        st.from_edge = sim::kStageShoulderWidth + b.end_u;
+        st.end_u = b.end_u;
+        st.slope = b.slope;
+        st.plane_gap = b.plane_gap;
+        st.e = error.at(b.s, b.side);
+        for (const double depth : {0.02, 0.25, 0.5, 0.75, 1.0}) {
+            const double td =
+                static_cast<double>(b.side) * (edge + sim::kStageShoulderWidth + b.end_u - depth);
+            const sim::GroundProbe md =
+                mesh.probe_ground(p.x + td * std::cos(p.heading), p.z + td * std::sin(p.heading));
+            const sim::GroundProbe rd = terrain.probe_ground(p.x + td * std::cos(p.heading),
+                                                             p.z + td * std::sin(p.heading));
+            if (md.hit && rd.hit && md.y - rd.y < out.lowest) {
+                out.lowest = md.y - rd.y;
+                out.lowest_s = b.s;
+                out.lowest_side = b.side;
+                out.lowest_depth = depth;
+            }
+        }
+        if (st.step > out.worst.step) {
+            out.worst = st;
+        }
+        if (st.step > limit) {
+            out.over.push_back(st);
+        }
+    }
+    return out;
+}
+
+inline void seam_report(const char* name, const std::string& text, double limit) {
+    const SeamScan scan = seam_scan(text, limit);
+    std::printf("%s: %d lados expuestos; escalón máximo %.1f mm (s %.3f, lado %+d, %s); %zu de "
+                "más de %.0f mm\n",
+                name, scan.sides, 1000.0 * scan.worst.step, scan.worst.s, scan.worst.side,
+                band_kind_name(scan.worst.kind), scan.over.size(), 1000.0 * limit);
+    std::printf(
+        "  margen mínimo de la malla sobre la rejilla dentro del final: %.1f mm (s %.3f, lado "
+        "%+d, a %.2f m del final)\n",
+        1000.0 * scan.lowest, scan.lowest_s, scan.lowest_side, scan.lowest_depth);
+    for (const SeamStep& st : scan.over) {
+        std::printf("  s %10.3f lado %+d %-10s escalón %6.1f mm, final a %6.3f m del borde, "
+                    "pendiente %6.3f, final − plano del arcén %7.1f mm, e %5.1f mm\n",
+                    st.s, st.side, band_kind_name(st.kind), 1000.0 * st.step, st.from_edge,
+                    st.slope, 1000.0 * st.plane_gap, 1000.0 * st.e);
+    }
+}
+
 inline void band_report() {
     std::printf("== formato 2: banda de entorno (premisas P1, P2, P3 y P6) ==\n");
     band_report_stage("lazadas.stage", lazadas_stage_text(), true);

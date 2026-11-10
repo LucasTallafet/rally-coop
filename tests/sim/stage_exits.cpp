@@ -28,6 +28,7 @@ struct Named {
 constexpr Named kVariants[] = {
     {"Design", StageGroundVariant::Design},
     {"DenseMesh", StageGroundVariant::DenseMesh},
+    {"BandDense", StageGroundVariant::BandDense},
 };
 
 void print_band(const char* name, const rally::tests::ExitBand& b) {
@@ -46,6 +47,146 @@ int main(int argc, char** argv) {
     if (!parsed.ok) {
         std::printf("lazadas no vale: %s\n", parsed.error.c_str());
         return 1;
+    }
+    // Pasos-rueda y pérdidas de contacto de una salida por la distancia de la propia rueda fuera
+    // del borde de la calzada, en casillas de `bin` m desde 0.
+    const auto wheel_bins = [&](rally::sim::StageGroundVariant variant, bool micro,
+                                const rally::tests::ExitPlace& place, double kmh, double bin,
+                                std::vector<int>& steps_in, std::vector<int>& lost_in,
+                                std::vector<int>* takeoff_lost = nullptr) {
+        constexpr double kPi = 3.14159265358979323846;
+        const double speed = kmh / 3.6;
+        const rally::sim::StagePose pose = track.pose(place.s);
+        const double heading = pose.heading + place.turn_deg * kPi / 180.0;
+        rally::sim::CarSpawn spawn =
+            rally::sim::stage_spawn(track, place.s, static_cast<float>(speed));
+        spawn.x = pose.x + place.t * std::cos(pose.heading);
+        spawn.z = pose.z + place.t * std::sin(pose.heading);
+        spawn.y = pose.y + pose.bank * place.t;
+        spawn.yaw = static_cast<float>(-heading);
+        rally::sim::WorldDesc desc;
+        desc.stage_text = text;
+        desc.stage_variant = variant;
+        desc.stage_micro_relief = micro;
+        desc.car = true;
+        desc.car_data = rally::tests::reference_car();
+        desc.car_spawn = spawn;
+        rally::sim::SimWorld world;
+        world.build(desc);
+        world.seal();
+        world.set_telemetry(true);
+        const auto steps = static_cast<int>(place.seconds * rally::sim::kStepsPerSecond);
+        // Casilla de la rueda en su último paso con contacto (-1 sin despegue contado).
+        int takeoff[rally::sim::kWheelCount] = {-1, -1, -1, -1};
+        for (int i = 0; i < steps; ++i) {
+            const rally::sim::BodyPose bp = world.car_pose();
+            const rally::sim::BodyVelocity v = world.car_velocity();
+            rally::sim::SimInput in;
+            in.steer = static_cast<std::int16_t>(
+                std::clamp(2.5 * rally::tests::wrap_angle(heading - rally::tests::car_heading(bp)),
+                           -1.0, 1.0) *
+                rally::sim::kAxisMax);
+            in.throttle = static_cast<std::int16_t>(
+                std::clamp(0.5 * (speed - std::hypot(v.vx, v.vz)), 0.0, 1.0) *
+                rally::sim::kAxisMax);
+            world.step(in);
+            if (i < rally::sim::kStepsPerSecond / 4) {
+                continue;
+            }
+            const rally::sim::BodyPose after = world.car_pose();
+            const double yaw = -rally::tests::car_heading(after);
+            for (int w = 0; w < rally::sim::kWheelCount; ++w) {
+                const rally::sim::SimWorld::WheelPose wp = world.car_wheel(w);
+                const double wx =
+                    after.x + wp.attach_x * std::cos(yaw) + wp.attach_z * std::sin(yaw);
+                const double wz =
+                    after.z - wp.attach_x * std::sin(yaw) + wp.attach_z * std::cos(yaw);
+                const double d = rally::tests::outside_road_edge(track, wx, wz);
+                const int b = static_cast<int>(std::floor(d / bin));
+                const bool contact =
+                    world.telemetry().wheels[static_cast<std::size_t>(w)].contact != 0;
+                if (contact) {
+                    takeoff[w] = b;
+                } else if (takeoff_lost != nullptr && takeoff[w] >= 0 &&
+                           takeoff[w] < static_cast<int>(takeoff_lost->size())) {
+                    ++(*takeoff_lost)[static_cast<std::size_t>(takeoff[w])];
+                }
+                if (b < 0 || b >= static_cast<int>(steps_in.size())) {
+                    continue;
+                }
+                ++steps_in[static_cast<std::size_t>(b)];
+                lost_in[static_cast<std::size_t>(b)] +=
+                    world.telemetry().wheels[static_cast<std::size_t>(w)].contact == 0 ? 1 : 0;
+            }
+        }
+    };
+    if (argc > 1 && std::strcmp(argv[1], "1a") == 0) {
+        // Criterio 1a a mano: las 8 salidas que deciden, sin microrrelieve, el suelo del juego
+        // frente a BandDense (la malla densa sobre la misma rejilla), una a una y juntas.
+        rally::tests::ExitStats game;
+        rally::tests::ExitStats dense;
+        for (std::size_t p = 0; p < rally::tests::kExitPlaces.size(); ++p) {
+            for (std::size_t v = 0; v < rally::tests::kExitSpeedsKmh.size(); ++v) {
+                if (!(p < 2 || v == 0)) {
+                    continue;
+                }
+                const rally::tests::ExitPlace& place = rally::tests::kExitPlaces[p];
+                const double kmh = rally::tests::kExitSpeedsKmh[v];
+                const rally::tests::ExitStats a = rally::tests::run_exit(
+                    text, track, StageGroundVariant::Design, place, kmh, nullptr, false);
+                const rally::tests::ExitStats b = rally::tests::run_exit(
+                    text, track, StageGroundVariant::BandDense, place, kmh, nullptr, false);
+                std::printf(
+                    "%-24s %3.0f km/h | 0–4 m %6.2f %% %6.0f N (densa %6.2f %% %6.0f N) | 4–15 m "
+                    "%6.2f %% %6.0f N (densa %6.2f %% %6.0f N) | más lejos %5.1f / %5.1f m%s\n",
+                    place.name, kmh, a.near_band().percent(), a.near_band().p99(),
+                    b.near_band().percent(), b.near_band().p99(), a.rest_band().percent(),
+                    a.rest_band().p99(), b.rest_band().percent(), b.rest_band().p99(), a.farthest,
+                    b.farthest, a.placed || b.placed ? " recolocado" : "");
+                game.add(a);
+                dense.add(b);
+            }
+        }
+        const auto ratio = [](double x, double y) { return y > 0.0 ? x / y : 0.0; };
+        std::printf(
+            "juntas: 0–4 m %.2f %% / %.0f N (densa %.2f %% / %.0f N, x%.3f / x%.3f); 4–15 m %.2f "
+            "%% / %.0f N (densa %.2f %% / %.0f N, x%.3f / x%.3f)\n",
+            game.near_band().percent(), game.near_band().p99(), dense.near_band().percent(),
+            dense.near_band().p99(), ratio(game.near_band().percent(), dense.near_band().percent()),
+            ratio(game.near_band().p99(), dense.near_band().p99()), game.rest_band().percent(),
+            game.rest_band().p99(), dense.rest_band().percent(), dense.rest_band().p99(),
+            ratio(game.rest_band().percent(), dense.rest_band().percent()),
+            ratio(game.rest_band().p99(), dense.rest_band().p99()));
+        return 0;
+    }
+    if (argc > 1 && std::strcmp(argv[1], "bins1a") == 0) {
+        // Premisa PA: en las 8 salidas de 1a, sin microrrelieve, las pérdidas de contacto de la
+        // rueda por su distancia al borde de la calzada (casillas de 0,25 m hasta 4 m), con el
+        // suelo del juego y con BandDense, y lo que sobra.
+        const double bin = 0.25;
+        std::vector<int> sa(16, 0), la(16, 0), sb(16, 0), lb(16, 0), ta(16, 0), tb(16, 0);
+        for (std::size_t p = 0; p < rally::tests::kExitPlaces.size(); ++p) {
+            for (std::size_t v = 0; v < rally::tests::kExitSpeedsKmh.size(); ++v) {
+                if (!(p < 2 || v == 0)) {
+                    continue;
+                }
+                wheel_bins(StageGroundVariant::Design, false, rally::tests::kExitPlaces[p],
+                           rally::tests::kExitSpeedsKmh[v], bin, sa, la, &ta);
+                wheel_bins(StageGroundVariant::BandDense, false, rally::tests::kExitPlaces[p],
+                           rally::tests::kExitSpeedsKmh[v], bin, sb, lb, &tb);
+            }
+        }
+        std::printf(
+            "rueda sin contacto por su distancia al borde de la calzada, 8 salidas de 1a:\n");
+        std::printf("  %11s | %9s %7s | %9s %7s | %8s | %s\n", "distancia", "juego", "%", "densa",
+                    "%", "sobran", "en el aire por la casilla del despegue: juego, densa, sobran");
+        for (std::size_t b = 0; b < sa.size(); ++b) {
+            std::printf("  %4.2f–%4.2f m | %9d %6.2f%% | %9d %6.2f%% | %8d | %6d %6d %6d\n",
+                        bin * b, bin * (b + 1), sa[b], sa[b] ? 100.0 * la[b] / sa[b] : 0.0, sb[b],
+                        sb[b] ? 100.0 * lb[b] / sb[b] : 0.0, la[b] - lb[b], ta[b], tb[b],
+                        ta[b] - tb[b]);
+        }
+        return 0;
     }
     if (argc > 1 && std::strcmp(argv[1], "bins") == 0) {
         // Diagnóstico de 1b: en la recta y la curva de R 80, los pasos-rueda sin contacto por la

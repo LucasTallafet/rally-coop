@@ -61,29 +61,36 @@ void require_shape(const JPH::ShapeSettings::ShapeResult& result, const char* wh
 // máximo de la malla y de las baldosas, no su suma: así cabe un tramo de 30 km. Cada forma lleva
 // sus SurfaceMaterial con el microrrelieve del tramo (MicroRelief::Stage: las bandas de las losas,
 // mezcladas en los bordes).
-JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground, bool with_mesh, MicroRelief relief) {
+// ground da las baldosas y el origen del cuerpo; mesh_ground, la malla (el mismo salvo en
+// BandDense, la malla densa con la rejilla del juego), desplazada a su propio origen.
+JPH::Ref<JPH::Shape> stage_shape(const StageGround& ground, const StageGround& mesh_ground,
+                                 bool with_mesh, MicroRelief relief) {
     JPH::PhysicsMaterialList materials;
     for (int s = 0; s < kSurfaceCount; ++s) {
         materials.push_back(new SurfaceMaterial(static_cast<Surface>(s), relief));
     }
     JPH::StaticCompoundShapeSettings compound;
     JPH::StaticCompoundShapeSettings tiles;
-    if (with_mesh && !ground.triangles().empty()) {
+    if (with_mesh && !mesh_ground.triangles().empty()) {
         JPH::VertexList vertices;
-        vertices.reserve(ground.vertices().size());
-        for (const StageVertex& v : ground.vertices()) {
+        vertices.reserve(mesh_ground.vertices().size());
+        for (const StageVertex& v : mesh_ground.vertices()) {
             vertices.push_back(JPH::Float3(v.x, v.y, v.z));
         }
         JPH::IndexedTriangleList triangles;
-        triangles.reserve(ground.triangles().size());
-        for (const StageTriangle& t : ground.triangles()) {
+        triangles.reserve(mesh_ground.triangles().size());
+        for (const StageTriangle& t : mesh_ground.triangles()) {
             triangles.push_back(
                 JPH::IndexedTriangle(t.a, t.b, t.c, static_cast<JPH::uint32>(t.surface)));
         }
         const JPH::MeshShapeSettings mesh(std::move(vertices), std::move(triangles), materials);
         const JPH::ShapeSettings::ShapeResult result = mesh.Create();
         require_shape(result, "la malla del tramo");
-        compound.AddShape(JPH::Vec3::sZero(), JPH::Quat::sIdentity(), result.Get());
+        // Orígenes redondeados al metro: la diferencia es exacta en float.
+        const JPH::Vec3 offset(static_cast<float>(mesh_ground.origin_x() - ground.origin_x()),
+                               static_cast<float>(mesh_ground.origin_y() - ground.origin_y()),
+                               static_cast<float>(mesh_ground.origin_z() - ground.origin_z()));
+        compound.AddShape(offset, JPH::Quat::sIdentity(), result.Get());
     }
     JPH::PhysicsMaterialList dirt;
     dirt.push_back(materials[static_cast<std::size_t>(Surface::Dirt)]);
@@ -341,9 +348,19 @@ void SimWorld::build(const WorldDesc& desc) {
             desc.stage_variant == StageGroundVariant::DenseMesh ? kStageDenseMesh
                                                                 : StageMeshDensity{});
         RALLY_CHECK(ground.band_error().empty(), "SimWorld::build: no cabe el talud entre pasadas");
-        w.stage_ground_hash = ground.hash();
+        // BandDense: la malla 4 veces más densa sobre la rejilla del juego (la misma).
+        StageGround dense_mesh;
+        if (desc.stage_variant == StageGroundVariant::BandDense) {
+            dense_mesh =
+                StageGround::build(*w.stage, kStageCell, StageGroundKind::Design, kStageDenseMesh);
+            RALLY_CHECK(dense_mesh.band_error().empty(),
+                        "SimWorld::build: no cabe el talud entre pasadas");
+        }
+        const StageGround& mesh_ground =
+            desc.stage_variant == StageGroundVariant::BandDense ? dense_mesh : ground;
+        w.stage_ground_hash = mesh_ground.hash();
         const JPH::Ref<JPH::Shape> shape =
-            stage_shape(ground, desc.stage_variant != StageGroundVariant::TerrainOnly,
+            stage_shape(ground, mesh_ground, desc.stage_variant != StageGroundVariant::TerrainOnly,
                         desc.stage_micro_relief ? MicroRelief::Stage : MicroRelief::None);
         JPH::Shape::VisitedShapes visited;
         w.stage_ground_bytes = shape->GetStatsRecursive(visited).mSizeBytes;

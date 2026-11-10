@@ -3,14 +3,15 @@
 
 #include <doctest/doctest.h>
 
-#include <array>
 #include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
 
-// Criterios 1a y 1b de formato-2 (lote 6; mensajes/lote-6-respuesta-formato-2.md §3): las salidas
-// guionizadas de common/stage_exits.h por el suelo del formato 2.
+// Criterio 1a de formato-2 (lote 6; mensajes/lote-6-respuesta-formato-2.md §3 y la respuesta a la
+// parada de la parte B, §1): las salidas guionizadas de common/stage_exits.h por el suelo del
+// formato 2. El 1b salió (respuesta a la parada de la parte B, §2): la costura es el invariante 7b
+// (test_stage_ground.cpp).
 
 namespace {
 
@@ -44,11 +45,12 @@ bool decides_1a(std::size_t place, std::size_t speed) { return place < 2 || spee
 
 #ifdef NDEBUG
 TEST_CASE("stage_exits: 1a the band against the dense band without micro relief") {
-    // Criterio 1a: Design (18 tramos de cuneta, cuerda de 2 mm) frente a DenseMesh (72 y 0,5 mm),
-    // los dos sin microrrelieve, por el recorrido congelado. Las 8 salidas que deciden, sumadas por
-    // bandas: en 0–4 m y en 4–15 m, el % sin contacto y el p99 del salto ≤ 1,10 × la densa.
-    // Premortem (§4): cada salida que decide sale por el mismo sitio (el «más lejos» de las dos a
-    // ≤ 0,5 m y ninguna recolocada); si no, pasa a diagnóstico, y con menos de 6, la premisa falla.
+    // Criterio 1a: Design (40 tramos de cuneta, cuerda de 2 mm) frente a BandDense (la malla con 72
+    // tramos y 0,5 mm sobre la misma rejilla de 0,75 m), los dos sin microrrelieve, por el
+    // recorrido congelado. Las 8 salidas que deciden, sumadas por bandas: en 0–4 m y en 4–15 m, el
+    // % sin contacto y el p99 del salto ≤ 1,10 × la densa. Premortem (§4): cada salida que decide
+    // sale por el mismo sitio (el «más lejos» de las dos a ≤ 0,5 m y ninguna recolocada); si no,
+    // pasa a diagnóstico, y con menos de 6, la premisa falla.
     const rally::sim::JoltRuntime runtime;
     const std::string& text = rally::tests::lazadas_stage_text();
     const rally::sim::StageTrack& track = lazadas_track();
@@ -61,7 +63,7 @@ TEST_CASE("stage_exits: 1a the band against the dense band without micro relief"
                 rally::tests::run_exit(text, track, rally::sim::StageGroundVariant::Design,
                                        kExitPlaces[p], kExitSpeedsKmh[v], nullptr, false);
             const ExitStats b =
-                rally::tests::run_exit(text, track, rally::sim::StageGroundVariant::DenseMesh,
+                rally::tests::run_exit(text, track, rally::sim::StageGroundVariant::BandDense,
                                        kExitPlaces[p], kExitSpeedsKmh[v], nullptr, false);
             const bool same_path =
                 std::abs(a.farthest - b.farthest) <= 0.5 && !a.placed && !b.placed;
@@ -90,30 +92,6 @@ TEST_CASE("stage_exits: 1a the band against the dense band without micro relief"
     CHECK(bn.p99() <= 1.10 * dn.p99());
     CHECK(br.percent() <= 1.10 * dr.percent());
     CHECK(br.p99() <= 1.10 * dr.p99());
-}
-
-TEST_CASE("stage_exits: 1b outside the band the grid seam loses no more contact than format 1") {
-    // Criterio 1b: la recta y la curva de R 80 a 30, 60 y 90 km/h, con microrrelieve, solo con el
-    // suelo del juego: en 4–15 m, el % sin contacto ≤ el del formato 1 en la misma salida + 1
-    // punto. Cifras del formato 1 congeladas (mensajes/formato-2/salidas-formato1.txt, medidas
-    // antes de la parte B con este mismo recorrido): recta 0 / 0 / 0 %, curva 0 / 1,50 / 3,39 %.
-    const rally::sim::JoltRuntime runtime;
-    const std::string& text = rally::tests::lazadas_stage_text();
-    const rally::sim::StageTrack& track = lazadas_track();
-    constexpr std::array<std::array<double, 3>, 2> kFormat1 = {
-        {{0.0, 0.0, 0.0}, {0.0, 1.50, 3.39}}};
-    for (std::size_t p = 0; p < 2; ++p) {
-        for (std::size_t v = 0; v < kExitSpeedsKmh.size(); ++v) {
-            const ExitStats a =
-                rally::tests::run_exit(text, track, rally::sim::StageGroundVariant::Design,
-                                       kExitPlaces[p], kExitSpeedsKmh[v]);
-            const double limit = kFormat1[p][v] + 1.0;
-            MESSAGE("1b, ", std::string(kExitPlaces[p].name), " a ", kExitSpeedsKmh[v],
-                    " km/h: 4–15 m ", band_line(a.rest_band()), " (límite ", limit, " %); 0–4 m ",
-                    band_line(a.near_band()), "; más lejos ", a.farthest, " m");
-            CHECK(a.rest_band().percent() <= limit);
-        }
-    }
 }
 #endif
 

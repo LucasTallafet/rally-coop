@@ -89,7 +89,10 @@ inline constexpr float kStageNoCollision = std::numeric_limits<float>::max();
 // pasadas» (dos núcleos necesitan ≥ 2·(kStageDitchWidth + kStageBandMinTalud) = 3,1 m).
 inline constexpr double kStageDitchWidth = 1.5;  // ancho de la cuneta (m)
 inline constexpr double kStageDitchDepth = 0.25; // fondo de la cuneta (m)
-inline constexpr int kStageDitchSegments = 18;   // tramos de la cuneta: cuerda del coseno ≤ 2 mm
+// Tramos de la cuneta: 40 deja las caras vecinas del coseno a menos de 5° (sus aristas, inactivas
+// en Jolt: con 18 formaban hasta 10,4° y la rueda tomaba la normal de la arista; formato-2, premisa
+// PA). Quedan por encima, hasta 6,0°, las del abanico interior de las horquillas de R 6.
+inline constexpr int kStageDitchSegments = 40;
 // Pendiente máxima de cada material (dy/dx). Hoy solo la tierra: talud 1:1,5 (33,7°).
 inline constexpr double kStageDirtSlope = 1.0 / 1.5;
 inline constexpr double kStageWallMaxSlope = 5.6712818196177066; // tan 80°: el muro, como mucho
@@ -104,14 +107,15 @@ inline constexpr int kStageCoreVertices = 5;
 inline constexpr int kStageSectionVertices = 2 * kStageDitchSegments + kStageCoreVertices + 2;
 
 // Densidad de la malla. La del juego son las constantes de arriba; la referencia (criterio 3 de
-// tramo-fisica y 1a de formato-2) es 4 veces más densa, también en la cuneta.
+// tramo-fisica y 1a de formato-2) es 4 veces más densa, con 72 tramos de cuneta (los que medía la
+// referencia del criterio 1a antes de los 40: así no cambia con ellos).
 struct StageMeshDensity {
     double max_step = kStageMeshMaxStep;
     double chord_plan = kStageChordPlan;
     double chord_height = kStageChordHeight;
     int ditch_segments = kStageDitchSegments;
 };
-inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005, 4 * kStageDitchSegments};
+inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005, 72};
 
 // Un solo generador de suelo (formato 2): queda el nombre que usa el dibujo
 // (platform/stage_checked).
@@ -229,13 +233,16 @@ double stage_relief_height(const StageReliefFrame& frame, const TestZone& noise,
 
 // e(s): cota del error de interpolar S en una celda de la rejilla de kStageCell junto al final
 // libre de la banda (tercera respuesta del consultor a tramo-fisica, §1), con el eje: ½·M·R², con
-// M la norma de la hessiana de S en planta (curvatura, su variación, pendiente, curva vertical y
-// rampa del peralte) en la banda de ±d₁ del lado de dentro del final (a `offset` más allá del borde
-// del arcén) y R = kStageCell/√2 el radio de la circunferencia circunscrita a medio cuadrado; y, en
-// cada junta del eje donde salta la pendiente de S a lo largo de s (pendiente o rampa de peralte),
-// J·kStageEdgeBand/4. Se muestrea cada kStageCellErrorStep y se suaviza con un máximo en meseta de
+// M el mayor autovalor (≥ 0; antes, la norma: solo él deja la cuerda por encima) de la hessiana de
+// S en planta (curvatura, su variación, pendiente, curva vertical y rampa del peralte) en la banda
+// de ±d₁ del lado de dentro del final (a `offset` más allá del borde del arcén) y R = kStageCell/√2
+// el radio de la circunferencia circunscrita a medio cuadrado; y, en cada junta del eje donde salta
+// la pendiente de S a lo largo de s (pendiente o rampa de peralte), J·kStageEdgeBand/4 (solo si
+// sube: J > 0). Se muestrea cada kStageCellErrorStep y se suaviza con un máximo en meseta de
 // ±kStageCellErrorPlateau y rampa de kStageCellErrorRamp: continua en s. En las rampas, la
 // rejilla suma la cota de la segunda diferencia del final a lo largo de s (stage_ground.cpp).
+// Con la banda del formato 2, cada lado tiene la suya (a 5 m del arcén, el lado de dentro de una
+// curva cerrada tiene una hessiana que el de fuera no tiene; formato-2, invariante 7b).
 inline constexpr double kStageCellErrorStep = 0.25;
 inline constexpr double kStageCellErrorPlateau = 2.0;
 inline constexpr double kStageCellErrorRamp = 2.0;
@@ -245,15 +252,18 @@ public:
     StageCellError() = default;
     // Reserva memoria y tarda: al cargar.
     explicit StageCellError(const StageTrack& track, double offset = kStageBandFree);
-    // e(s), con s en [s_begin, s_end] (fuera, el del extremo). Sin reservas.
+    // e(s) del lado side (−1 izquierda, +1 derecha), con s en [s_begin, s_end] (fuera, el del
+    // extremo). Sin reservas.
+    double at(double s, int side) const;
+    // El mayor de los dos lados.
     double at(double s) const;
-    // Sin suavizar, en la muestra más cercana (solo para los tests).
+    // Sin suavizar, en la muestra más cercana, el mayor de los dos lados (solo para los tests).
     double raw_at(double s) const;
 
 private:
     double s0_ = 0.0;
-    std::vector<double> raw_;
-    std::vector<double> e_;
+    std::vector<double> raw_[2]; // izquierda, derecha
+    std::vector<double> e_[2];
 };
 
 // Una muestra con colisión en el centro de curvatura de un arco (a menos de
@@ -273,6 +283,21 @@ struct StageCenterOverflow {
 // del centro ocurre a ~1e-9 m del vértice).
 inline constexpr double kStageArcCenterTolerance = 0.01;
 
+// Lo que decide la altura de una muestra de la rejilla (solo diagnóstico, StageGround::trace).
+struct StageSampleTrace {
+    double x = 0.0, z = 0.0; // muestra, en el mundo
+    double height = 0.0;     // la de la rejilla (mundo)
+    double natural = 0.0;    // N (mundo)
+    bool core = false;       // bajo una banda
+    bool exposed = false;    // su final es libre, rampa o recortado
+    double core_d = 0.0;     // distancia (≤ 0) a ese final
+    double core_band = 0.0;  // la regla de junto al final (mundo)
+    double core_h = 0.0;     // la de bajo la banda (mundo)
+    int zone_count = 0;
+    double zone_d[8] = {};
+    double zone_band[8] = {}; // B de cada pie en zona (mundo)
+};
+
 class StageGround {
 public:
     // `cell`: celda de la rejilla (m). Con la densidad del juego reutiliza la banda que calculó
@@ -280,6 +305,10 @@ public:
     static StageGround build(const StageTrack& track, double cell = kStageCell,
                              StageGroundKind kind = StageGroundKind::Design,
                              const StageMeshDensity& density = StageMeshDensity{});
+    // Solo diagnóstico: build con la densidad del juego y, de las muestras de la rejilla a menos
+    // de `radius` de algún punto de `at` (x, z en el mundo, seguidos), lo que decide su altura.
+    static StageGround trace(const StageTrack& track, const std::vector<double>& at, double radius,
+                             std::vector<StageSampleTrace>& out);
 
     // Origen del suelo: el centro de la caja del eje (con las prolongaciones), redondeado al
     // metro. Los vértices y las alturas van en float respecto a él.
@@ -336,6 +365,9 @@ public:
     std::uint64_t hash() const;
 
 private:
+    static StageGround build_impl(const StageTrack& track, double cell, StageGroundKind kind,
+                                  const StageMeshDensity& density, const std::vector<double>* at,
+                                  double radius, std::vector<StageSampleTrace>* out);
     double origin_x_ = 0.0;
     double origin_y_ = 0.0;
     double origin_z_ = 0.0;
