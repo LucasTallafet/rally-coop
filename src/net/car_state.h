@@ -1,7 +1,7 @@
 #pragma once
 
-// Estado del coche que viaja del host al copiloto (50 B, protocolos 1 y 2, lote 3 §2.6) y su
-// codificación. Sin ENet.
+// Estado del coche que viaja del host al copiloto (57 B, protocolo 3, lote 6 §2.2; 50 B en los
+// protocolos 1 y 2) y su codificación. Sin ENet.
 
 #include "sim/sim_world.h"
 
@@ -12,7 +12,7 @@
 
 namespace rally::net {
 
-inline constexpr std::size_t kCarStateBytes = 50;
+inline constexpr std::size_t kCarStateBytes = 57;
 inline constexpr std::uint8_t kMsgCarState = 1;
 
 // Decodificado. Posición del cuerpo del coche (SimWorld::car_pose) respecto al origen del mundo.
@@ -31,6 +31,11 @@ struct CarState {
     // Recolocaciones desde el build() (módulo 256). Dos estados con contadores distintos no se
     // mezclan nunca, se hayan perdido los paquetes de en medio o no.
     std::uint8_t reset_count = 0;
+    // Del StageRun del host (SimWorld::stage_run), nunca de una proyección del copiloto: las
+    // notas se anclan a esta s. Sin tramo, los tres valen 0.
+    double s = 0;         // m a lo largo del eje
+    double t = 0;         // m, lateral
+    bool on_road = false; // StageRunState::on_road
 };
 
 // Solo lee el mundo. Necesita la telemetría encendida (RALLY_CHECK): el juego la enciende en
@@ -39,7 +44,8 @@ CarState car_state_from(const sim::SimWorld& world, std::uint32_t step, std::uin
                         std::uint8_t reset_count);
 
 void encode(const CarState& state, std::span<std::uint8_t, kCarStateBytes> out);
-// false si el tamaño, el tipo, la componente omitida o una superficie no cuadran.
+// false si el tamaño, el tipo, la componente omitida, una superficie o un bit reservado de los
+// indicadores (todos menos el 0) no cuadran.
 bool decode(std::span<const std::uint8_t> in, CarState& out);
 
 } // namespace rally::net
