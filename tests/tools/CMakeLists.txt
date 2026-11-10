@@ -109,13 +109,14 @@ set_tests_properties(replay.info_zone_lap_no_actions PROPERTIES
 
 # rally_replay info con el tramo (lote 5, replay-tramo). Valores exactos: el nombre y los 2887 B
 # son de data/stages/lazadas.stage (= tests/sim/stages/lazadas.stage, byte a byte, con sus CRLF);
-# el hash es kExpectedStageGroundHash (tests/sim/test_stage_ground.cpp); la pasada son 21 345
-# pasos (fragmento de grabacion-v8) = 88,9375 s, que m:ss,cc trunca a 1:28,93.
+# el hash del suelo y la pasada los calculan otros carriles (kExpectedStageGroundHash en
+# tests/sim, la recolocación en tests/io): aquí solo la forma. La relación de la pasada (m:ss,cc =
+# pasos / 240 truncado a la centésima, igual en info y en run) la comprueba check_pass_line.py.
 add_test(NAME replay.info_stage_v8
     COMMAND rally_replay info ${RALLY_TEST_DATA}/recordings/stage_lazadas.rrec)
 set_tests_properties(replay.info_stage_v8 PROPERTIES
     PASS_REGULAR_EXPRESSION
-    "formato: +8\n.*\ntramo: +Lazadas \\(test\\), 1150\\.0 m, texto de 2887 bytes\nhash de la zona: +0x0000000000000000 \\(sin zona\\)\n.*\nhash del suelo: +0xdd438cd676e8c121\npasada: +1:28,93 \\(21345 pasos\\), 1 recolocaciones, 0 atajos\n")
+    "formato: +8\n.*\ntramo: +Lazadas \\(test\\), 1150\\.0 m, texto de 2887 bytes\nhash de la zona: +0x0000000000000000 \\(sin zona\\)\n.*\nhash del suelo: +0x[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]\npasada: +[0-9]+:[0-9][0-9],[0-9][0-9] \\([0-9]+ pasos\\), [0-9]+ recolocaciones, [0-9]+ atajos\n")
 # Sin tramo, ni una línea más: una grabación de formato 6 y otra de formato 8 sin tramo (la de la
 # zona reescrita al formato actual: cada grabación de la zona que se haga de ahora en adelante).
 add_test(NAME replay.info_no_stage_v6
@@ -145,7 +146,7 @@ add_test(NAME replay.run_stage_pass
     COMMAND rally_replay run ${RALLY_TEST_DATA}/recordings/stage_lazadas.rrec)
 set_tests_properties(replay.run_stage_pass PROPERTIES
     PASS_REGULAR_EXPRESSION
-    "\npasada: +1:28,93 [(]21345 pasos[)], 1 recolocaciones, 0 atajos\n.*hash OK"
+    "\npasada: +[0-9]+:[0-9][0-9],[0-9][0-9] [(][0-9]+ pasos[)], [0-9]+ recolocaciones, [0-9]+ atajos\n.*hash OK"
     FAIL_REGULAR_EXPRESSION "FALLO|aviso")
 # Sin tramo, `run` no imprime la pasada.
 add_test(NAME replay.run_no_stage_pass
@@ -165,6 +166,40 @@ if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.12)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_stage_csv.py ${_stage_csv})
     set_tests_properties(replay.run_stage_csv_columns PROPERTIES
         FIXTURES_REQUIRED stage_run_csv PASS_REGULAR_EXPRESSION "CSV del tramo correcto: ")
+
+    # La pasada de stage_lazadas.rrec (lote 6, replay-desacople): relación, no cifra. El tiempo es
+    # pasos / 240 truncado a la centésima y la línea es igual en info y en run.
+    set(_pass_py ${CMAKE_CURRENT_SOURCE_DIR}/check_pass_line.py)
+    add_test(NAME replay.pass_line_relation
+        COMMAND ${Python3_EXECUTABLE} ${_pass_py} --run $<TARGET_FILE:rally_replay> ${_stage_rrec})
+    set_tests_properties(replay.pass_line_relation PROPERTIES
+        PASS_REGULAR_EXPRESSION "pasada correcta: ")
+    # Salidas fabricadas (cifras que no son las de la grabación). El control positivo va primero:
+    # sin él, un modo archivo roto haría «pasar» los negativos. 14639 pasos = 60,9958 s: truncado
+    # 1:00,99 (redondeado sería 1:01,00).
+    set(_fake_ok ${RALLY_TESTS_OUT}/pass_line_ok.txt)
+    set(_fake_time ${RALLY_TESTS_OUT}/pass_line_bad_time.txt)
+    set(_fake_steps ${RALLY_TESTS_OUT}/pass_line_bad_steps.txt)
+    set(_fake_other ${RALLY_TESTS_OUT}/pass_line_other.txt)
+    file(WRITE ${_fake_ok} "pasada: 1:00,99 (14639 pasos), 1 recolocaciones, 0 atajos\n")
+    file(WRITE ${_fake_time} "pasada: 1:01,00 (14639 pasos), 1 recolocaciones, 0 atajos\n")
+    file(WRITE ${_fake_steps} "pasada: 1:00,99 (14640 pasos), 1 recolocaciones, 0 atajos\n")
+    file(WRITE ${_fake_other} "pasada: 1:00,99 (14639 pasos), 2 recolocaciones, 0 atajos\n")
+    add_test(NAME replay.pass_line_fake_ok COMMAND ${Python3_EXECUTABLE} ${_pass_py} ${_fake_ok})
+    set_tests_properties(replay.pass_line_fake_ok PROPERTIES
+        PASS_REGULAR_EXPRESSION "pasada correcta: ")
+    # Los negativos piden el mensaje del script (que sale con 1 por sys.exit): un Traceback o un
+    # archivo que falta no lo contienen.
+    add_test(NAME replay.pass_line_rejects_time
+        COMMAND ${Python3_EXECUTABLE} ${_pass_py} ${_fake_time})
+    set_tests_properties(replay.pass_line_rejects_time PROPERTIES PASS_REGULAR_EXPRESSION "no cuadra")
+    add_test(NAME replay.pass_line_rejects_steps
+        COMMAND ${Python3_EXECUTABLE} ${_pass_py} ${_fake_steps})
+    set_tests_properties(replay.pass_line_rejects_steps PROPERTIES PASS_REGULAR_EXPRESSION "no cuadra")
+    add_test(NAME replay.pass_line_rejects_differing
+        COMMAND ${Python3_EXECUTABLE} ${_pass_py} ${_fake_ok} ${_fake_other})
+    set_tests_properties(replay.pass_line_rejects_differing PROPERTIES
+        PASS_REGULAR_EXPRESSION "difiere entre info y run")
 
     set(_variant_py ${CMAKE_CURRENT_SOURCE_DIR}/make_rrec_variant.py)
     foreach(_mode changed-stage invalid-stage no-finish)
@@ -193,5 +228,5 @@ if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.12)
         FAIL_REGULAR_EXPRESSION "\npasada:|\nhash del suelo:")
 else()
     message(WARNING "Python 3.12 o posterior no encontrado: los tests replay.run_stage_csv*, "
-        "replay.variant_*, replay.run_stage_changed y replay.info_stage_* no se añaden")
+        "replay.variant_*, replay.pass_line_*, replay.run_stage_changed y replay.info_stage_* no se añaden")
 endif()
