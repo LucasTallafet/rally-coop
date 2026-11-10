@@ -169,6 +169,7 @@ Cada ruta tiene un único dueño. La tabla está en `.claude/hooks/propiedad.jso
   - hace: clang-format, configurar, compilar y ctest;
   - acaba con una línea de resumen: tests, huella, reservas, hash de la telemetría y `kSimVersion`;
   - si falla, sale con un código distinto de 0;
+  - con `-Debug`, no corre los tests de `tests/ci/debug-excluidos.txt` (los lentos de la zona, la carretera y las grabaciones, que se corren en Release; lote 6). La lista es una barrera, y un nombre que ya no existe hace fallar la comprobación;
   - si fallan tests, añade sus nombres (con la fecha, el preset, la rama y el commit) a `mensajes/comprobar-fallos.log` de la copia y guarda una copia del log de ctest. Ese `mensajes/` pasa a `mensajes/lote-<N>/<tarea>/` al cerrar el lote, así que un fallo intermitente no se pierde.
 - **Límite de compilaciones dentro de `comprobar.ps1`.** Dos plazas, hechas con dos mutex con nombre de Windows (`Local\RallyBuild0` y `Local\RallyBuild1`).
   - **No es un semáforo:** un semáforo no tiene dueño, y la plaza de un proceso muerto se pierde. Un mutex abandonado pasa al siguiente que espera.

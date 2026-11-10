@@ -38,7 +38,7 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 
 ## Compilar y probar
 
-Requisitos: Visual Studio 2022 con "Desarrollo para el escritorio con C++" (MSVC ≥ 19.30) y CMake ≥ 3.25 en el PATH. Funciona desde cualquier terminal, sin Developer PowerShell (generador "Visual Studio 17 2022"). El primer configure descarga las dependencias (unos 90 s).
+Requisitos: Visual Studio 2022 con "Desarrollo para el escritorio con C++" (MSVC ≥ 19.30) y CMake ≥ 3.29 en el PATH (el ctest de Debug usa `--exclude-from-file`). Funciona desde cualquier terminal, sin Developer PowerShell (generador "Visual Studio 17 2022"). El primer configure descarga las dependencias (unos 90 s).
 
 ```
 cmake --preset windows-release
@@ -52,7 +52,7 @@ ctest --preset windows-release
 - Targets: `rally_sim` (src/sim, enlaza Jolt y nunca raylib), `rally_platform` (src/platform, raylib), `rally` (ejecutable), `rally_loop` (src/platform, reloj de paso fijo, interpolación, forma de la entrada, tabla de teclas, diseño de la pantalla y ajustes del jugador, sin raylib ni SDL), `rally_io` (src/io, grabaciones y archivos, sin raylib ni SDL), `rally_game` (src/game, acciones), `rally_net` (src/net, ENet, sin raylib ni SDL), `rally_tests_sim`, `rally_tests_platform`, `rally_tests_io`, `rally_tests_game` y `rally_tests_net` (doctest, uno por carril en `tests/<carril>/`).
 - `src/net`: ningún encabezado público incluye `enet.h` ni `<windows.h>` (chocan con raylib y con `std::min`/`std::max`); ENet solo en sus `.cpp`, con `NOMINMAX` y `WIN32_LEAN_AND_MEAN`. La red no lee el reloj: el tiempo le llega como argumento.
 - El configure falla si un target nuestro define `JPH_*` (llegan solo de Jolt), si lo que compila simulación usa `/fp:fast` o `/fp:contract`, si algo usa `/arch:AVX*` o si la simulación o los tests enlazan raylib o SDL (`cmake/CheckBuildRules.cmake`). `src/sim/fp_guard.h` hace lo mismo con `#error`.
-- `cmake/CheckSimRules.cmake` (test `sim_rules.*` en ctest) revisa src/sim, src/gen y src/net: matemática fuera de `rmath`, `<random>`, `rand()`, `unordered_*`, y reloj solo en sim y gen. Excepción por línea: `// rmath-allow: <motivo>`.
+- `cmake/CheckSimRules.cmake` (test `sim_rules.*` en ctest) revisa src/sim, src/gen, src/net y src/game: matemática fuera de `rmath`, `<random>`, `rand()` y `unordered_*` en las cuatro, y el reloj en sim, gen y game (la red recibe el tiempo como argumento). Excepción por línea: `// rmath-allow: <motivo>`.
 - Nombres de test sin corchetes ni `;`: rompen el descubrimiento de doctest en CMake.
 - Todo test debe poder correr sin ventana ni mando.
 - Antes de dar una tarea por terminada, compila en Release y pasa todos los tests.

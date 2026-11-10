@@ -28,6 +28,7 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
     - una tarea de física o geometría nueva lleva su tabla de premisas (cómo se comprueban y qué pasa si son falsas), que el carril comprueba primero;
     - la lista de paradas es corta y escrita: falla un criterio de resultado (lo que nota el jugador, los tiempos de cuadro, la reproducibilidad) o una premisa. Lo demás es «Lista con avisos».
     → Lo que falte, a los cambios de la revisión; si cambia un criterio del prompt, **Necesita consultor**.
+16. **¿Algún test copia una cifra que calcula otro carril?** Un hash, un tiempo o un número de pasos de una grabación o de una geometría que no es de la tarea. → Que compruebe la forma o una relación (por ejemplo, que el tiempo sale de los pasos), y que la cifra exacta la fije el carril dueño de su fuente. Si no, cuando ese carril cambie su fuente, la fusión falla en un test que no puede tocar. Origen: en el lote 6, `replay.info_stage_v8`, `replay.run_stage_pass` y `replay.stage_v8` copiaban el hash del suelo y la pasada de `stage_lazadas.rrec`, que cambia con el formato 2.
 
 **Formato de `<tarea>-revision.md`:**
 - veredicto: **Adelante**, **Adelante con cambios** o **Necesita consultor**;
@@ -65,7 +66,7 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
 
 Se activa si la rama toca `src/sim`, `src/gen`, `src/net`, `src/game` o `src/io`, o si cambia la huella, el hash de la telemetría o `tests/data/recordings`.
 
-1. **Matemática** solo por `rmath`; aleatorios solo con PCG32; nada de `<random>`, `rand()`, `unordered_*` ni reloj en `src/sim`, `src/gen` ni `src/net`.
+1. **Matemática** solo por `rmath`; aleatorios solo con PCG32; nada de `<random>`, `rand()` ni `unordered_*` en `src/sim`, `src/gen`, `src/net` ni `src/game`; ni reloj en `src/sim`, `src/gen` ni `src/game` (la red recibe el tiempo como argumento). Es lo que comprueba `cmake/CheckSimRules.cmake`.
 2. **Nada se añade ni se quita de Jolt** tras `seal()`. Cero reservas nuestras en el paso (test del contador de `operator new`).
 3. **Todo estado nuevo de la simulación entra en el SaveState,** también el de `src/game` que lo necesite (acciones, cambio de host). Para cada campo nuevo, comprueba que existe un test que falla si se quita.
 4. **Huella, reservas de Jolt, hash de la telemetría y `kSimVersion`:**

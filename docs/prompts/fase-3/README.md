@@ -19,5 +19,11 @@ Prompts de las tareas de la fase 3 (corte vertical), en el orden en que entran e
 | `tramo-dibujo` | 5 | plataforma | `tramo-ajustes`, `f3-ejes` |
 | `replay-tramo` | 5 | herramientas | `grabacion-v8` |
 | `tramo-modo` | 5 | plataforma | `tramo-dibujo`, `grabacion-v8` |
+| `replay-desacople` | 6 | herramientas | — |
+| `red-tramo` | 6 | juego | — |
+| `formato-2` | 6 | sim | `replay-desacople`, `red-tramo` (para fusionarse) |
+| `cambios-direccion` | 6 | juego | `red-tramo` |
+| `tablet` | 6 | plataforma | `red-tramo`, `cambios-direccion` |
+| `tramo-dibujo-2` | 6 | plataforma | `formato-2` |
 
-Siguientes (lote 6, sin prompt todavía): la tablet (mapa, perfil, cinta y cursor; el puntero con la barra espaciadora mantenida) y el copiloto bot de desarrollo. Lote 7: formato 2 (irregularidad, arcenes, cunetas y taludes), el tramo de 3–5 km y el dibujo en un hilo de fondo.
+Siguientes (lote 7, sin prompt todavía): la capa de irregularidad del trazado (antes del tramo de verdad); el modelo de nota, los diales, el panel del salpicadero, la velocidad de referencia y el copiloto bot de desarrollo; el tramo de 3–5 km y el dibujo en un hilo de fondo.
