@@ -3,6 +3,7 @@
 # pasos, nunca lee el reloj (cmake/CheckSimRules.cmake lo comprueba).
 add_library(rally_game STATIC
     actions.cpp
+    direction_changes.cpp
 )
 target_include_directories(rally_game PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(rally_game PUBLIC rally_sim PRIVATE rally_warnings)
