@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
     rally::platform::CopilotArgs copilot;
     std::string copilot_error;
     if (!rally::platform::parse_copilot_args(argc, argv, copilot, copilot_error)) {
-        std::fprintf(stderr, "--copiloto: %s\n", copilot_error.c_str());
+        std::fprintf(stderr, "argumentos del copiloto: %s\n", copilot_error.c_str());
         return 2;
     }
     if (copilot.enabled) {

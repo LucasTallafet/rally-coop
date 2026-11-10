@@ -128,6 +128,8 @@ PadState PadTracker::update(const PadReading* pads, int count, int steer_sensiti
     state.shift_up = pad.shift_up;
     state.shift_down = pad.shift_down;
     state.reset = pad.reset;
+    state.dpad_up = pad.dpad_up;
+    state.dpad_down = pad.dpad_down;
     return state;
 }
 

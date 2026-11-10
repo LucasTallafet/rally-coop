@@ -1,5 +1,6 @@
 #include "platform/copilot_app.h"
 
+#include "game/direction_changes.h"
 #include "io/recording.h"
 #include "net/copilot.h"
 #include "platform/camera_space.h"
@@ -20,9 +21,14 @@
 #include "platform/input_shaping.h"
 #include "platform/keys_raylib.h"
 #include "platform/perf_counter.h"
+#include "platform/pointer_mode.h"
 #include "platform/scene_draw.h"
 #include "platform/screen_layout.h"
 #include "platform/stage_scene.h"
+#include "platform/tablet_cursor.h"
+#include "platform/tablet_draw.h"
+#include "platform/tablet_geometry.h"
+#include "platform/tablet_view.h"
 #include "platform/wheel_spin.h"
 #include "platform/window.h"
 #include "platform/zone_draw.h"
@@ -47,8 +53,6 @@ using namespace demo;
 
 namespace {
 
-constexpr int kWindowWidth = 640;
-constexpr int kWindowHeight = 360;
 constexpr std::uint64_t kLinkSeed = 1; // red simulada repetible
 constexpr Color kSky{40, 44, 52, 255};
 
@@ -61,7 +65,7 @@ Pose to_pose(const sim::BodyPose& body) {
 
 // Ventana en la esquina inferior derecha del área útil del monitor donde se abrió (sin la barra
 // de tareas), para que el conductor la vea junto a la suya en un solo monitor.
-void place_window() {
+void place_window(int width, int height) {
     SDL_Window* window = SDL_GL_GetCurrentWindow();
     if (window == nullptr) {
         return;
@@ -70,7 +74,10 @@ void place_window() {
     if (!SDL_GetDisplayUsableBounds(SDL_GetDisplayForWindow(window), &usable)) {
         return;
     }
-    SetWindowPosition(usable.x + usable.w - kWindowWidth, usable.y + usable.h - kWindowHeight);
+    // Acotada a la zona útil: con una ventana tan alta como el monitor, la barra de título no se
+    // sale por arriba.
+    SetWindowPosition(std::max(usable.x, usable.x + usable.w - width),
+                      std::max(usable.y, usable.y + usable.h - height));
 }
 
 class CopilotApp {
@@ -114,6 +121,7 @@ private:
             // asiento / persecución / toda la zona (o fija); en el tramo, también la fija
         }
         update_look(now_s);
+        update_tablet_keys();
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
             debug_.press();
         }
@@ -139,6 +147,14 @@ private:
     void update_look(double now_s) {
         const bool focused = IsWindowFocused();
         const PadState pad = gamepads_.read(); // siempre: mantiene al día el mando activo
+        pad_dpad_up_ = pad.dpad_up;
+        pad_dpad_down_ = pad.dpad_down;
+        // El puntero (Espacio mantenido): el ratón sale de la captura y la cabeza se congela; al
+        // soltar, el ratón vuelve a mirar desde donde estaba.
+        pointer_ = pointer_frame(
+            focused && action_down(action(CopilotAction::Pointer), kCopilotKeyContext),
+            mouse_use(false, true, focused) != MouseUse::None);
+        ctx_.head_look.set_frozen(pointer_.frozen);
         HeadLookInput look;
         look.dt_s = std::max(0.0, now_s - last_look_s_);
         last_look_s_ = now_s;
@@ -146,7 +162,7 @@ private:
             look.stick_x = pad.look.x;
             look.stick_y = pad.look.y;
         }
-        cursor_.update(mouse_use(false, true, focused) != MouseUse::None);
+        cursor_.update(pointer_.capture);
         float dx = 0.0f;
         float dy = 0.0f;
         if (cursor_.take_delta(dx, dy)) {
@@ -155,6 +171,31 @@ private:
         }
         look.recenter = cursor_.captured() && IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
         ctx_.head_look.update(look);
+    }
+
+    // La orientación del mapa (O), el cursor (↑ y ↓ o la cruceta) y el clic del puntero.
+    void update_tablet_keys() {
+        if (action_pressed(action(CopilotAction::MapOrientation), kCopilotKeyContext)) {
+            orientation_ =
+                orientation_ == MapOrientation::Axis ? MapOrientation::Ahead : MapOrientation::Axis;
+            ctx_.overlay.set_message(
+                Overlay::Message::Settings,
+                orientation_ == MapOrientation::Axis
+                    ? "O: mapa orientado por la carretera"
+                    : "O: mapa orientado hacia el punto del eje 40 m por delante",
+                kText, kShortMessageNs);
+        }
+        const bool focused = IsWindowFocused();
+        const bool up =
+            focused &&
+            (action_down(action(CopilotAction::CursorNext), kCopilotKeyContext) || pad_dpad_up_);
+        const bool down =
+            focused && (action_down(action(CopilotAction::CursorPrevious), kCopilotKeyContext) ||
+                        pad_dpad_down_);
+        held_dir_ = up == down ? 0 : (up ? 1 : -1);
+        pointer_click_ = pointer_.clicks && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+        pointer_x_ = static_cast<double>(GetMouseX());
+        pointer_y_ = static_cast<double>(GetMouseY());
     }
 
     // Construye el mundo con el mismo código que el host y sin llamar nunca a step.
@@ -223,7 +264,16 @@ private:
         }
         p.drawn_car = to_pose(world->car_pose());
         have_last_car_ = false;
+        have_sample_ = false;
         extra_ = net::SampledState{}; // el volante del mundo anterior no se queda
+        tablet_view_.reset();
+        tablet_cursor_.reset();
+        changes_.clear();
+        if (stage_present_) {
+            changes_ = game::direction_changes(ctx_.stage_track->axis());
+            tablet_draw_.set_stage(*ctx_.stage_track);
+        }
+        tablet_drawn_ = false;
         cockpit_ = build_cockpit(built.car);
         generation_ = info.generation;
         world_ = std::move(world);
@@ -255,6 +305,30 @@ private:
             }
         }
         have_last_car_ = true;
+        have_sample_ = true;
+        update_tablet(now_s);
+    }
+
+    // La tablet con la `s` y la `t` que manda el host (nunca una proyección propia).
+    void update_tablet(double now_s) {
+        if (!stage_present_ || ctx_.stage_track == nullptr) {
+            return;
+        }
+        const sim::StageTrack& track = *ctx_.stage_track;
+        tablet_view_.update(track, extra_.s, extra_.t, now_s, orientation_);
+        const double dt = std::max(0.0, now_s - last_tablet_s_);
+        last_tablet_s_ = now_s;
+        tablet_cursor_.update(changes_, extra_.s, track.axis().length(), held_dir_, dt);
+        // Un clic del puntero coloca el cursor en el eje más cercano, en lo que se ve.
+        // Solo cuenta si la tablet se dibujó en el último fotograma (con la ayuda abierta no).
+        if (pointer_click_ && tablet_drawn_) {
+            double s = 0.0;
+            const double max_px = ctx_.overlay.metrics().px(12.0);
+            if (pick_s(track, tablet_draw_.map_view(), extra_.s, pointer_x_, pointer_y_, max_px,
+                       s)) {
+                tablet_cursor_.place(s, extra_.s, track.axis().length());
+            }
+        }
     }
 
     void draw_scene() {
@@ -317,9 +391,25 @@ private:
                          connected ? kStrong : kError);
         const UiRect& hint = overlay.rect(Layer::HelpHint);
         overlay.text(Layer::HelpHint, hint.x, hint.y, layer_samples(Layer::HelpHint)[0], kDim);
+        tablet_drawn_ = false;
         if (help_page_ >= 0) {
             draw_help();
         } else {
+            // La tablet va debajo de F3 y de F1 (que se dibujan encima, con su fondo).
+            if (tablet_visible_ && stage_present_ && have_sample_ && tablet_view_.initialized() &&
+                ctx_.stage_track != nullptr) {
+                tablet_draw_.draw(overlay, *ctx_.stage_track, tablet_view_, tablet_cursor_,
+                                  changes_, orientation_);
+                tablet_drawn_ = true;
+                const std::int64_t now = now_ns();
+                tablet_cost_.add(now,
+                                 tablet_draw_.last_geometry_ns() + tablet_draw_.last_draw_ns());
+                if (now - last_tablet_publish_ns_ >= PerfStats::kPeriodNs) {
+                    tablet_cost_.publish(now);
+                    last_tablet_publish_ns_ = now;
+                }
+            }
+            perf.set_tablet(&tablet_cost_);
             if (debug_.visible()) {
                 draw_debug(now_s);
             }
@@ -417,6 +507,26 @@ private:
     DebugPanel debug_;
     int help_page_ = -1;
     SimulatedNet level_ = SimulatedNet::Off;
+    // La tablet (lote 6). «A la vista» vale siempre en este lote: guardarla y sacarla necesitan
+    // los mensajes de acción por la red, que no existen todavía.
+    bool tablet_visible_ = true;
+    bool have_sample_ = false;  // ya llegó un estado del mundo actual
+    bool tablet_drawn_ = false; // la tablet se dibujó en el último fotograma (vale el clic)
+    TabletView tablet_view_;
+    TabletCursor tablet_cursor_;
+    TabletDraw tablet_draw_;
+    std::vector<game::DirectionChange> changes_;
+    MapOrientation orientation_ = MapOrientation::Axis;
+    PerfChannel tablet_cost_;
+    std::int64_t last_tablet_publish_ns_ = 0;
+    double last_tablet_s_ = 0.0;
+    PointerFrame pointer_;
+    bool pad_dpad_up_ = false;
+    bool pad_dpad_down_ = false;
+    int held_dir_ = 0;
+    bool pointer_click_ = false;
+    double pointer_x_ = 0.0;
+    double pointer_y_ = 0.0;
 };
 
 } // namespace
@@ -424,8 +534,8 @@ private:
 int run_copilot(const CopilotArgs& args) {
     // Siempre encima de la ventana del juego (hay que pedirlo antes de abrir la ventana).
     SetConfigFlags(FLAG_WINDOW_TOPMOST);
-    Window window(kWindowWidth, kWindowHeight, "Rally Coop · copiloto");
-    place_window();
+    Window window(args.width, args.height, "Rally Coop · copiloto");
+    place_window(args.width, args.height);
     FramePacer pacer;
     FixedStepClock clock;
     PerfCounter perf;

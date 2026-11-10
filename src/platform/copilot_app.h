@@ -4,7 +4,8 @@
 
 namespace rally::platform {
 
-// rally.exe --copiloto (lote 3, §2.5–§2.8): la segunda instancia. Abre una ventana de 640 × 360,
+// rally.exe --copiloto (lote 3, §2.5–§2.8): la segunda instancia. Abre una ventana de 640 × 360
+// (o la de --ventana <ancho>x<alto>, lote 6),
 // siempre encima y en la esquina inferior derecha del monitor, se conecta al host (por defecto
 // 127.0.0.1:29470), construye el mundo que le manda (el mismo código que el host, sin llamar nunca
 // a step) y dibuja el coche del conductor en la pose interpolada de net::StateBuffer::sample, con

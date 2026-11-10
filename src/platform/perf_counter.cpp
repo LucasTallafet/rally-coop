@@ -182,6 +182,9 @@ void PerfCounter::draw(const FramePacer& pacer, const FixedStepClock& clock, boo
         // La fila 17, vacía sin copiloto.
         next();
         draw_ms_row(overlay, "CPU red", *network_, x, y);
+    } else if (tablet_ != nullptr) {
+        next();
+        draw_ms_row(overlay, "CPU tablet", *tablet_, x, y);
     }
     draw_frame_graph(history_, pacer.frame_period(), clock.debt(), snap_enabled, x + g.graph_border,
                      top + g.graph_top + g.graph_border, overlay);

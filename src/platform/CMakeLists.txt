@@ -48,6 +48,7 @@ add_library(rally_loop STATIC
     perf_stats.cpp
     recording_header.cpp
     player_settings.cpp
+    pointer_mode.cpp
     screen_layout.cpp
     seat.cpp
     slip.cpp
@@ -55,6 +56,9 @@ add_library(rally_loop STATIC
     stage_mode.cpp
     stage_overview.cpp
     surface_feel.cpp
+    tablet_cursor.cpp
+    tablet_geometry.cpp
+    tablet_view.cpp
     telemetry_history.cpp
     ui_text.cpp
     wheel_spin.cpp
@@ -104,6 +108,7 @@ add_library(rally_platform STATIC
     recording_session.cpp
     scene_draw.cpp
     screenshot.cpp
+    tablet_draw.cpp
     telemetry_graphs.cpp
     window.cpp
     tree_instances.cpp

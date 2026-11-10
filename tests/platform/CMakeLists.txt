@@ -29,6 +29,7 @@ rally_add_test_executable(rally_tests_platform
     test_stage_mode.cpp
     test_seat.cpp
     test_surface_feel.cpp
+    test_tablet.cpp
     test_ui_text.cpp
 )
 target_include_directories(rally_tests_platform PRIVATE ${PROJECT_SOURCE_DIR}/tests/sim/common)

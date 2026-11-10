@@ -83,6 +83,48 @@ TEST_CASE("copilot args: a badly written one gives its error") {
     CHECK(parse({"--copiloto", "127.0.0.1:29471", "--copiloto"}, args, error) == false);
 }
 
+TEST_CASE("copilot args: --ventana gives the window size, 640x360 by default") {
+    CopilotArgs args;
+    std::string error;
+    REQUIRE(parse({"--copiloto"}, args, error));
+    CHECK(args.width == 640);
+    CHECK(args.height == 360);
+    REQUIRE(parse({"--copiloto", "--ventana", "1280x720"}, args, error));
+    CHECK(args.width == 1280);
+    CHECK(args.height == 720);
+    REQUIRE(parse({"--copiloto", "127.0.0.1:29471", "--ventana", "1920x1080"}, args, error));
+    CHECK(args.width == 1920);
+    CHECK(args.height == 1080);
+    CHECK(args.port == 29471);
+    REQUIRE(parse({"--ventana", "640x360", "--copiloto"}, args, error));
+    CHECK(args.width == 640);
+    REQUIRE(parse({"--copiloto", "--ventana", "3840x2160"}, args, error));
+    CHECK(args.height == 2160);
+}
+
+TEST_CASE("copilot args: a badly written --ventana gives its error") {
+    CopilotArgs args;
+    std::string error;
+    for (const char* bad : {"639x360", "1280x", "x720", "4000x3000", "640x359", "3841x2160", "1280",
+                            "1280X720", "-1280x720", "1280x720x1", "axb"}) {
+        INFO(bad);
+        error.clear();
+        CHECK_FALSE(parse({"--copiloto", "--ventana", bad}, args, error));
+        CHECK_FALSE(error.empty());
+        CHECK(error.find(bad) != std::string::npos);
+    }
+    error.clear();
+    CHECK_FALSE(parse({"--copiloto", "--ventana"}, args, error));
+    CHECK_FALSE(error.empty());
+    CHECK_FALSE(parse({"--copiloto", "--ventana", "--frame-log"}, args, error));
+    CHECK_FALSE(
+        parse({"--copiloto", "--ventana", "1280x720", "--ventana", "1280x720"}, args, error));
+    // Sin --copiloto no vale.
+    error.clear();
+    CHECK_FALSE(parse({"--ventana", "1280x720"}, args, error));
+    CHECK(error.find("--copiloto") != std::string::npos);
+}
+
 TEST_CASE("copilot settings: the copilot instance never writes ajustes.txt, the host does") {
     namespace fs = std::filesystem;
     const fs::path folder = fs::temp_directory_path() / "rally_copilot_settings_test";
@@ -137,9 +179,9 @@ TEST_CASE("copilot keys: Z is free in every context and only fires in the copilo
     CHECK(uses == 1);
 }
 
-TEST_CASE("copilot keys: the copilot help shows only its eight rows, with Look and no B") {
+TEST_CASE("copilot keys: the copilot help shows only its eleven rows, with Look and no B") {
     const std::span<const KeyBinding> table = copilot_help_table();
-    REQUIRE(table.size() == 8);
+    REQUIRE(table.size() == 11);
     std::vector<Key> keys;
     for (const KeyBinding& b : table) {
         keys.push_back(b.keys[0].key);

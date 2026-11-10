@@ -23,7 +23,8 @@ namespace rally::platform {
 // Qué pantalla se diseña: la del juego o la de la ventana del copiloto (rally.exe --copiloto, lote
 // 3). La del copiloto usa las mismas capas: indicador (el estado de la conexión), aviso de la
 // ayuda, mensajes, ayuda (con solo sus teclas), F3 (sus líneas) y F1 (el mismo contador); las
-// gráficas y el anillo no existen en ella y su rectángulo es vacío.
+// gráficas y el anillo no existen en ella y su rectángulo es vacío; en cambio tiene la tablet
+// (Layer::Tablet), que no existe en la del juego.
 enum class ScreenKind : std::uint8_t { Game, Copilot };
 
 struct UiRect {
@@ -60,6 +61,7 @@ enum class Layer : std::uint8_t {
     Perf,       // F1
     Graphs,     // T
     ActionRing, // anillo de progreso de la acción en curso (teclas 7, 8 y 9), sin fondo
+    Tablet,     // la tablet del copiloto (lote 6): solo en ScreenKind::Copilot, abajo y centrada
     Count,
 };
 inline constexpr int kLayerCount = static_cast<int>(Layer::Count);
@@ -67,8 +69,11 @@ std::string_view layer_name(Layer layer);
 // Capas que nunca se dibujan a la vez (la ayuda tapa la depuración, el rendimiento y las gráficas
 // mientras está abierta, tarea 2.5b): pueden compartir sitio. Todas las demás, no.
 bool layers_exclusive(Layer a, Layer b);
-// Pareja que se solapa a propósito: el anillo de las acciones se dibuja siempre, encima de la ayuda
-// (con un fondo propio). Con cualquier otra capa, el anillo no se solapa.
+// Parejas que se solapan a propósito: el anillo de las acciones se dibuja siempre, encima de la
+// ayuda (con un fondo propio), y F1 (el contador de rendimiento, con su fondo) se dibuja encima de
+// la tablet: a 640 × 360 mide el 75 % del alto de la pantalla y no hay tablet que no le estorbe.
+// Con cualquier otra capa, ni el anillo ni la tablet se solapan (la tablet es exclusiva de la
+// ayuda: mientras está abierta no se dibuja).
 bool layers_overdraw(Layer a, Layer b);
 // Exclusivas o una dibujada encima de la otra: las únicas parejas que pueden compartir sitio.
 bool layers_may_overlap(Layer a, Layer b);

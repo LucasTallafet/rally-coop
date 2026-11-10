@@ -57,6 +57,10 @@ public:
     // CPU de la red del host (lote 3), en la fila 17 del panel, que sin copiloto está vacía; null
     // (sin copiloto conectado) no dibuja nada.
     void set_network(const PerfChannel* network) { network_ = network; }
+    // CPU de la tablet del copiloto (lote 6: geometría y dibujo), en la misma fila 17 que la red
+    // del host: el copiloto nunca pone la red, así que no se pisan (con la red puesta, gana ella);
+    // null no dibuja nada.
+    void set_tablet(const PerfChannel* tablet) { tablet_ = tablet; }
 
     // Última muestra cerrada (la del fotograma anterior) y la memoria leída por última vez.
     const FrameSample& last_sample() const { return last_; }
@@ -82,6 +86,7 @@ private:
     std::int64_t present_start_ns_ = 0;
     AudioStats audio_;
     const PerfChannel* network_ = nullptr;
+    const PerfChannel* tablet_ = nullptr;
 };
 
 } // namespace rally::platform
