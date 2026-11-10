@@ -16,6 +16,10 @@ namespace rally::platform {
 // ventanas.
 enum class CopilotAction : std::uint8_t {
     SimulatedNet,
+    MapOrientation, // la tablet (lote 6): orientación del mapa, A / B
+    Pointer,        // Espacio mantenido: el ratón deja de mirar y sirve para pulsar en el mapa
+    CursorNext,     // ↑ o la cruceta arriba: el cambio de dirección siguiente; mantenido, desliza
+    CursorPrevious, // ↓ o la cruceta abajo: el anterior
     Count,
 };
 
@@ -29,8 +33,8 @@ constexpr ActionRef action(CopilotAction a) {
 // valen en ella (Tab, F1, F3, H, F11 y Esc; las demás no se leen).
 inline constexpr std::uint8_t kCopilotKeyContext = kContextZone | kContextCopilot;
 
-// Las filas que enseña la ayuda (H) del copiloto: sus ocho filas (Tab y Mirar con texto propio) y
-// Z.
+// Las filas que enseña la ayuda (H) del copiloto: sus ocho filas de siempre (Tab y Mirar con texto
+// propio y Z) y las tres de la tablet.
 std::span<const KeyBinding> copilot_help_table();
 
 // Red simulada (Z): no, media (100 ± 30 ms, 5 % de pérdida) y mala (250 ± 80 ms, 20 %).

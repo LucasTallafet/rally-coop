@@ -111,6 +111,7 @@ enum class PadControl : std::uint8_t {
     FaceNorth, // el de arriba: Y Xbox, Triángulo PlayStation, X Nintendo
     LeftShoulder,
     RightShoulder,
+    DPadVertical, // la cruceta, arriba y abajo (el cursor de la tablet del copiloto)
 };
 
 // Una tecla de una tabla, sin Alt o con él.
@@ -142,7 +143,16 @@ enum KeyContext : std::uint8_t {
     kContextCopilot = 8,
 };
 
-enum class KeyBlock : std::uint8_t { Drive, CameraSeat, Zone, Recording, Debug, General, Count };
+enum class KeyBlock : std::uint8_t {
+    Drive,
+    CameraSeat,
+    Zone,
+    Recording,
+    Debug,
+    General,
+    Tablet, // la tablet del copiloto (lote 6): solo en la ventana del copiloto
+    Count
+};
 inline constexpr int kKeyBlockCount = static_cast<int>(KeyBlock::Count);
 std::string_view key_block_name(KeyBlock block);
 

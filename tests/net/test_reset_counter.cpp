@@ -22,6 +22,7 @@ CarState counted(std::uint32_t step, double x, std::uint8_t count, std::uint8_t 
     s.generation = generation;
     s.step = step;
     s.x = x;
+    s.s = x; // la s del host sigue a x: lo que vale para la pose vale para s
     s.reset_count = count;
     std::array<std::uint8_t, kCarStateBytes> bytes{};
     encode(s, bytes);
@@ -42,12 +43,15 @@ TEST_CASE("net_reset_counter: a lost reset state still shows as a clean jump, ne
     buffer.push(counted(0, 10.0, 0), 0.0);
     buffer.push(counted(16, 500.0, 1), 16.0 / 240.0);
     Pose pose;
+    SampledState extra;
     for (double target = 0.5; target < 16.0; target += 0.5) {
-        REQUIRE(buffer.sample(at_target(target), pose));
-        CHECK(pose.x == doctest::Approx(10.0)); // a, ni un milímetro hacia c
+        REQUIRE(buffer.sample(at_target(target), pose, extra));
+        CHECK(pose.x == doctest::Approx(10.0));  // a, ni un milímetro hacia c
+        CHECK(extra.s == doctest::Approx(10.0)); // y s igual: ninguna muestra entre las dos
     }
-    REQUIRE(buffer.sample(at_target(16.0), pose));
+    REQUIRE(buffer.sample(at_target(16.0), pose, extra));
     CHECK(pose.x == doctest::Approx(500.0));
+    CHECK(extra.s == doctest::Approx(500.0));
 }
 
 TEST_CASE("net_reset_counter: the counter wraps from 255 to 0 as a change") {
@@ -188,6 +192,7 @@ TEST_CASE("net_reset_counter: medium network with a reset every second, no half 
     int lost_first_new = 0;
     int samples = 0;
     double worst_off = 0.0;
+    double worst_off_s = 0.0;
     std::uint8_t last_count = 0;
     for (int frame = 0; frame < 60 * 60; ++frame) {
         const double now = frame / 60.0;
@@ -211,10 +216,12 @@ TEST_CASE("net_reset_counter: medium network with a reset every second, no half 
             buffer.push(out, release);
         }
         Pose pose;
-        if (now < 3.0 || !buffer.sample(now, pose)) {
+        SampledState extra;
+        if (now < 3.0 || !buffer.sample(now, pose, extra)) {
             continue;
         }
         worst_off = std::max(worst_off, std::min(std::abs(pose.x), std::abs(pose.x - 500.0)));
+        worst_off_s = std::max(worst_off_s, std::min(std::abs(extra.s), std::abs(extra.s - 500.0)));
         ++samples;
     }
     std::printf("net_reset_counter: red media, recolocado cada s: %d recolocados, %d con el primer "
@@ -225,4 +232,5 @@ TEST_CASE("net_reset_counter: medium network with a reset every second, no half 
     CHECK(lost_first_new >= 1); // si no, el test no mide el caso del fallo
     CHECK(samples > 3000);
     CHECK(worst_off <= 1.0);
+    CHECK(worst_off_s <= 1.0);
 }

@@ -39,6 +39,9 @@ struct Host::Impl {
 
     std::int64_t last_index = -1;
     std::uint8_t reset_count = 0; // recolocaciones desde el último mundo enviado
+    // Atajos del StageRun ya contados (-1: sin ver aún tras enviar el mundo). Un atajo recoloca el
+    // coche en el mismo paso sin que el botón lo diga: también sube el contador.
+    std::int32_t shortcuts_seen = -1;
     std::uint64_t sent = 0;
     std::uint64_t received = 0;
 
@@ -53,6 +56,7 @@ struct Host::Impl {
         send_reliable(active, encode_world(info));
         last_index = -1;
         reset_count = 0;
+        shortcuts_seen = -1;
     }
 
     void reject(ENetPeer* peer, const std::string& reason) {
@@ -160,6 +164,12 @@ void Host::after_steps(const sim::SimWorld& world, std::uint32_t step, bool rese
     }
     if (reset_since_last) {
         ++s.reset_count; // también en un paso que la cadencia no envía: el contador lo lleva
+    }
+    if (const sim::StageRunState* run = world.stage_run()) {
+        if (s.shortcuts_seen >= 0 && run->shortcuts != s.shortcuts_seen) {
+            ++s.reset_count; // atajo: recolocado en stage_spawn(exit_s), sin pulsar el botón
+        }
+        s.shortcuts_seen = run->shortcuts;
     }
     const std::int64_t index = step / static_cast<std::uint32_t>(kStateEverySteps);
     if (s.last_index >= 0 && index <= s.last_index) {

@@ -1,9 +1,9 @@
 #pragma once
 
-// Protocolo de red 2 (1: lote 3 §2.5; 2: lote 5 §2.4, el mundo lleva el hash del suelo del
-// tramo): constantes y mensajes de control. Little-endian, campo a
-// campo; cada mensaje empieza por un u8 con su tipo. El estado del coche (tipo 1) está en
-// net/car_state.h. Sin ENet.
+// Protocolo de red 3 (1: lote 3 §2.5; 2: lote 5 §2.4, el mundo lleva el hash del suelo del
+// tramo; 3: lote 6 §2.2, el estado del coche lleva s, t y «en carretera»): constantes y mensajes de
+// control. Little-endian, campo a campo; cada mensaje empieza por un u8 con su tipo. El estado del
+// coche (tipo 1) está en net/car_state.h. Sin ENet.
 
 #include "net/car_state.h"
 
@@ -13,7 +13,7 @@
 
 namespace rally::net {
 
-inline constexpr std::uint16_t kProtocolVersion = 2;
+inline constexpr std::uint16_t kProtocolVersion = 3;
 inline constexpr std::uint16_t kDefaultPort = 29470;
 inline constexpr int kStateEverySteps = 8;           // 30 Hz a 240 Hz
 inline constexpr double kStepRate = 240.0;           // pasos por segundo de la simulación

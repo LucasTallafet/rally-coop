@@ -12,6 +12,7 @@ constexpr double kQuatScale = 32767.0 * kSqrt2;
 constexpr double kRpmPerRadS = 9.549296585513721; // 60 / 2π
 constexpr std::uint8_t kAirSurface = 255;
 constexpr float kPaPerBar = 1.0e5f;
+constexpr std::uint8_t kFlagOnRoad = 1; // bit 0; los demás, reservados (a 0)
 
 class Writer {
 public:
@@ -103,6 +104,11 @@ CarState car_state_from(const sim::SimWorld& world, std::uint32_t step, std::uin
     s.steer = tel.steer;
     s.boost_bar = tel.boost / kPaPerBar;
     s.reset_count = reset_count;
+    if (const sim::StageRunState* run = world.stage_run()) {
+        s.s = run->s;
+        s.t = run->t;
+        s.on_road = run->on_road;
+    }
     return s;
 }
 
@@ -159,7 +165,10 @@ void encode(const CarState& state, std::span<std::uint8_t, kCarStateBytes> out) 
     w.u8(static_cast<std::uint8_t>(
         round_clamped(static_cast<double>(state.boost_bar) * 100.0, 0.0, 255.0)));
     w.u8(state.reset_count);
-    RALLY_CHECK(w.size() == kCarStateBytes, "net: el estado del coche no mide 50 B");
+    w.i32(to_mm(state.s));
+    w.i16(static_cast<std::int16_t>(round_clamped(state.t * 100.0, -32767.0, 32767.0)));
+    w.u8(state.on_road ? kFlagOnRoad : 0);
+    RALLY_CHECK(w.size() == kCarStateBytes, "net: el estado del coche no mide 57 B");
 }
 
 bool decode(std::span<const std::uint8_t> in, CarState& out) {
@@ -214,6 +223,13 @@ bool decode(std::span<const std::uint8_t> in, CarState& out) {
     s.steer = static_cast<float>(r.i16() / 32767.0);
     s.boost_bar = static_cast<float>(r.u8() / 100.0);
     s.reset_count = r.u8();
+    s.s = r.i32() / 1000.0;
+    s.t = r.i16() / 100.0;
+    const std::uint8_t flags = r.u8();
+    if ((flags & ~kFlagOnRoad) != 0) {
+        return false;
+    }
+    s.on_road = (flags & kFlagOnRoad) != 0;
     out = s;
     return true;
 }

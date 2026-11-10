@@ -137,6 +137,9 @@ Evolución de los tests: 14 → 28 → 39 → 42 → 63 → 82 → 92.
 | Línea «motor» de F3 (`tramo-modo`, lote 5) | También se cortaba (566 px frente a 563 a 1280×720) | Se parte en dos (`motor` y `embrague`), con `interior_f3_t.png` regenerada una sola vez |
 | Cambiar el tramo de una grabación (lote 5, `grabacion-v8`) | El `start_height` del texto no se puede tocar sin que el perfil deje de ser válido | Para probar «el tramo ha cambiado» se cambia un dígito de `start_x`; el nombre no entra en el hash del suelo |
 | Núcleo y terreno solapados (lote 5, `tramo-dibujo`) | Se solapan 5 mm en el borde del arcén y parpadean | Se resuelve con desplazamiento de polígonos (el núcleo gana), no recortando el terreno, para que «mismo número de triángulos que la física» se cumpla |
+| Orientación B del mapa (`tablet`, lote 6) | `01` §4 pide el punto del eje a 30–50 m por delante | Queda en 40 m y la A (tangente del eje) es la de partida; se decide con la prueba del lote 6 |
+| F1 y la tablet (`tablet`, lote 6) | A 640×360 F1 mide ~270 px de alto y no cabe junto a una tablet útil | F1 se dibuja encima, con su fondo; alternativa: un F1 compacto en el copiloto (~1 h). A decidir con la prueba |
+| Rumbo del mapa en una horquilla (`tablet`, lote 6) | El filtro del rumbo (τ 0,08 s) retrasa ~6° en una horquilla de R 6 al límite de adherencia | A probar jugando |
 
 ---
 

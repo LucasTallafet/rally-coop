@@ -171,7 +171,7 @@ TEST_CASE("net_link: another protocol version is answered with its reason") {
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
             if (event.type == ENET_EVENT_TYPE_CONNECT) {
-                const std::string hello = encode_hello(1);
+                const std::string hello = encode_hello(2);
                 ENetPacket* packet =
                     enet_packet_create(hello.data(), hello.size(), ENET_PACKET_FLAG_RELIABLE);
                 enet_peer_send(peer, 0, packet);
@@ -188,9 +188,9 @@ TEST_CASE("net_link: another protocol version is answered with its reason") {
     enet_host_flush(client);
     enet_host_destroy(client);
     REQUIRE(replied);
-    CHECK(reply.version == 2);
+    CHECK(reply.version == 3);
     CHECK_FALSE(reply.accepted);
-    CHECK(reply.reason == "protocolo 1, este juego usa el 2");
+    CHECK(reply.reason == "protocolo 2, este juego usa el 3");
     CHECK_FALSE(host->copilot_connected());
 }
 

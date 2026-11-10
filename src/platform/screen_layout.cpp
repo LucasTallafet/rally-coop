@@ -176,14 +176,15 @@ UiMetrics ui_metrics(int screen_height) {
 
 bool layers_exclusive(Layer a, Layer b) {
     const auto top_panel = [](Layer l) {
-        return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs;
+        return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs || l == Layer::Tablet;
     };
     return (a == Layer::Help && top_panel(b)) || (b == Layer::Help && top_panel(a));
 }
 
 bool layers_overdraw(Layer a, Layer b) {
     return (a == Layer::Help && b == Layer::ActionRing) ||
-           (b == Layer::Help && a == Layer::ActionRing);
+           (b == Layer::Help && a == Layer::ActionRing) ||
+           (a == Layer::Tablet && b == Layer::Perf) || (b == Layer::Tablet && a == Layer::Perf);
 }
 
 bool layers_may_overlap(Layer a, Layer b) {
@@ -208,6 +209,8 @@ std::string_view layer_name(Layer layer) {
         return "gráficas";
     case Layer::ActionRing:
         return "anillo de la acción";
+    case Layer::Tablet:
+        return "tablet";
     case Layer::Count:
         break;
     }
@@ -503,8 +506,17 @@ ScreenLayout layout_screen(int width, int height, ScreenKind kind) {
     help.h = messages.y - m.gap / 2 - help.y;
     layout.help =
         help_grid(help_table(kind), m, (help.h - 2 * m.padding) / m.line, help.w - 2 * m.padding);
-    const int debug_bottom = messages.y - m.gap / 2;
+    int debug_bottom = messages.y - m.gap / 2;
     if (copilot) {
+        // La tablet, como si la llevara en las rodillas: centrada, del 60 % del ancho y el 55 % del
+        // alto, con su borde de abajo sobre los mensajes. F3 acaba encima de ella (si no caben
+        // sus líneas, pagina).
+        UiRect& tablet = at(Layer::Tablet);
+        tablet.w = width * 60 / 100;
+        tablet.h = height * 55 / 100;
+        tablet.x = (width - tablet.w) / 2;
+        tablet.y = debug_bottom - tablet.h;
+        debug_bottom = std::min(debug_bottom, tablet.y - m.gap);
         debug.h = debug_bottom - debug.y; // sin anillo de acciones
         return layout;
     }
@@ -544,6 +556,7 @@ std::span<const std::string_view> layer_samples(Layer layer, ScreenKind kind) {
     case Layer::Messages:
     case Layer::Help:
     case Layer::Graphs:
+    case Layer::Tablet:
     case Layer::Count:
         break;
     }
@@ -555,6 +568,9 @@ int layer_content_width(Layer layer, const ScreenLayout& layout) {
     const bool copilot = layout.kind == ScreenKind::Copilot;
     if (copilot && (layer == Layer::Graphs || layer == Layer::ActionRing)) {
         return 0; // no existen en esta pantalla
+    }
+    if (layer == Layer::Tablet) {
+        return 0; // sin texto de peor caso: dibuja en su rectángulo (platform/tablet_geometry)
     }
     switch (layer) {
     case Layer::Indicator:
@@ -584,6 +600,7 @@ int layer_content_width(Layer layer, const ScreenLayout& layout) {
         return width;
     }
     case Layer::Messages:
+    case Layer::Tablet:
     case Layer::Count:
         break;
     }

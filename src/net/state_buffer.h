@@ -27,6 +27,11 @@ struct SampledState {
     float rpm = 0;
     std::array<std::int8_t, 4> surface{{-1, -1, -1, -1}};
     std::array<float, 4> compression{};
+    // Del host (StageRun), no del copiloto: s y t se interpolan por paso como la posición y se
+    // extrapolan con la pendiente de dos estados del mismo recolocado (hasta 100 ms; después,
+    // quietos); `on_road`, del estado más cercano. Sin tramo, 0, 0 y false.
+    double s = 0, t = 0;
+    bool on_road = false;
 };
 
 struct BufferStats {
@@ -66,6 +71,9 @@ private:
         double arrival = 0.0;
     };
     double host_step_estimate(double now_s) const;
+    // s y t del estado `i` seguidos `dt_steps` pasos con la pendiente del estado más nuevo del
+    // mismo contador que esté a 8 pasos o más; sin él, quietos.
+    void extrapolate_stage(int i, double dt_steps, SampledState& out) const;
 
     std::array<Entry, kCapacity> ring_{};
     int count_ = 0;

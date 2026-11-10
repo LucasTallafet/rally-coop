@@ -88,4 +88,11 @@ El test `keys: docs/teclas.md matches the generated table` comprueba que coincid
 | F11 o Alt+Intro | Pantalla completa sin bordes |
 | Esc | Salir |
 
+**Tablet del copiloto**
+
+| Tecla / mando | Acción |
+| --- | --- |
+| O | Orientación del mapa: carretera / hacia delante: solo en la ventana del copiloto: carretera orienta el mapa por la tangente del eje (no depende del morro ni de la velocidad); hacia delante, por la dirección del coche al punto del eje 40 m por delante (en las horquillas el mapa no da media vuelta) |
+| Arriba/Abajo · cruceta arriba / abajo | Cursor: siguiente / anterior cambio de dirección: solo en la ventana del copiloto: salta al cambio de dirección siguiente o al anterior, nunca por detrás del coche; mantenida más de 0,3 s, desliza por la carretera de 20 a 200 m/s en 2 s; por defecto el cursor está en el siguiente cambio de dirección por delante del coche |
+| Espacio | Puntero: mantener y pulsar en el mapa: solo en la ventana del copiloto: mientras se mantiene, el ratón deja de mirar (se suelta el cursor y la cabeza se queda quieta) y un clic en la carretera del mapa coloca el cursor en el punto más cercano del eje; al soltar, el ratón vuelve a mirar desde donde estaba la cabeza |
 <!-- fin de teclas -->
