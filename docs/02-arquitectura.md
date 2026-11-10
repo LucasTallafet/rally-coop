@@ -43,6 +43,8 @@ Plataforma
 
 La simulación no depende del render ni del audio. Lo que se dibuja o suena lee el estado de la simulación, nunca al revés.
 
+**Tablet (lote 6).** La tablet lee solo `SampledState::s`, `t` y `on_road` del host y el `StageTrack` recibido; nunca una proyección propia. La geometría (rumbo suavizado, zoom de 3 niveles con histéresis, polilíneas por superficie sobre una tabla del eje cada 0,5 m, perfil, cinta y cursor) está en `rally_loop` sin raylib (`platform/tablet_view`, `tablet_geometry`, `tablet_cursor`, `pointer_mode`) y `platform/tablet_draw` la pinta.
+
 ## 3. Bucle principal
 
 - Paso fijo de física a **240 Hz** con acumulador y tope de pasos por fotograma (evita la espiral de retraso).
