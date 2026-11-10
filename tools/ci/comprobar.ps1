@@ -344,7 +344,35 @@ try {
     # de ahí salen las líneas RALLY_SUMMARY.
     $junit = Join-Path $build 'comprobar-ctest.xml'
     if (Test-Path -LiteralPath $junit) { Remove-Item -LiteralPath $junit }
-    $codigoTests = Ejecutar $job "ctest --preset $preset --output-junit `"$junit`"" $ctestLog
+    # Debug: sin los tests de tests/ci/debug-excluidos.txt (se corren en Release). La lista es una
+    # barrera: ningún agente la cambia. Un nombre que ya no existe para la comprobación.
+    $excluidos = @()
+    $excluir = ''
+    if ($Debug) {
+        $lista = Join-Path $raiz 'tests\ci\debug-excluidos.txt'
+        $excluidos = @([IO.File]::ReadAllLines($lista) | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+        $logLista = Join-Path $build 'comprobar-ctest-lista.log'
+        if ((Ejecutar $job "ctest --preset $preset -N" $logLista) -ne 0) { Terminar 1 'ctest -N' }
+        $existentes = @{}
+        foreach ($l in [IO.File]::ReadAllLines($logLista, $codificacionHijos)) {
+            if ($l -match '^\s*Test\s+#\d+: (.+)$') { $existentes[$Matches[1].Trim()] = $true }
+        }
+        $sobran = @($excluidos | Where-Object { -not $existentes.ContainsKey($_) })
+        if ($sobran.Count -gt 0) {
+            Terminar 1 ('tests\ci\debug-excluidos.txt nombra tests que no existen: {0}' -f ($sobran -join ' | '))
+        }
+        $excluir = " --exclude-from-file `"$lista`""
+    }
+    $codigoTests = Ejecutar $job "ctest --preset $preset --output-junit `"$junit`"$excluir" $ctestLog
+    # Que la exclusión se ha aplicado: ningún excluido aparece como ejecutado en el log.
+    if ($excluidos.Count -gt 0) {
+        $salidaTests = [IO.File]::ReadAllText($ctestLog, $codificacionHijos)
+        $corridos = @($excluidos | Where-Object { $salidaTests -match ('Test\s+#\d+: ' + [regex]::Escape($_) + ' \.') })
+        if ($corridos.Count -gt 0) {
+            Terminar 1 ('la exclusión de Debug no se aplicó: {0}' -f ($corridos -join ' | '))
+        }
+        Write-Host ('Debug: {0} tests excluidos (tests\ci\debug-excluidos.txt)' -f $excluidos.Count)
+    }
 } finally {
     # La plaza se suelta siempre, en el mismo hilo que la tomó; el job se cierra (y mata lo que
     # quede vivo).

@@ -1,0 +1,20 @@
+format7: the stored recordings of formats 1 to 6 still read and replay as before
+test_zone: a recorded lap of the blind track is timed and replays the same
+test_zone: reset from 10 far points goes to the nearest respawn, still and aligned
+test_zone: the car launched at 30 and 80 m/s against each wall stays inside the zone
+actions_recording: changing an event, the actions hash or the header text breaks hash OK
+car: the wheels are stable from 0.5 to 60 m/s on the five surfaces
+test_road: a recorded run from start to finish is timed and replays the same
+test_road: over the crest up to 70 km/h the wheels stay on the ground
+replay.zone_lap
+test_road: the terrain stays under 30 percent and is exactly 0 past the footprint
+replay.zone_changed
+test_road: reset near the road never goes forward along it
+replay.bench_lap
+replay.bench_lap_synth
+replay.bench_lap_synth_matches
+car: threshold braking from 100 km/h stops in v squared over 2 mu peak g
+test_road: a run with two resets is marked and counts them
+test_road: overshooting the hairpin leaves the road once
+actions_recording: a recording without actions does not compare the actions hash
+car: the zone bumps and gravel ripples give no false hits and the body stays clear
