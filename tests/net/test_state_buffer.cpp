@@ -370,6 +370,11 @@ TEST_CASE("net_buffer: push, sample and stats do not allocate") {
             sink += pose.x;
         }
         sink += static_cast<double>(buffer.stats(now).host_step);
+        // Con el estado de s y t, también más allá del último (extrapola con la pareja anterior).
+        SampledState extra;
+        if (buffer.sample(now + 0.15, pose, extra)) {
+            sink += extra.s + extra.t;
+        }
     }
     // Los desordenados y los duplicados también.
     buffer.push(line_state(8, 20.0), 1.0);
