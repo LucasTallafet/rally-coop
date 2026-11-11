@@ -1,6 +1,7 @@
 #include "platform/stage_draw.h"
 
 #include "platform/stage_checked.h"
+#include "platform/stage_look.h"
 #include "platform/zone_draw.h"
 
 #include <rlgl.h>
@@ -34,9 +35,25 @@ StagePalette palette() {
     return p;
 }
 
+// Colores de los índices nuevos de la rejilla cercana: los de stage_look.h, los mismos que la malla
+// lejana (roca; tierra de la cuneta y el talud).
+std::array<Color, 2> look_colors() {
+    const StagePalette p = palette();
+    const auto& dirt = p[static_cast<std::size_t>(sim::Surface::Dirt)];
+    const auto darker = [&](int c) {
+        return static_cast<unsigned char>(static_cast<float>(dirt[static_cast<std::size_t>(c)]) *
+                                          kStageDitchDarken);
+    };
+    static_assert(kStageColorRock == sim::kSurfaceCount &&
+                  kStageColorDitch == sim::kSurfaceCount + 1);
+    return {Color{kStageRockRgb[0], kStageRockRgb[1], kStageRockRgb[2], 255},
+            Color{darker(0), darker(1), darker(2), 255}};
+}
+
 } // namespace
 
-StageDraw::StageDraw() : near_(kNearRadius, kNearFadeStart, kNearSpacing, palette_colors()) {}
+StageDraw::StageDraw()
+    : near_(kNearRadius, kNearFadeStart, kNearSpacing, palette_colors(), look_colors().data(), 2) {}
 
 StageDraw::~StageDraw() { unload(); }
 

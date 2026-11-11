@@ -4,6 +4,7 @@
 #include "platform/near_ring.h"
 #include "platform/stage_checked.h"
 #include "platform/stage_chunks.h"
+#include "platform/stage_look.h"
 #include "platform/stage_mesh.h"
 #include "platform/stage_near.h"
 #include "platform/stage_surface.h"
@@ -235,6 +236,8 @@ TEST_CASE("stage_draw: StageSurface gives the ground of Jolt (measurement)") {
     int compared = 0;
     double worst_core = 0.0;
     double worst_terrain = 0.0;
+    double worst_wall = 0.0;
+    int wall_points = 0;
     for (int n = 0; n < 3000; ++n) {
         const double s = length * unit(rng);
         const sim::StagePose pose = f.track.pose(s);
@@ -262,13 +265,19 @@ TEST_CASE("stage_draw: StageSurface gives the ground of Jolt (measurement)") {
         const double dy = std::abs(mine.y - probe.y);
         double& worst = mine.core ? worst_core : worst_terrain;
         worst = std::max(worst, dy);
+        if (mine.core && mine.look == sim::StageLook::Wall) {
+            ++wall_points;
+            worst_wall = std::max(worst_wall, dy);
+        }
     }
     MESSAGE(compared, " puntos con suelo en los dos; huecos distintos: ", hit_mismatch_inside,
             " a menos de 58 m del eje y ", hit_mismatch_edge,
             " en el borde de la franja; superficies distintas: ", surface_mismatch,
             "; diferencia de y máxima: ", 1000.0 * worst_core, " mm en el núcleo, ",
-            1000.0 * worst_terrain, " mm en el terreno");
+            1000.0 * worst_terrain, " mm en el terreno (lote 5: 0,23 y 0,82 mm); en ", wall_points,
+            " puntos de muro, ", 1000.0 * worst_wall, " mm");
     CHECK(hit_mismatch_inside == 0);
+    CHECK(surface_mismatch == 0);
     CHECK(compared > 2000);
 }
 
@@ -512,4 +521,304 @@ TEST_CASE("stage_draw: the lines go at the start, every split and the finish") {
     build_stage_lines(f.track, *f.surface, f.noise, buffers);
     CHECK(buffers.triangle_count() > 0);
     CHECK(buffers.triangle_count() % 2 == 0);
+}
+
+// ---- tramo-dibujo-2 (lote 6): la banda del formato 2 en el dibujo ----
+
+namespace {
+
+// Normal de un triángulo del núcleo con la misma cuenta en float que build_core_mesh.
+void triangle_normal(const sim::StageGround& g, const sim::StageTriangle& t, float& nx, float& ny,
+                     float& nz) {
+    const sim::StageVertex* a = &g.vertices()[t.a];
+    const sim::StageVertex* b = &g.vertices()[t.b];
+    const sim::StageVertex* c = &g.vertices()[t.c];
+    nx = (b->y - a->y) * (c->z - a->z) - (b->z - a->z) * (c->y - a->y);
+    ny = (b->z - a->z) * (c->x - a->x) - (b->x - a->x) * (c->z - a->z);
+    nz = (b->x - a->x) * (c->y - a->y) - (b->y - a->y) * (c->x - a->x);
+}
+
+const char* look_name(sim::StageLook look) {
+    switch (look) {
+    case sim::StageLook::Road:
+        return "calzada";
+    case sim::StageLook::Shoulder:
+        return "arcén";
+    case sim::StageLook::Ditch:
+        return "cuneta";
+    case sim::StageLook::Slope:
+        return "talud";
+    case sim::StageLook::Wall:
+        return "muro";
+    }
+    return "?";
+}
+
+} // namespace
+
+TEST_CASE("stage_draw: every core triangle is in the chunk of its section and the chunks go in "
+          "order of s") {
+    const Fixture& f = fixture();
+    const StageChunks chunks = StageChunks::build(f.ground);
+    const std::vector<double>& sections = f.ground.sections();
+    REQUIRE_FALSE(sections.empty());
+    std::int64_t previous = -1;
+    std::size_t wrong_interval = 0;
+    std::size_t outside_box = 0;
+    std::size_t largest = 0;
+    for (const StageChunk& chunk : chunks.core()) {
+        largest = std::max<std::size_t>(largest, chunk.count);
+        std::int64_t interval = -1;
+        for (std::uint32_t n = 0; n < chunk.count; ++n) {
+            const sim::StageTriangle& t =
+                f.ground.triangles()[chunks.core_triangles()[chunk.first + n]];
+            REQUIRE(t.section < sections.size()); // el tope del dibujo no tapa un índice malo
+            const auto k = static_cast<std::int64_t>(
+                std::floor((sections[t.section] - sections.front()) / kStageCoreChunkLength));
+            if (n == 0) {
+                interval = k;
+            } else if (k != interval) {
+                ++wrong_interval;
+            }
+            // La caja en planta del trozo contiene el triángulo (se construye con ellos: no
+            // detecta una cuenta mala de la sección, la detecta la comprobación del intervalo).
+            for (const std::uint32_t v : {t.a, t.b, t.c}) {
+                const double x = f.ground.origin_x() + f.ground.vertices()[v].x;
+                const double z = f.ground.origin_z() + f.ground.vertices()[v].z;
+                if (x < chunk.min_x || x > chunk.max_x || z < chunk.min_z || z > chunk.max_z) {
+                    ++outside_box;
+                }
+            }
+        }
+        CHECK(interval > previous); // los intervalos vacíos se saltan, el orden se mantiene
+        previous = interval;
+    }
+    CHECK(wrong_interval == 0);
+    CHECK(outside_box == 0);
+    MESSAGE(chunks.core().size(), " trozos del núcleo, el mayor con ", largest, " triángulos de ",
+            f.ground.triangles().size(), "; ", f.ground.vertices_per_section(),
+            " vértices por sección");
+}
+
+TEST_CASE("stage_draw: the core triangles face up and the far colors follow the look") {
+    const Fixture& f = fixture();
+    const StageChunks chunks = StageChunks::build(f.ground);
+    // Un estilo de prueba: el verde del muro a 0 no puede salir de otro color (g >= 5 con esta
+    // paleta, la tierra oscurecida a 0,5 y el sombreado >= 0,5).
+    StageLookStyle style;
+    style.wall = {200, 0, 60};
+    style.ditch_darken = 0.5f;
+    const StagePalette palette = test_palette();
+    StageMeshBuffers buffers;
+    std::array<std::size_t, 5> by_look{};
+    std::size_t wrong_color = 0;
+    std::size_t green_zero_not_wall = 0;
+    std::size_t wall_not_green_zero = 0;
+    for (const StageChunk& chunk : chunks.core()) {
+        const std::uint32_t* ids = chunks.core_triangles().data() + chunk.first;
+        build_core_mesh(f.ground, ids, chunk.count, palette, buffers, style);
+        for (std::uint32_t n = 0; n < chunk.count; ++n) {
+            const sim::StageTriangle& t = f.ground.triangles()[ids[n]];
+            ++by_look[static_cast<std::size_t>(t.look)];
+            float nx = 0;
+            float ny = 0;
+            float nz = 0;
+            triangle_normal(f.ground, t, nx, ny, nz);
+            REQUIRE(ny > 0.0f); // premisa: el dibujo sigue orientando hacia arriba
+            const float shade = stage_shade(nx, ny, nz);
+            const auto channel = [&](unsigned char c) {
+                return static_cast<unsigned char>(static_cast<float>(c) * shade);
+            };
+            std::array<unsigned char, 3> base{};
+            switch (t.look) {
+            case sim::StageLook::Wall:
+                base = style.wall;
+                break;
+            case sim::StageLook::Ditch:
+            case sim::StageLook::Slope: {
+                const auto& dirt = palette[static_cast<std::size_t>(sim::Surface::Dirt)];
+                for (std::size_t c = 0; c < 3; ++c) {
+                    base[c] = static_cast<unsigned char>(static_cast<float>(dirt[c]) * 0.5f);
+                }
+                REQUIRE(t.surface == sim::Surface::Dirt);
+                break;
+            }
+            case sim::StageLook::Road:
+            case sim::StageLook::Shoulder:
+                base = palette[static_cast<std::size_t>(t.surface)];
+                break;
+            }
+            for (std::size_t v = 0; v < 3; ++v) {
+                const unsigned char* rgba = &buffers.colors[(n * 3 + v) * 4];
+                if (rgba[0] != channel(base[0]) || rgba[1] != channel(base[1]) ||
+                    rgba[2] != channel(base[2])) {
+                    ++wrong_color;
+                }
+                if ((rgba[1] == 0) != (t.look == sim::StageLook::Wall)) {
+                    ++(t.look == sim::StageLook::Wall ? wall_not_green_zero : green_zero_not_wall);
+                }
+            }
+        }
+    }
+    CHECK(wrong_color == 0);
+    CHECK(green_zero_not_wall == 0);
+    CHECK(wall_not_green_zero == 0);
+    // Sin muro el test pasaría vacío.
+    CHECK(by_look[static_cast<std::size_t>(sim::StageLook::Wall)] > 0);
+    CHECK(by_look[static_cast<std::size_t>(sim::StageLook::Ditch)] > 0);
+    MESSAGE("triángulos por aspecto: calzada ", by_look[0], ", arcén ", by_look[1], ", cuneta ",
+            by_look[2], ", talud ", by_look[3], ", muro ", by_look[4]);
+}
+
+TEST_CASE("stage_draw: the faces of the core never exceed 80 degrees and the rock is not the "
+          "asphalt (measurement)") {
+    const Fixture& f = fixture();
+    float worst_cos = 2.0f;
+    sim::StageLook worst_look = sim::StageLook::Road;
+    float wall_min = 2.0f;
+    float wall_max = -1.0f;
+    std::size_t walls = 0;
+    for (const sim::StageTriangle& t : f.ground.triangles()) {
+        float nx = 0;
+        float ny = 0;
+        float nz = 0;
+        triangle_normal(f.ground, t, nx, ny, nz);
+        CHECK(ny > 0.0f);
+        const float cosine = ny / std::sqrt(nx * nx + ny * ny + nz * nz);
+        if (cosine < worst_cos) {
+            worst_cos = cosine;
+            worst_look = t.look;
+        }
+        if (t.look == sim::StageLook::Wall) {
+            const float shade = stage_shade(nx, ny, nz);
+            wall_min = std::min(wall_min, shade);
+            wall_max = std::max(wall_max, shade);
+            ++walls;
+        }
+    }
+    const auto shaded = [](std::array<unsigned char, 3> c, float shade) {
+        char text[40];
+        std::snprintf(text, sizeof text, "(%d, %d, %d)", static_cast<int>(c[0] * shade),
+                      static_cast<int>(c[1] * shade), static_cast<int>(c[2] * shade));
+        return std::string(text);
+    };
+    const float flat = stage_shade(0.0f, 1.0f, 0.0f);
+    const auto darken = [](unsigned char c) {
+        return static_cast<unsigned char>(static_cast<float>(c) * kStageDitchDarken);
+    };
+    MESSAGE("menor ny/|n| ", worst_cos, " (", look_name(worst_look), "), cos 80° = 0,1736; ", walls,
+            " triángulos de muro con sombreado entre ", wall_min, " y ", wall_max, ": roca ",
+            shaded(kStageRockRgb, wall_min), " a ", shaded(kStageRockRgb, wall_max), "; en llano (",
+            flat, "): asfalto ", shaded({96, 99, 106}, flat), ", grava ",
+            shaded({198, 182, 142}, flat), ", tierra ", shaded({164, 124, 84}, flat),
+            ", tierra de cuneta ", shaded({darken(164), darken(124), darken(84)}, flat));
+    CHECK(worst_cos > 0.1736f - 1e-3f);
+}
+
+TEST_CASE("stage_draw: the near grid color index is the look of the top triangle") {
+    const Fixture& f = fixture();
+    const StageNearSampler sampler(f.track, *f.surface, f.noise);
+    sim::Pcg32 rng(0x6c0ffee1ull, 9);
+    const double length = f.track.axis().length();
+    int compared = 0;
+    int different = 0;
+    int rock = 0;
+    int ditch = 0;
+    for (int n = 0; n < 600; ++n) {
+        // La mitad entre los brazos de las lazadas (730–860 m), con la banda a ambos lados.
+        const double s = n % 2 == 0 ? 730.0 + 130.0 * unit(rng) : length * unit(rng);
+        const sim::StagePose pose = f.track.pose(s);
+        const double t = -(pose.half_width_left + 14.0) +
+                         (pose.half_width_left + pose.half_width_right + 28.0) * unit(rng);
+        const double x = pose.x + t * std::cos(pose.heading);
+        const double z = pose.z + t * std::sin(pose.heading);
+        // El triángulo de arriba sin el índice de StageSurface: todos, por caja y baricéntricas.
+        const double lx = x - f.ground.origin_x();
+        const double lz = z - f.ground.origin_z();
+        bool found = false;
+        double top = 0.0;
+        sim::StageTriangle top_triangle;
+        for (const sim::StageTriangle& tri : f.ground.triangles()) {
+            const sim::StageVertex& a = f.ground.vertices()[tri.a];
+            const sim::StageVertex& b = f.ground.vertices()[tri.b];
+            const sim::StageVertex& c = f.ground.vertices()[tri.c];
+            if (lx < std::min({a.x, b.x, c.x}) - 1e-6 || lx > std::max({a.x, b.x, c.x}) + 1e-6 ||
+                lz < std::min({a.z, b.z, c.z}) - 1e-6 || lz > std::max({a.z, b.z, c.z}) + 1e-6) {
+                continue;
+            }
+            const double d = (static_cast<double>(b.z) - c.z) * (static_cast<double>(a.x) - c.x) +
+                             (static_cast<double>(c.x) - b.x) * (static_cast<double>(a.z) - c.z);
+            if (d == 0.0) {
+                continue;
+            }
+            const double w0 = ((static_cast<double>(b.z) - c.z) * (lx - c.x) +
+                               (static_cast<double>(c.x) - b.x) * (lz - c.z)) /
+                              d;
+            const double w1 = ((static_cast<double>(c.z) - a.z) * (lx - c.x) +
+                               (static_cast<double>(a.x) - c.x) * (lz - c.z)) /
+                              d;
+            const double w2 = 1.0 - w0 - w1;
+            if (w0 < -1e-9 || w1 < -1e-9 || w2 < -1e-9) {
+                continue;
+            }
+            const double h = w0 * a.y + w1 * b.y + w2 * c.y;
+            if (!found || h > top) {
+                top = h;
+                top_triangle = tri;
+                found = true;
+            }
+        }
+        const StageHit hit = f.surface->query(x, z);
+        if (!found || !hit.core) {
+            continue; // fuera del núcleo, o el terreno queda más alto
+        }
+        const NearTexel texel = sampler.at(x, z);
+        ++compared;
+        const int want = stage_color_index(top_triangle.surface, top_triangle.look);
+        if (static_cast<int>(texel.surface) != want) {
+            ++different;
+        }
+        rock += static_cast<int>(texel.surface) == kStageColorRock ? 1 : 0;
+        ditch += static_cast<int>(texel.surface) == kStageColorDitch ? 1 : 0;
+        // Roca si y solo si es muro.
+        CHECK((static_cast<int>(texel.surface) == kStageColorRock) ==
+              (top_triangle.look == sim::StageLook::Wall));
+    }
+    CHECK(different == 0);
+    CHECK(compared > 200);
+    CHECK(rock > 0);
+    MESSAGE(compared, " puntos del núcleo; roca ", rock, ", tierra de cuneta o talud ", ditch);
+}
+
+TEST_CASE("stage_draw: rock texels in the near ring beside the road at s 633 747 841 946 "
+          "(measurement)") {
+    const Fixture& f = fixture();
+    const StageNearSampler sampler(f.track, *f.surface, f.noise);
+    for (const double s : {633.0, 747.0, 841.0, 946.0}) {
+        NearRing ring(kNearRadius, kNearSpacing);
+        const sim::StagePose pose = f.track.pose(s);
+        const auto direct = [&](double x, double z) { return sampler.at(x, z); };
+        ring.update(Vec3d{pose.x, pose.y + 1.1, pose.z}, direct);
+        int rock = 0;
+        int ditch = 0;
+        int total = 0;
+        const auto cx = static_cast<std::int64_t>(std::floor(pose.x / kNearSpacing));
+        const auto cz = static_cast<std::int64_t>(std::floor(pose.z / kNearSpacing));
+        const auto reach = static_cast<std::int64_t>(kNearFadeStart / kNearSpacing);
+        for (std::int64_t gz = cz - reach; gz <= cz + reach; ++gz) {
+            for (std::int64_t gx = cx - reach; gx <= cx + reach; ++gx) {
+                const double dx = static_cast<double>(gx - cx) * kNearSpacing;
+                const double dz = static_cast<double>(gz - cz) * kNearSpacing;
+                if (dx * dx + dz * dz > kNearFadeStart * kNearFadeStart) {
+                    continue;
+                }
+                const NearTexel texel = ring.texel(gx, gz);
+                ++total;
+                rock += static_cast<int>(texel.surface) == kStageColorRock ? 1 : 0;
+                ditch += static_cast<int>(texel.surface) == kStageColorDitch ? 1 : 0;
+            }
+        }
+        MESSAGE("s ", s, ": de ", total, " texels a menos de ", kNearFadeStart, " m, roca ", rock,
+                ", cuneta o talud ", ditch);
+    }
 }

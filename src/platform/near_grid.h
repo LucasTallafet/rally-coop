@@ -70,9 +70,12 @@ struct NearStats {
 // ventana abierta.
 class NearGrid {
 public:
-    // `colors`: color de cada superficie (índice de sim::Surface).
+    // `colors`: color de cada superficie (índice de sim::Surface). `extra_colors`: colores de los
+    // índices siguientes (kSurfaceCount, ...), hasta 3 (el tramo: roca, tierra de cuneta y talud);
+    // ZoneDraw no pasa ninguno y su dibujo no cambia.
     NearGrid(double radius, double fade_start, double spacing,
-             const std::array<Color, sim::kSurfaceCount>& colors);
+             const std::array<Color, sim::kSurfaceCount>& colors,
+             const Color* extra_colors = nullptr, int extra_count = 0);
     ~NearGrid();
     NearGrid(const NearGrid&) = delete;
     NearGrid& operator=(const NearGrid&) = delete;

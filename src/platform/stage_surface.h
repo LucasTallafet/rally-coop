@@ -18,6 +18,8 @@ struct StageHit {
     double y = 0.0;     // altura en el mundo (la mayor entre el núcleo y el terreno)
     sim::Surface surface = sim::Surface::Dirt;
     bool core = false; // la superficie de arriba es el núcleo
+    // Aspecto del triángulo de arriba (tramo-dibujo-2): el del núcleo; del terreno, Road (sin uso).
+    sim::StageLook look = sim::StageLook::Road;
 };
 
 class StageSurface {
@@ -27,7 +29,9 @@ public:
     StageHit query(double x, double z) const;
     // Solo el núcleo: si (x, z) cae en un triángulo, su altura (la mayor si hay varios) y su
     // superficie.
-    bool core_at(double x, double z, double& y, sim::Surface& surface) const;
+    // `look`, si no es nulo, recibe el aspecto de ese triángulo.
+    bool core_at(double x, double z, double& y, sim::Surface& surface,
+                 sim::StageLook* look = nullptr) const;
     // Solo el terreno: la altura de la celda (con las diagonales de Jolt: (i, k)–(i+1, k+1)).
     bool terrain_at(double x, double z, double& y) const;
     // Altura (respecto a origin_y) de la muestra global (gi, gk) de las baldosas; false sin baldosa

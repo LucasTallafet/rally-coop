@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/stage_look.h"
 #include "platform/stage_surface.h"
 #include "sim/stage_ground.h"
 #include "sim/stage_track.h"
@@ -26,13 +27,30 @@ struct StageMeshBuffers {
 // Color RGB de cada superficie (índice de sim::Surface).
 using StagePalette = std::array<std::array<unsigned char, 3>, sim::kSurfaceCount>;
 
+// Colores del aspecto del triángulo (`look`) sobre la paleta de superficies. Por defecto, los de
+// stage_look.h, los mismos que usa la rejilla cercana; los tests pasan otros para que el color
+// no coincida por casualidad. La tierra de la cuneta y el talud sale de palette[Dirt] x
+// ditch_darken.
+struct StageLookStyle {
+    std::array<unsigned char, 3> wall = kStageRockRgb;
+    float ditch_darken = kStageDitchDarken;
+};
+
+// Color sin sombrear de un triángulo del núcleo: roca si es muro, tierra oscurecida si es cuneta o
+// talud de tierra, y si no, el de su superficie.
+std::array<unsigned char, 3> stage_core_rgb(const StagePalette& palette,
+                                            const StageLookStyle& style, sim::Surface surface,
+                                            sim::StageLook look);
+
 // Sombreado como el de ZoneDraw: 0,5 + 0,5·max(0, n·luz) con la luz de la demo.
 float stage_shade(float nx, float ny, float nz);
 
 // Los triángulos `triangles` (índices en ground.triangles()) del núcleo, sin índices, con el
-// color de su superficie y el sombreado plano. Cada triángulo se orienta hacia arriba.
+// color de su superficie (o del aspecto: muro, cuneta, talud) y el sombreado plano. Cada triángulo
+// se orienta hacia arriba.
 void build_core_mesh(const sim::StageGround& ground, const std::uint32_t* triangles,
-                     std::size_t count, const StagePalette& palette, StageMeshBuffers& out);
+                     std::size_t count, const StagePalette& palette, StageMeshBuffers& out,
+                     const StageLookStyle& style = StageLookStyle{});
 
 // La baldosa `tile`: kStageTileSamples² vértices (sombreado liso por el gradiente, color de
 // tierra) e índices de los triángulos con colisión (los tres vértices con colisión, como en
