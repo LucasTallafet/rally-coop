@@ -283,7 +283,9 @@ int main(int argc, char** argv) {
         // final del lado `side` en s (lazadas o 30km), y la malla en el final.
         const std::string which = argv[2];
         const std::string text = which == "30km" ? rally::tests::synthetic_stage_30km()
-                                                 : rally::tests::lazadas_stage_text();
+                                 : which == "hairpin"
+                                     ? rally::tests::stage_file("hairpin_flat.stage")
+                                     : rally::tests::lazadas_stage_text();
         const double s = std::stod(argv[3]);
         const int side = std::stoi(argv[4]);
         rally::sim::StageTrack track;
@@ -411,13 +413,14 @@ int main(int argc, char** argv) {
                                  : which == "stacked3" ? rally::tests::stacked_stage(0.03)
                                                        : rally::tests::lazadas_stage_text();
         rally::sim::StageTrack track;
-        rally::sim::StageTrack::build(text, track);
-        const rally::sim::StageGround g =
-            rally::sim::StageGround::build(track, rally::sim::kStageCell);
+        const rally::sim::StageParseResult built = rally::sim::StageTrack::build(text, track);
+        if (!built.ok) {
+            std::printf("no carga: %s\n", built.error.c_str());
+        }
         const double s0 = std::stod(argv[3]);
         const double s1 = std::stod(argv[4]);
         const rally::sim::StageCellError cell_error(track);
-        for (const rally::sim::StageBandSide& b : g.band_sides()) {
+        for (const rally::sim::StageBandSide& b : track.band_cache()->sides) {
             if (b.s < s0 || b.s > s1) {
                 continue;
             }

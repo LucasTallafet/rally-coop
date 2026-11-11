@@ -80,10 +80,14 @@ inline constexpr float kStageNoCollision = std::numeric_limits<float>::max();
 //   en `ditch_segments` tramos; su último vértice es la cabeza C;
 // - una tira recta de C al final F: hasta el eje medio con la otra parte del tramo más cercana si
 //   está a ≤ kStageBandMeet del borde (de cabeza a cabeza: talud si ≤ la pendiente de la tierra,
-//   muro si no, como mucho 80°), una explanada en el plano del arcén hasta kStageBandFree si no
-//   hay ninguna a menos de kStageBandMeet + kStageBandRamp, y entre las dos, una rampa continua;
-//   en el interior de un arco cuyo eje medio es su centro, todas sus secciones acaban en un solo
-//   vértice, el centro (abanico).
+//   muro si no, como mucho 80°), una explanada en el plano del arcén hasta kStageBandFree lejos
+//   de esos tramos y, entre las dos, una rampa: la mezcla w va por la longitud del final en planta
+//   (no por la distancia al eje medio, que cambia hasta 4 m por metro de s alrededor de una
+//   horquilla), con una longitud L que deja la curvatura de la altura del final a lo largo del
+//   final ≤ kStageRampCurvature. Dos lados enfrentados son enfrentados en el mismo pie; si dos
+//   tramos enfrentados de un lado quedan a menos de sus dos L, el lado sigue enfrentado entre
+//   ellos; en el interior de un arco cuyo eje medio es su centro, todas sus secciones acaban en un
+//   solo vértice, el centro (abanico).
 // Un tramo en el que la cuneta no cabe, el muro pasaría de 80° o algún triángulo de la banda
 // quedaría invertido o sin área no carga: StageTrack::build da «s = …: no cabe el talud entre
 // pasadas» (dos núcleos necesitan ≥ 2·(kStageDitchWidth + kStageBandMinTalud) = 3,1 m).
@@ -96,10 +100,15 @@ inline constexpr int kStageDitchSegments = 40;
 // Pendiente máxima de cada material (dy/dx). Hoy solo la tierra: talud 1:1,5 (33,7°).
 inline constexpr double kStageDirtSlope = 1.0 / 1.5;
 inline constexpr double kStageWallMaxSlope = 5.6712818196177066; // tan 80°: el muro, como mucho
-inline constexpr double kStageBandFree = 5.0;     // banda libre: hasta aquí del borde del arcén (m)
-inline constexpr double kStageBandMeet = 10.0;    // eje medio a ≤ esto del borde: hasta él (m)
-inline constexpr double kStageBandRamp = 5.0;     // de enfrentada a libre en esto más (m)
-inline constexpr double kStageBandOverlap = 0.01; // la banda pasa del eje medio esto (m)
+inline constexpr double kStageBandFree = 5.0;  // banda libre: hasta aquí del borde del arcén (m)
+inline constexpr double kStageBandMeet = 10.0; // eje medio a ≤ esto del borde: hasta él (m)
+// Alcance de la búsqueda del eje medio desde el borde del arcén (m). La rampa no lo necesita: lleva
+// el final enfrentado del borde de su tramo (formato-2).
+inline constexpr double kStageBandSearch = 15.0;
+// La mayor curvatura de la altura del final de una rampa a lo largo del final (m⁻¹): con
+// ½·R² = 0,14 m² de la celda, 35 mm de error de cuerda (el escalón ≤ 40 mm de la costura, 7b).
+inline constexpr double kStageRampCurvature = 0.25;
+inline constexpr double kStageBandOverlap = 0.01;  // la banda pasa del eje medio esto (m)
 inline constexpr double kStageBandMinTalud = 0.05; // talud mínimo entre cabeza y eje medio (m)
 inline constexpr double kStageBandSelfGap = 1.0;   // otra parte del tramo: |Δs| > esto (m)
 // Vértices por sección con la densidad del juego: F, cuneta, los 5 del núcleo, cuneta y F.
@@ -159,7 +168,11 @@ struct StageBandCache {
     std::size_t feet_overflows = 0;   // puntos con más pies de otras partes de los que se miran
     int refine_passes = 0;            // pasadas que añadieron secciones por la cuerda del final
     std::size_t refine_pending = 0;   // puntos medios que aún pedían sección al acabar
-    std::size_t bad_triangles = 0;    // de la banda: invertidos, sin área o de más de 80°
+    std::size_t meet_runs = 0;        // tramos enfrentados (con sus rampas) de los dos lados
+    // Lados de rampa que su propio eje medio recorta (debería ser 0) y la mayor L de una rampa.
+    std::size_t ramps_cut = 0;
+    double max_ramp_length = 0.0;
+    std::size_t bad_triangles = 0; // de la banda: invertidos, sin área o de más de 80°
     double error_s = std::numeric_limits<double>::infinity(); // la primera s que no cabe
     std::string error; // «s = …: no cabe el talud entre pasadas»
 };
@@ -167,6 +180,9 @@ struct StageBandCache {
 // Calcula la banda con la densidad del juego, la guarda en `track` y devuelve el error (vacío si
 // cabe). La llama StageTrack::build tras su validación. Reserva memoria y tarda: al cargar.
 std::string stage_band_attach(StageTrack& track);
+// Un lado cuyo final queda a la vista de la rejilla: libre, rampa, recortado o enfrentado a un
+// extremo del tramo (sin banda de enfrente).
+bool stage_band_exposed(const StageTrack& track, const StageBandSide& side);
 // El error de la banda de un tramo ya construido (vacío si cabe).
 std::string stage_band_error(const StageTrack& track);
 

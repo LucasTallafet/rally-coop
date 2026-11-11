@@ -412,6 +412,78 @@ inline void grid_slopes(const std::string& text, const sim::StageTrack& track) {
     }
 }
 
+// Premisa PC1 (respuesta del consultor a la segunda parada de la parte B, §3): la curvatura de la
+// altura del final de cada lado expuesto (libre, rampa o recortado) a lo largo del final en
+// planta, con la segunda diferencia en pasos de una celda (como la cota de las rampas). Solo
+// cuentan los tramos con los tres finales expuestos.
+struct EndCurvature {
+    double worst = 0.0;
+    double s = 0.0;
+    int side = 0;
+    sim::StageBandKind kind = sim::StageBandKind::Free;
+    int over = 0;
+};
+
+inline EndCurvature end_curvature(const sim::StageGround& g, const sim::StageTrack& track) {
+    EndCurvature out;
+    const std::vector<sim::StageBandSide>& sides = g.band_sides();
+    const std::size_t count = g.sections().size();
+    const auto exposed = [](sim::StageBandKind k) {
+        return k == sim::StageBandKind::Free || k == sim::StageBandKind::Ramp ||
+               k == sim::StageBandKind::Clamped;
+    };
+    for (int lane = 0; lane < 2; ++lane) {
+        std::vector<double> x(count), z(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            const sim::StageBandSide& b = sides[i * 2 + static_cast<std::size_t>(lane)];
+            const sim::StagePose p = track.pose(b.s);
+            const double half = lane == 1 ? p.half_width_right : p.half_width_left;
+            const double t = (lane == 1 ? 1.0 : -1.0) * (half + sim::kStageShoulderWidth + b.end_u);
+            x[i] = p.x + t * std::cos(p.heading);
+            z[i] = p.z + t * std::sin(p.heading);
+        }
+        const auto plan = [&](std::size_t a, std::size_t b) {
+            return std::hypot(x[b] - x[a], z[b] - z[a]);
+        };
+        for (std::size_t i = 1; i + 1 < count; ++i) {
+            const sim::StageBandSide& m = sides[i * 2 + static_cast<std::size_t>(lane)];
+            if (m.kind == sim::StageBandKind::Free || !exposed(m.kind)) {
+                continue; // la explanada libre sigue el plano del arcén (e(s))
+            }
+            std::size_t lo = i;
+            while (lo > 0 && plan(lo - 1, i) < sim::kStageCell) {
+                --lo;
+            }
+            lo = lo > 0 ? lo - 1 : 0;
+            std::size_t hi = i;
+            while (hi + 1 < count && plan(i, hi + 1) < sim::kStageCell) {
+                ++hi;
+            }
+            hi = hi + 1 < count ? hi + 1 : hi;
+            const sim::StageBandSide& a = sides[lo * 2 + static_cast<std::size_t>(lane)];
+            const sim::StageBandSide& c = sides[hi * 2 + static_cast<std::size_t>(lane)];
+            if (!exposed(a.kind) || !exposed(c.kind)) {
+                continue;
+            }
+            const double h0 = plan(lo, i);
+            const double h1 = plan(i, hi);
+            if (!(h0 > 1e-6) || !(h1 > 1e-6)) {
+                continue;
+            }
+            const double k =
+                std::abs((c.end_y - m.end_y) / h1 - (m.end_y - a.end_y) / h0) / (0.5 * (h0 + h1));
+            out.over += k > sim::kStageRampCurvature ? 1 : 0;
+            if (k > out.worst) {
+                out.worst = k;
+                out.s = m.s;
+                out.side = m.side;
+                out.kind = m.kind;
+            }
+        }
+    }
+    return out;
+}
+
 inline void band_report_stage(const char* name, const std::string& text, bool table) {
     sim::StageTrack track;
     const sim::StageParseResult parsed = sim::StageTrack::build(text, track);
@@ -478,6 +550,17 @@ inline void band_report_stage(const char* name, const std::string& text, bool ta
     std::printf(
         "  rampa y recortados: el final más lejos del plano del arcén, %.3f m en s = %.2f\n", gap,
         gap_s);
+    if (const sim::StageBandCache* cache = track.band_cache()) {
+        std::printf(
+            "  rampas: %zu tramos enfrentados; la mayor L, %.2f m; %zu lados de rampa recortados "
+            "por su eje medio (alcance %.0f m)\n",
+            cache->meet_runs, cache->max_ramp_length, cache->ramps_cut, sim::kStageBandSearch);
+    }
+    const EndCurvature ec = end_curvature(g, track);
+    std::printf("  PC1: la mayor curvatura de la altura de un final expuesto a lo largo del final "
+                "(pasos de una celda), %.3f m⁻¹ en s = %.2f, lado %+d, %s; > %.2f: %d lados\n",
+                ec.worst, ec.s, ec.side, band_kind_name(ec.kind), sim::kStageRampCurvature,
+                ec.over);
     double seam_s = 0.0;
     const double seam = seam_step(g, track, seam_s);
     std::printf("  costura banda con banda (eje medio): escalón máximo %.2f mm en s = %.2f\n",
@@ -702,8 +785,7 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
     const sim::StageCellError error(track);
     SeamScan out;
     for (const sim::StageBandSide& b : g.band_sides()) {
-        if (b.kind != sim::StageBandKind::Free && b.kind != sim::StageBandKind::Ramp &&
-            b.kind != sim::StageBandKind::Clamped) {
+        if (!sim::stage_band_exposed(track, b)) {
             continue;
         }
         if (b.s <= track.s_begin() + 2.0 || b.s >= track.s_end() - 2.0) {

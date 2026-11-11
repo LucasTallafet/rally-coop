@@ -856,6 +856,7 @@ public:
                 ends_[i * 2 + static_cast<std::size_t>(lane)] = solve_side(secs_[i], lane);
             }
         }
+        blend_ramps();
         refine();
         return finish();
     }
@@ -871,6 +872,31 @@ private:
         BandPoint medial;
         int apex = -1;
         bool bad = false;
+        // Lado abierto (enfrentado, rampa o libre según w): su eje medio, su centro y la altura
+        // del eje medio; l, la longitud del final en planta desde la primera sección.
+        bool open = false;
+        bool has_delta = false;
+        bool at_focal = false;
+        double delta = 0.0;
+        double focal = 0.0;
+        double mid = 0.0;
+        int other_lane = 0;
+        double l = 0.0;
+        double w = 0.0;
+    };
+    // La mezcla de un lado abierto: w (0 libre, 1 enfrentado) y, en una rampa, el final del
+    // borde de su tramo enfrentado (u y pendiente de la tira desde la cabeza), que la rampa lleva
+    // consigo: así no depende del δ de cada sección, que alrededor de una horquilla cambia deprisa.
+    struct RampAt {
+        double w = 0.0;
+        double meet_u = 0.0;
+        double slope = 0.0;
+    };
+
+    struct RampRun {
+        double l0 = 0.0, l1 = 0.0;      // el tramo enfrentado, en l
+        double left = 0.0, right = 0.0; // L de sus dos rampas
+        RampAt at_a, at_b;              // el final enfrentado de sus dos bordes
     };
     struct Apex {
         int arc = -1;
@@ -980,7 +1006,9 @@ private:
         return apexes_.size() - 1;
     }
 
-    // El final de la banda de un lado de una sección.
+    // El final de la banda de un lado de una sección: el eje medio (δ) y lo que no depende de la
+    // mezcla de las rampas (abanico y recortado). Los lados «abiertos» (enfrentado, rampa o
+    // libre) los coloca place_end con su w.
     SideEnd solve_side(const BandSection& sec, int lane) {
         const int side = lane == 0 ? -1 : 1;
         const double s = sec.s;
@@ -993,13 +1021,13 @@ private:
         const double ux = sec.ux[lane];
         const double uz = sec.uz[lane];
         const double grade = sec.grade[lane];
-        const double rim_y = sec.rim[lane];
         // Centro de curvatura propio: en el lado interior, a 1/|κ| − e del borde.
         double focal = std::numeric_limits<double>::infinity();
         if (sec.curvature * static_cast<double>(side) > 0.0) {
             focal = 1.0 / rmath::abs(sec.curvature) - sec.edge[lane];
         }
-        const double search = kStageBandMeet + kStageBandRamp;
+        out_side.focal = focal;
+        const double search = kStageBandSearch;
         const double limit = rmath::min(search, focal);
         const auto f = [&](double u, Foot& foot) {
             return u - other_distance(e.x + u * ux, e.z + u * uz, s, foot);
@@ -1049,6 +1077,7 @@ private:
         }
         band.delta = found ? hi : std::numeric_limits<double>::infinity();
         band.other_s = found ? foot_hi.s : 0.0;
+        out_side.other_lane = foot_hi.lane;
         out_side.medial = BandPoint{e.x + hi * ux, 0.0, e.z + hi * uz};
 
         const auto plane = [&](double u) { return e.y + grade * u; };
@@ -1059,6 +1088,7 @@ private:
         const int arc = near_focal ? arc_at(track_, s, sec.curvature) : -1;
         // En un arco, el centro; fuera de un arco, solo si no hay eje medio (recortado).
         const bool at_focal = near_focal && (arc >= 0 || !found);
+        out_side.at_focal = at_focal;
         if (at_focal && focal < kStageDitchWidth + kStageBandMinTalud) {
             // La cuneta y un talud mínimo tienen que caber antes del centro de curvatura.
             out_side.bad = true;
@@ -1073,42 +1103,268 @@ private:
             band.kind = StageBandKind::Clamped;
             band.end_u = rmath::max(kStageDitchWidth, focal - kFocalMargin);
             end = BandPoint{e.x + band.end_u * ux, plane(band.end_u), e.z + band.end_u * uz};
-        } else if (!found && !at_focal) {
-            band.kind = StageBandKind::Free;
-            band.end_u = kStageBandFree;
-            end = BandPoint{e.x + band.end_u * ux, plane(band.end_u), e.z + band.end_u * uz};
         } else {
-            // Eje medio con otra parte del tramo o, en un arco cuyo centro queda más allá de
-            // kStageBandMeet, el centro (con la altura del abanico, sin llegar a él).
-            const double delta = at_focal ? focal : hi;
-            const double other_rim = interpolate(rim_[foot_hi.lane], foot_hi.s);
-            const double mid = at_focal ? apex_height(arc, side) : 0.5 * (rim_y + other_rim);
+            // Abierto: eje medio con otra parte del tramo o, en un arco cuyo centro queda más allá
+            // de kStageBandMeet, el centro (con la altura del abanico, sin llegar a él); o nada.
+            out_side.open = true;
+            out_side.has_delta = found || at_focal;
+            out_side.delta = at_focal ? focal : hi;
+            if (out_side.has_delta) {
+                const double other_rim = interpolate(rim_[foot_hi.lane], foot_hi.s);
+                out_side.mid =
+                    at_focal ? apex_height(arc, side) : 0.5 * (sec.rim[lane] + other_rim);
+            }
+        }
+        if (!out_side.open) {
+            band.plane_gap = end.y - plane(band.end_u);
+        }
+        return out_side;
+    }
+
+    // Coloca el final de un lado abierto con su mezcla.
+    void place_end(const BandSection& sec, int lane, SideEnd& o, const RampAt& r) const {
+        if (!o.open) {
+            return;
+        }
+        StageBandSide& band = o.band;
+        const BandPoint& e = sec.e(lane);
+        const double ux = sec.ux[lane];
+        const double uz = sec.uz[lane];
+        const double grade = sec.grade[lane];
+        const double rim_y = sec.rim[lane];
+        const auto plane = [&](double u) { return e.y + grade * u; };
+        o.w = r.w;
+        // Lo más lejos que puede llegar el final: el eje medio (con el solape) y el centro.
+        const double cap = rmath::min(o.has_delta ? o.delta + kStageBandOverlap
+                                                  : std::numeric_limits<double>::infinity(),
+                                      o.focal);
+        if (!(r.w > 0.0)) {
+            band.kind = StageBandKind::Free;
+            band.end_u = rmath::min(kStageBandFree, cap);
+            o.end = BandPoint{e.x + band.end_u * ux, plane(band.end_u), e.z + band.end_u * uz};
+            band.plane_gap = 0.0;
+            return;
+        }
+        if (r.w >= 1.0 && o.has_delta) {
+            // Enfrentado: hasta su eje medio (sin él, un punto medio del refinado dentro de un
+            // tramo enfrentado, la rampa con w = 1).
+            const double delta = o.delta;
             const double run = delta - kStageDitchWidth;
             if (run < kStageBandMinTalud) {
-                out_side.bad = true;
+                o.bad = true;
             }
             const double line_run = rmath::max(run, kStageBandMinTalud);
             // La recta de la tira, de la cabeza (W, y_C) al eje medio (δ, y_M): F sigue en ella
             // también en el solape, así que las dos bandas coinciden allí.
-            const auto line = [&](double u) {
-                return rim_y + (mid - rim_y) * (u - kStageDitchWidth) / line_run;
-            };
-            if (delta <= kStageBandMeet) {
-                band.kind = StageBandKind::Meet;
-                band.end_u = rmath::min(delta + kStageBandOverlap, focal);
-                end = BandPoint{e.x + band.end_u * ux, line(band.end_u), e.z + band.end_u * uz};
-            } else {
-                band.kind = StageBandKind::Ramp;
-                const double w = smoothstep((search - delta) / kStageBandRamp);
-                band.end_u = kStageBandFree + w * (kStageBandMeet - kStageBandFree);
-                const double y = plane(band.end_u) + w * (line(band.end_u) - plane(band.end_u));
-                end = BandPoint{e.x + band.end_u * ux, y, e.z + band.end_u * uz};
-            }
+            band.kind = StageBandKind::Meet;
+            band.end_u = cap;
+            const double y = rim_y + (o.mid - rim_y) * (band.end_u - kStageDitchWidth) / line_run;
+            o.end = BandPoint{e.x + band.end_u * ux, y, e.z + band.end_u * uz};
+        } else {
+            band.kind = StageBandKind::Ramp;
+            const double free_u = rmath::min(kStageBandFree, cap);
+            band.end_u = rmath::min(free_u + r.w * (r.meet_u - free_u), cap);
+            const double line = rim_y + r.slope * (band.end_u - kStageDitchWidth);
+            const double y = plane(band.end_u) + r.w * (line - plane(band.end_u));
+            o.end = BandPoint{e.x + band.end_u * ux, y, e.z + band.end_u * uz};
         }
-        band.plane_gap = end.y - plane(band.end_u);
-        return out_side;
+        band.plane_gap = o.end.y - plane(band.end_u);
     }
 
+    // El final enfrentado del borde de un tramo: su u y la pendiente de su tira.
+    RampAt meet_end(const BandSection& sec, int lane, const SideEnd& o) const {
+        RampAt r;
+        r.w = 1.0;
+        r.meet_u = rmath::min(o.delta + kStageBandOverlap, o.focal);
+        const double line_run = rmath::max(o.delta - kStageDitchWidth, kStageBandMinTalud);
+        r.slope = (o.mid - sec.rim[lane]) / line_run;
+        return r;
+    }
+
+    // Longitud de la rampa del borde de un tramo enfrentado (m): con
+    // y − plano = w·(u − W)·k, u = F + w·(u_M − F), k = pendiente de la tira − la del arcén y w un
+    // paso suave en L (|w'| ≤ 1,5/L, |w''| ≤ 6/L²), la curvatura de la altura del final es
+    // ≤ (|k|·(6·(F − W) + 16,5·(u_M − F)) + 6·|g|·(u_M − F))/L² ≤ kStageRampCurvature
+    // (con u_M = F, L ≥ √(24·Δh) de la respuesta del consultor). Y como poco u_M − F (45° en
+    // planta).
+    double ramp_length(const BandSection& sec, int lane, const SideEnd& o) const {
+        const RampAt m = meet_end(sec, lane, o);
+        const double grade = sec.grade[lane];
+        const double k = m.slope - grade;
+        const double reach = rmath::max(m.meet_u - kStageBandFree, 0.0);
+        const double need =
+            rmath::abs(k) * (6.0 * (kStageBandFree - kStageDitchWidth) + 16.5 * reach) +
+            6.0 * rmath::abs(grade) * reach;
+        return rmath::max(rmath::sqrt(need / kStageRampCurvature), reach);
+    }
+
+    // Longitud del final en planta entre dos secciones: la menor de las dos rectas entre las que
+    // va una rampa (a kStageBandFree y a kStageBandMeet del borde).
+    double end_step(std::size_t i, int lane) const {
+        const BandSection& a = secs_[i];
+        const BandSection& b = secs_[i + 1];
+        double best = std::numeric_limits<double>::infinity();
+        for (const double u : {kStageBandFree, kStageBandMeet}) {
+            const double x0 = a.e(lane).x + u * a.ux[lane];
+            const double z0 = a.e(lane).z + u * a.uz[lane];
+            const double x1 = b.e(lane).x + u * b.ux[lane];
+            const double z1 = b.e(lane).z + u * b.uz[lane];
+            best = rmath::min(best, rmath::sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)));
+        }
+        return best;
+    }
+    // La sección más cercana a s.
+    std::size_t nearest_section(double s) const {
+        const auto it = std::lower_bound(s_.begin(), s_.end(), s);
+        if (it == s_.end()) {
+            return s_.size() - 1;
+        }
+        auto i = static_cast<std::size_t>(it - s_.begin());
+        if (i > 0 && s - s_[i - 1] < s_[i] - s) {
+            --i;
+        }
+        return i;
+    }
+
+    // La mezcla de las rampas (formato-2, respuesta del consultor a la segunda parada de la parte
+    // B, §1.1): tramos enfrentados (δ ≤ kStageBandMeet, también en el pie de enfrente), unidos si
+    // no caben las dos rampas entre ellos, y en cada borde una rampa de longitud L en planta.
+    void blend_ramps() {
+        const std::size_t count = secs_.size();
+        std::vector<char> meet(count * 2, 0);
+        for (std::size_t slot = 0; slot < count * 2; ++slot) {
+            const SideEnd& e = ends_[slot];
+            meet[slot] = e.open && e.has_delta && e.delta <= kStageBandMeet ? 1 : 0;
+        }
+        // El mismo pie: un lado enfrentado hace enfrentado a su pie de enfrente.
+        for (int pass = 0; pass < 4; ++pass) {
+            bool changed = false;
+            for (std::size_t slot = 0; slot < count * 2; ++slot) {
+                const SideEnd& e = ends_[slot];
+                if (meet[slot] == 0 || e.at_focal || !e.has_delta) {
+                    continue;
+                }
+                const std::size_t j = nearest_section(e.band.other_s);
+                const std::size_t other = j * 2 + static_cast<std::size_t>(e.other_lane);
+                const SideEnd& o = ends_[other];
+                if (meet[other] == 0 && o.open && o.has_delta) {
+                    meet[other] = 1;
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+        for (int lane = 0; lane < 2; ++lane) {
+            const auto slot = [lane](std::size_t i) {
+                return i * 2 + static_cast<std::size_t>(lane);
+            };
+            std::vector<double> l(count, 0.0);
+            for (std::size_t i = 1; i < count; ++i) {
+                l[i] = l[i - 1] + end_step(i - 1, lane);
+            }
+            for (std::size_t i = 0; i < count; ++i) {
+                ends_[slot(i)].l = l[i];
+            }
+            // Tramos enfrentados [a, b] y la L de cada borde: el mayor de los lados de la rampa.
+            struct Run {
+                std::size_t a = 0, b = 0;
+                double left = 0.0, right = 0.0;
+            };
+            const auto runs_of = [&] {
+                std::vector<Run> runs;
+                for (std::size_t i = 0; i < count; ++i) {
+                    if (meet[slot(i)] == 0) {
+                        continue;
+                    }
+                    std::size_t j = i;
+                    while (j + 1 < count && meet[slot(j + 1)] != 0) {
+                        ++j;
+                    }
+                    runs.push_back(Run{i, j, 0.0, 0.0});
+                    i = j;
+                }
+                for (Run& r : runs) {
+                    r.left = ramp_length(secs_[r.a], lane, ends_[slot(r.a)]);
+                    r.right = ramp_length(secs_[r.b], lane, ends_[slot(r.b)]);
+                }
+                return runs;
+            };
+            std::vector<Run> runs = runs_of();
+            // Dos tramos a menos de sus dos rampas: enfrentado entre ellos, si hay eje medio.
+            for (int pass = 0; pass < 8; ++pass) {
+                bool merged = false;
+                for (std::size_t r = 0; r + 1 < runs.size(); ++r) {
+                    const double gap = l[runs[r + 1].a] - l[runs[r].b];
+                    if (gap >= runs[r].right + runs[r + 1].left) {
+                        continue;
+                    }
+                    bool all = true;
+                    for (std::size_t k = runs[r].b + 1; k < runs[r + 1].a; ++k) {
+                        all = all && ends_[slot(k)].open && ends_[slot(k)].has_delta;
+                    }
+                    if (!all) {
+                        continue;
+                    }
+                    for (std::size_t k = runs[r].b + 1; k < runs[r + 1].a; ++k) {
+                        meet[slot(k)] = 1;
+                    }
+                    merged = true;
+                }
+                if (!merged) {
+                    break;
+                }
+                runs = runs_of();
+            }
+            runs_[lane] = runs.size();
+            ramp_runs_[lane].clear();
+            for (const Run& r : runs) {
+                RampRun rr{l[r.a], l[r.b], r.left, r.right};
+                rr.at_a = meet_end(secs_[r.a], lane, ends_[slot(r.a)]);
+                rr.at_b = meet_end(secs_[r.b], lane, ends_[slot(r.b)]);
+                ramp_runs_[lane].push_back(rr);
+                max_ramp_length_ = rmath::max(max_ramp_length_, rmath::max(r.left, r.right));
+            }
+            for (std::size_t i = 0; i < count; ++i) {
+                SideEnd& e = ends_[slot(i)];
+                RampAt r = ramp_weight(lane, l[i]);
+                if (meet[slot(i)] != 0) {
+                    r = meet_end(secs_[i], lane, e);
+                }
+                // Una rampa que el eje medio de su sección recorta (no debería pasar).
+                if (r.w > 0.0 && r.w < 1.0 && e.has_delta &&
+                    e.delta + kStageBandOverlap < r.meet_u) {
+                    ++ramps_cut_;
+                }
+                place_end(secs_[i], lane, e, r);
+            }
+        }
+    }
+
+    // La mezcla en la longitud l del final de un lado (w = 0 lejos de los tramos enfrentados); con
+    // dos rampas encima (no debería pasar: blend_ramps los une), la de mayor w.
+    RampAt ramp_weight(int lane, double l) const {
+        RampAt best;
+        for (const RampRun& r : ramp_runs_[lane]) {
+            if (l >= r.l0 && l <= r.l1) {
+                RampAt in = l - r.l0 < r.l1 - l ? r.at_a : r.at_b;
+                in.w = 1.0;
+                return in;
+            }
+            const bool before = l < r.l0;
+            const double d = before ? r.l0 - l : l - r.l1;
+            const double length = before ? r.left : r.right;
+            if (length > 0.0 && d < length) {
+                const double w = smoothstep(1.0 - d / length);
+                if (w > best.w) {
+                    best = before ? r.at_a : r.at_b;
+                    best.w = w;
+                }
+            }
+        }
+        return best;
+    }
     // ¿Parte la cuerda del final el tramo de a a b, con el lado del medio m?
     bool splits(const SideEnd& a, const SideEnd& b, const SideEnd& m) const {
         if ((a.band.kind == StageBandKind::Free && b.band.kind == StageBandKind::Free) ||
@@ -1175,6 +1431,11 @@ private:
                 bool split = false;
                 for (int lane = 0; lane < 2; ++lane) {
                     in.end[lane] = solve_side(in.sec, lane);
+                    // La mezcla de la longitud del final a medio camino (las l no se recalculan).
+                    const double l = 0.5 * (ends_[i * 2 + static_cast<std::size_t>(lane)].l +
+                                            ends_[(i + 1) * 2 + static_cast<std::size_t>(lane)].l);
+                    in.end[lane].l = l;
+                    place_end(in.sec, lane, in.end[lane], ramp_weight(lane, l));
                     split = split || splits(ends_[i * 2 + static_cast<std::size_t>(lane)],
                                             ends_[(i + 1) * 2 + static_cast<std::size_t>(lane)],
                                             in.end[lane]);
@@ -1214,6 +1475,10 @@ private:
             ends_ = std::move(ends);
             check = std::move(next_check);
             rebuild_arrays();
+            // La mezcla otra vez, con las secciones nuevas (son tramos enfrentados si su δ lo pide,
+            // y las l cambian): puede mover cualquier final, así que se miran todos los tramos.
+            blend_ramps();
+            std::fill(check.begin(), check.end(), char{1});
         }
         // Tras la última pasada, lo que aún pediría sección queda en refine_pending_.
     }
@@ -1242,6 +1507,9 @@ private:
         cache.feet_overflows = feet_overflows_;
         cache.refine_passes = refine_passes_;
         cache.refine_pending = refine_pending_;
+        cache.ramps_cut = ramps_cut_;
+        cache.max_ramp_length = max_ramp_length_;
+        cache.meet_runs = runs_[0] + runs_[1];
         cache.sections.reserve(count);
         cache.sides.reserve(count * 2);
         cache.ends.reserve(count * 2);
@@ -1282,6 +1550,10 @@ private:
     std::size_t feet_overflows_ = 0;
     int refine_passes_ = 0;
     std::size_t refine_pending_ = 0;
+    std::vector<RampRun> ramp_runs_[2];
+    std::size_t runs_[2] = {0, 0};
+    std::size_t ramps_cut_ = 0;
+    double max_ramp_length_ = 0.0;
 };
 
 // La malla del formato 2 de una banda ya resuelta: K puntos por sección (en el mundo), el índice
@@ -1426,6 +1698,16 @@ bool same_density(const StageMeshDensity& a, const StageMeshDensity& b) {
 }
 
 } // namespace
+
+bool stage_band_exposed(const StageTrack& track, const StageBandSide& side) {
+    if (side.kind == StageBandKind::Free || side.kind == StageBandKind::Ramp ||
+        side.kind == StageBandKind::Clamped) {
+        return true;
+    }
+    // Enfrentado a un extremo del tramo: allí no hay banda de enfrente.
+    return side.kind == StageBandKind::Meet &&
+           (side.other_s <= track.s_begin() || side.other_s >= track.s_end());
+}
 
 std::string stage_band_attach(StageTrack& track) {
     std::shared_ptr<StageBandCache> cache = solve_band(track, StageMeshDensity{});
@@ -1686,10 +1968,7 @@ StageGround StageGround::build_impl(const StageTrack& track, double cell, StageG
             e.y_end = end.y - origin.y;
             const double run = side.end_u - kStageDitchWidth;
             e.slope = run > 1.0e-9 ? (end.y - sec.rim[lane]) / run : 0.0;
-            e.exposed = side.kind == StageBandKind::Free || side.kind == StageBandKind::Ramp ||
-                                side.kind == StageBandKind::Clamped
-                            ? 1.0
-                            : 0.0;
+            e.exposed = stage_band_exposed(track, side) ? 1.0 : 0.0;
         }
     }
     // Cota de la rejilla en los finales libres que no son el plano del arcén (rampas y
