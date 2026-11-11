@@ -29,6 +29,7 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
     - la lista de paradas es corta y escrita: falla un criterio de resultado (lo que nota el jugador, los tiempos de cuadro, la reproducibilidad) o una premisa. Lo demás es «Lista con avisos».
     → Lo que falte, a los cambios de la revisión; si cambia un criterio del prompt, **Necesita consultor**.
 16. **¿Algún test copia una cifra que calcula otro carril?** Un hash, un tiempo o un número de pasos de una grabación o de una geometría que no es de la tarea. → Que compruebe la forma o una relación (por ejemplo, que el tiempo sale de los pasos), y que la cifra exacta la fije el carril dueño de su fuente. Si no, cuando ese carril cambie su fuente, la fusión falla en un test que no puede tocar. Origen: en el lote 6, `replay.info_stage_v8`, `replay.run_stage_pass` y `replay.stage_v8` copiaban el hash del suelo y la pasada de `stage_lazadas.rrec`, que cambia con el formato 2.
+17. **¿Algún test excluye casos?** → Que fije cuántos excluye y su peor valor, y que falle si cualquiera de los dos empeora. Una exclusión sin tope deja pasar el test vacío: si el criterio que marca los casos se rompe, lo excluye todo. Origen: en el lote 6, los tests de la costura de `formato-2` pasaban con los 1692 lados de `lazadas` en aviso (reserva del verificador).
 
 **Formato de `<tarea>-revision.md`:**
 - veredicto: **Adelante**, **Adelante con cambios** o **Necesita consultor**;
