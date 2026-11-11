@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -27,6 +28,8 @@ inline constexpr double kSplitSpacing = 1000.0;      // un parcial en cada múlt
 inline constexpr double kSplitFinishGap = 200.0;     // …salvo a menos de esto de la meta
 inline constexpr double kRunStartDistance = 0.10;    // la pasada empieza al pasar esta s (m)
 inline constexpr int kMaxSplits = 64;
+
+struct StageBandCache; // sim/stage_ground.h
 
 struct StageProjection {
     double s = 0.0;        // en [s_begin(), s_end()]
@@ -58,10 +61,20 @@ public:
     // `margin` > 0, también hasta `margin` fuera del arcén (el microrrelieve del tramo, que mezcla
     // en esa franja; on_road de `out` dice entonces si está dentro del margen). Sin reservas.
     bool on_any_road(double x, double z, StageProjection& out, double margin = 0.0) const;
+    // Para la banda de entorno (sim/stage_ground.h, tarea formato-2): los pies perpendiculares de
+    // (x, z) en el eje (mínimos locales de la distancia, a ≤ 60 m de la celda del índice) con
+    // |s − s_self| > gap, es decir, en otra parte del tramo. Escribe hasta `capacity` en `out` y
+    // devuelve cuántos hay (más de `capacity` si no caben: desborde). Sin reservas.
+    int other_feet(double x, double z, double s_self, double gap, StageProjection* out,
+                   int capacity) const;
     // Memoria de las piezas, las muestras y el índice (bytes).
     std::size_t index_bytes() const;
+    // La banda de entorno del formato 2 calculada al validar el tramo (sim/stage_ground.h), que
+    // StageGround::build reutiliza; nullptr en un StageTrack sin construir.
+    const StageBandCache* band_cache() const { return band_cache_.get(); }
 
 private:
+    friend std::string stage_band_attach(StageTrack& track);
     // Tramo del eje entre s0 y s1 con una sola fórmula: la prolongación de entrada, cada
     // primitiva de StageAxis y la de frenada.
     struct Piece {
@@ -108,6 +121,7 @@ private:
     std::vector<Cell> cells_;         // ordenadas por key
     std::vector<Interval> intervals_; // de las celdas, lejanos y cercanos
     double core_max_ = 0.0;           // el mayor semiancho + arcén del tramo
+    std::shared_ptr<const StageBandCache> band_cache_;
 };
 
 // Cómo se ha recolocado el coche (placed).

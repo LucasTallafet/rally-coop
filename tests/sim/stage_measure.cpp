@@ -5,6 +5,7 @@
 // por paso con el 205 (reference.car) y el conductor de test a 50–90 km/h. Se lanza a mano en
 // Release; escribe la tabla en la salida.
 
+#include "band_report.h"
 #include "car_worlds.h"
 #include "io/replay.h"
 #include "sim/jolt_runtime.h"
@@ -30,11 +31,15 @@ struct Variant {
     rally::sim::StageGroundKind kind;
 };
 
+// Desde la parte B de formato-2, un solo suelo: el del juego (malla con la banda y rejilla de 0,75
+// m).
 constexpr Variant kVariants[] = {
-    {"M 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
-    {"M 1,5", StageGroundVariant::CoarseTiles, 1.5, rally::sim::StageGroundKind::Design},
-    {"R 0,75", StageGroundVariant::GridOnly, 0.75, rally::sim::StageGroundKind::GridOnly},
+    {"F2 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
 };
+constexpr Variant kFormat2Variants[] = {
+    {"F2 0,75", StageGroundVariant::Design, 0.75, rally::sim::StageGroundKind::Design},
+};
+bool g_format2 = false;
 
 struct PassCost {
     double mean = 0.0;
@@ -93,11 +98,15 @@ rally::sim::WorldDesc stage_world(const std::string& text, StageGroundVariant va
 
 void measure(const char* stage_name, const std::string& text, double start_s, double drive_m) {
     rally::sim::StageTrack track;
+    const auto v0 = Clock::now();
     const rally::sim::StageParseResult parsed = rally::sim::StageTrack::build(text, track);
+    const auto v1 = Clock::now();
     if (!parsed.ok) {
         std::printf("%s: el tramo no vale: %s\n", stage_name, parsed.error.c_str());
         return;
     }
+    std::printf("%s: StageTrack::build (con la banda) %.1f ms\n", stage_name,
+                std::chrono::duration<double, std::milli>(v1 - v0).count());
     double x0 = 1e18;
     double x1 = -1e18;
     double z0 = 1e18;
@@ -115,7 +124,11 @@ void measure(const char* stage_name, const std::string& text, double start_s, do
     std::printf("%-7s | %9s | %9s | %9s | %8s | %6s | %10s | %8s | %8s | %8s | %6s\n", "suelo",
                 "carga ms", "geom. ms", "Jolt MB", "triáng.", "bald.", "muestras", "media ms",
                 "p99 ms", "máx ms", "km/h");
-    for (const Variant& v : kVariants) {
+    std::vector<Variant> variants(std::begin(kVariants), std::end(kVariants));
+    if (g_format2) {
+        variants.assign(std::begin(kFormat2Variants), std::end(kFormat2Variants));
+    }
+    for (const Variant& v : variants) {
         // Geometría sola.
         const auto g0 = Clock::now();
         const rally::sim::StageGround ground =
@@ -258,9 +271,170 @@ void relief_cost() {
                 std::chrono::duration<double, std::micro>(t3 - t2).count() / kCalls, sum);
 }
 
-int main() {
+int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     const rally::sim::JoltRuntime runtime;
+    // «f2»: la geometría de la banda y el coste; «f2geo»: solo la geometría.
+    const std::string mode = argc > 1 ? std::string(argv[1]) : std::string();
+    g_format2 = mode == "f2" || mode == "f2geo";
+    rally::tests::g_band_debug = argc > 2 && std::string(argv[2]) == "debug";
+    if (mode == "f2trace" && argc >= 5) {
+        // Premisa PB: lo que decide la altura de las muestras de la rejilla a menos de 1,1 m del
+        // final del lado `side` en s (lazadas o 30km), y la malla en el final.
+        const std::string which = argv[2];
+        const std::string text = which == "30km" ? rally::tests::synthetic_stage_30km()
+                                 : which == "hairpin"
+                                     ? rally::tests::stage_file("hairpin_flat.stage")
+                                     : rally::tests::lazadas_stage_text();
+        const double s = std::stod(argv[3]);
+        const int side = std::stoi(argv[4]);
+        rally::sim::StageTrack track;
+        rally::sim::StageTrack::build(text, track);
+        const rally::sim::StageGround plain = rally::sim::StageGround::build(track);
+        const rally::sim::StageBandSide* found = nullptr;
+        for (const rally::sim::StageBandSide& b : plain.band_sides()) {
+            if (b.side == side &&
+                (found == nullptr || std::abs(b.s - s) < std::abs(found->s - s))) {
+                found = &b;
+            }
+        }
+        const rally::sim::StagePose p = track.pose(found->s);
+        const double edge = side > 0 ? p.half_width_right : p.half_width_left;
+        const double t = side * (edge + rally::sim::kStageShoulderWidth + found->end_u);
+        const double fx = p.x + t * std::cos(p.heading);
+        const double fz = p.z + t * std::sin(p.heading);
+        std::printf("s %.3f lado %+d %s: final en t %.3f (%.3f, %.3f), y %.4f, end_u %.3f, "
+                    "pendiente %.3f\n",
+                    found->s, side, rally::tests::band_kind_name(found->kind), t, fx, fz,
+                    found->end_y, found->end_u, found->slope);
+        {
+            // La malla (sus triángulos), el mundo y la rejilla sola, hacia dentro del final.
+            rally::sim::WorldDesc desc;
+            desc.stage_text = text;
+            rally::sim::SimWorld world;
+            world.build(desc);
+            world.seal();
+            desc.stage_variant = rally::sim::StageGroundVariant::TerrainOnly;
+            rally::sim::SimWorld terrain;
+            terrain.build(desc);
+            terrain.seal();
+            const rally::tests::MeshQuery query(plain);
+            std::vector<double> hs;
+            for (double depth = -0.5; depth <= 1.5001; depth += 0.125) {
+                const double td = t - side * depth;
+                const double x = p.x + td * std::cos(p.heading);
+                const double z = p.z + td * std::sin(p.heading);
+                query.heights(x, z, hs);
+                std::printf("  %6.3f m dentro: mundo %9.4f rejilla %9.4f malla", depth,
+                            world.probe_ground(x, z).y, terrain.probe_ground(x, z).y);
+                for (const double y : hs) {
+                    std::printf(" %9.4f", y);
+                }
+                std::printf("\n");
+            }
+        }
+        std::vector<rally::sim::StageSampleTrace> traces;
+        rally::sim::StageGround::trace(track, {fx, fz}, 1.1, traces);
+        for (const rally::sim::StageSampleTrace& tr : traces) {
+            const rally::sim::StageProjection q = track.acquire(tr.x, tr.z);
+            std::printf("  muestra (%.3f, %.3f) s %.3f t %.3f: rejilla %.4f, N %.4f; %s%s d %.3f "
+                        "junto %.4f bajo %.4f; zona %d:",
+                        tr.x, tr.z, q.s, q.t, tr.height, tr.natural,
+                        tr.core ? "bajo banda" : "fuera", tr.exposed ? " expuesta" : "", tr.core_d,
+                        tr.core_band, tr.core_h, tr.zone_count);
+            for (int k = 0; k < tr.zone_count && k < 8; ++k) {
+                std::printf(" [d %.3f B %.4f]", tr.zone_d[k], tr.zone_band[k]);
+            }
+            std::printf("\n");
+        }
+        return 0;
+    }
+    if (mode == "f2seam") {
+        // Invariante 7b: el escalón banda–rejilla en toda la costura, y los de más de 40 mm.
+        const double limit = argc >= 3 ? std::stod(argv[2]) / 1000.0 : 0.040;
+        rally::tests::seam_report("lazadas", rally::tests::lazadas_stage_text(), limit);
+        rally::tests::seam_report("hairpin_flat", rally::tests::stage_file("hairpin_flat.stage"),
+                                  limit);
+        rally::tests::seam_report("peralte 10 %", rally::tests::max_bank_stage(), limit);
+        rally::tests::seam_report("sintético 30 km", rally::tests::synthetic_stage_30km(), limit);
+        return 0;
+    }
+    if (g_format2) {
+        rally::tests::band_report();
+    }
+    if (mode == "f2geo") {
+        return 0;
+    }
+    if (mode == "f2edges") {
+        // Premisa PA: el ángulo entre caras vecinas, por categorías, con 18, 36, 38 y 72 tramos.
+        const double active = argc >= 3 ? std::stod(argv[2]) : 5.0;
+        rally::tests::edge_report(rally::tests::lazadas_stage_text(), active);
+        return 0;
+    }
+    if (mode == "f2probe" && argc >= 4) {
+        // La rejilla sola (TerrainOnly) a lo largo de la normal de lazadas en s, de t0 a t1 cada
+        // 0,25 m, frente al plano del eje con el peralte: diagnóstico.
+        rally::sim::StageTrack track;
+        rally::sim::StageTrack::build(rally::tests::lazadas_stage_text(), track);
+        rally::sim::WorldDesc desc;
+        desc.stage_text = rally::tests::lazadas_stage_text();
+        desc.stage_variant = rally::sim::StageGroundVariant::TerrainOnly;
+        rally::sim::SimWorld world;
+        world.build(desc);
+        world.seal();
+        rally::sim::WorldDesc mesh_desc = desc;
+        mesh_desc.stage_variant = rally::sim::StageGroundVariant::Design;
+        rally::sim::SimWorld mesh;
+        mesh.build(mesh_desc);
+        mesh.seal();
+        const double s = std::stod(argv[2]);
+        const double t0 = std::stod(argv[3]);
+        const double t1 = argc >= 5 ? std::stod(argv[4]) : t0 + 10.0;
+        const rally::sim::StagePose p = track.pose(s);
+        const double step = argc >= 6 ? std::stod(argv[5]) : 0.25;
+        for (double t = t0; t <= t1 + 1e-9; t += step) {
+            const double x = p.x + t * std::cos(p.heading);
+            const double z = p.z + t * std::sin(p.heading);
+            const rally::sim::GroundProbe g = world.probe_ground(x, z);
+            const rally::sim::GroundProbe m = mesh.probe_ground(x, z);
+            std::printf(
+                "t %7.3f rejilla %9.4f suelo %9.4f (sup %d) plano %9.4f diferencia %8.2f mm\n", t,
+                g.y, m.y, static_cast<int>(m.surface), p.y + p.bank * t,
+                1000.0 * (g.y - (p.y + p.bank * t)));
+        }
+        return 0;
+    }
+    if (mode == "f2sides" && argc >= 5) {
+        // Los lados de la banda en [s0, s1] de un tramo (lazadas, hairpin o 30km): diagnóstico.
+        const std::string which = argv[2];
+        const std::string text = which == "30km" ? rally::tests::synthetic_stage_30km()
+                                 : which == "hairpin"
+                                     ? rally::tests::stage_file("hairpin_flat.stage")
+                                 : which == "stacked3" ? rally::tests::stacked_stage(0.03)
+                                                       : rally::tests::lazadas_stage_text();
+        rally::sim::StageTrack track;
+        const rally::sim::StageParseResult built = rally::sim::StageTrack::build(text, track);
+        if (!built.ok) {
+            std::printf("no carga: %s\n", built.error.c_str());
+        }
+        const double s0 = std::stod(argv[3]);
+        const double s1 = std::stod(argv[4]);
+        const rally::sim::StageCellError cell_error(track);
+        for (const rally::sim::StageBandSide& b : track.band_cache()->sides) {
+            if (b.s < s0 || b.s > s1) {
+                continue;
+            }
+            const rally::sim::StagePose p = track.pose(b.s);
+            std::printf(
+                "s %9.3f lado %+d %-10s delta %8.4f enfr %9.3f end_u %7.3f cabeza %8.3f "
+                "final %8.3f pend %6.3f kappa %8.5f e %6.1f mm (sin suavizar %6.1f) peralte %7.4f "
+                "pendiente %7.4f\n",
+                b.s, b.side, rally::tests::band_kind_name(b.kind), b.delta, b.other_s, b.end_u,
+                b.rim_y, b.end_y, b.slope, p.curvature, 1000.0 * cell_error.at(b.s, b.side),
+                1000.0 * cell_error.raw_at(b.s), p.bank, p.grade);
+        }
+        return 0;
+    }
     relief_cost();
     measure("lazadas.stage", rally::tests::lazadas_stage_text(), 0.0, 1150.0);
     measure("sintético 30 km", rally::tests::synthetic_stage_30km(), 1000.0, 4000.0);

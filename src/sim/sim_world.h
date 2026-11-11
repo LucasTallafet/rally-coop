@@ -59,20 +59,13 @@ struct CarSpawn {
     std::int8_t gear = kSpawnGearBySpeed;
 };
 
-// Suelo del tramo de WorldDesc::stage_text. Design es el del juego (núcleo en malla y terreno en
-// baldosas de 0,75 m, sim/stage_ground.h); los demás solo los usan los tests de tramo-fisica: la
-// medida de la parte A (baldosas de 1,5 m, y todo en rejilla de 0,75 m con la superficie por
-// celda), la referencia de los criterios 3 y 4 (la malla 4 veces más densa y la rejilla de
-// 0,375 m), el terreno solo, sin la malla (la altura de la rejilla con la cuantización de Jolt), y
-// el terreno natural fuera de los núcleos, sin la banda del borde (el diagnóstico del talud).
-enum class StageGroundVariant : std::uint8_t {
-    Design,
-    CoarseTiles,
-    GridOnly,
-    DenseMesh,
-    TerrainOnly,
-    NaturalTerrain
-};
+// Suelo del tramo de WorldDesc::stage_text. Design es el del juego (malla del núcleo y de la
+// banda de entorno, y terreno en baldosas de 0,75 m; sim/stage_ground.h); los demás solo los usan
+// los tests: la referencia (la malla 4 veces más densa y la rejilla de 0,375 m), el terreno solo,
+// sin la malla (la altura de la rejilla con la cuantización de Jolt), y la malla 4 veces más densa
+// sobre la rejilla del juego, la misma (la referencia del criterio 1a de formato-2). En BandDense,
+// stage_ground_hash() es el de la malla densa.
+enum class StageGroundVariant : std::uint8_t { Design, DenseMesh, TerrainOnly, BandDense };
 
 // Descripción del mundo. Primero el suelo y los muros de la zona de pruebas o el suelo del tramo
 // (si los hay), después los cuerpos en el orden de `bodies` y al final el coche: los BodyID

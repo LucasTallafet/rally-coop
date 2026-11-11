@@ -634,29 +634,30 @@ TEST_CASE("stage_track: cutting a curve 0.5 m under the margin is allowed and 0.
 // ----------------------------------------------------
 
 TEST_CASE("stage_track: on_any_road finds the wide road even when a narrow axis is nearer") {
-    // Primer brazo al norte con semiancho 3 (núcleo 4); horquilla de R 10; el segundo brazo,
-    // con semiancho 0,5 (núcleo 1,5), se acerca hasta x ≈ 7,2 (1,7 m entre núcleos) y se va al
-    // este. Un punto a 3,8 m del eje ancho está en su arcén y a ≈ 3,4 m del eje estrecho.
+    // Primer brazo al norte con semiancho 5 (núcleo 6); horquilla de R 10; el segundo brazo,
+    // con semiancho 0,1 (núcleo 1,1), se acerca hasta x ≈ 11 (3,9 m entre núcleos: la banda del
+    // formato 2 pide 3,1) y se va al este. Un punto a 5,8 m del eje ancho está en su arcén y a
+    // ≈ 5,2 m del eje estrecho.
     const double pi = 3.14159265358979323846;
     const std::string plan = "straight 100\narc " + num(10.0 * pi) +
-                             " 10\narc 35.97 100\narc 35.97 -100\nstraight 30\narc " +
-                             num(15.0 * pi) + " -30\n";
-    const double length = 100.0 + 10.0 * pi + 35.97 + 35.97 + 30.0 + 15.0 * pi;
-    std::string text = stage_text(plan, length);
-    const std::string from = "width 0 3 3\n";
+                             " 10\narc 30 100\narc 30 -100\nstraight 30\narc " + num(15.0 * pi) +
+                             " -30\n";
+    const double length = 100.0 + 10.0 * pi + 30.0 + 30.0 + 30.0 + 15.0 * pi;
+    std::string text = stage_text(plan, length, "5 5");
+    const std::string from = "width 0 5 5\n";
     text.replace(text.find(from), from.size(),
-                 "width 0 3 3\nwidth " + num(100.0 + 10.0 * pi) + " 3 3\nwidth " +
-                     num(100.0 + 10.0 * pi + 10.0) + " 0.5 0.5\n");
+                 "width 0 5 5\nwidth " + num(100.0 + 10.0 * pi) + " 5 5\nwidth " +
+                     num(100.0 + 10.0 * pi + 10.0) + " 0.1 0.1\n");
     const StageTrack track = load(text);
-    const Point p = at(track, 20.0, 3.8);
+    const Point p = at(track, 20.0, 5.8);
     const StageProjection nearest = track.acquire(p.x, p.z);
     CHECK(nearest.s > 150.0);
-    CHECK(nearest.distance < 3.8);
+    CHECK(nearest.distance < 5.8);
     CHECK_FALSE(nearest.on_road);
     StageProjection road;
     REQUIRE(track.on_any_road(p.x, p.z, road));
     CHECK(std::abs(road.s - 20.0) <= kMm);
-    CHECK(road.t == doctest::Approx(3.8).epsilon(1e-9));
+    CHECK(road.t == doctest::Approx(5.8).epsilon(1e-9));
     CHECK(road.on_road);
     MESSAGE("eje más cercano a ", nearest.distance, " m (s = ", nearest.s,
             "); calzada pisada en s = ", road.s);
@@ -664,10 +665,10 @@ TEST_CASE("stage_track: on_any_road finds the wide road even when a narrow axis 
     StageRun run(track);
     place(run, track, StagePlace::Start, 10.0);
     drive_s(track, run, 10.0, 15.0, 0.0, 50.0 / 3.6, kNothing);
-    drive_line(run, at(track, 15.0, 0.0), at(track, 17.0, 5.0), 10.0 / 3.6,
+    drive_line(run, at(track, 15.0, 0.0), at(track, 17.0, 7.5), 10.0 / 3.6,
                [](Point, const StageRun::Step&) { return true; });
     CHECK_FALSE(run.state().on_road);
-    drive_line(run, at(track, 17.0, 5.0), p, 10.0 / 3.6,
+    drive_line(run, at(track, 17.0, 7.5), p, 10.0 / 3.6,
                [](Point, const StageRun::Step&) { return true; });
     CHECK(run.state().on_road);
     CHECK(std::abs(run.state().s - 20.0) <= kMm);
@@ -956,11 +957,13 @@ TEST_CASE("stage_track: two arms closer than allowed fail with their s") {
     MESSAGE("brazos: ", result.error);
     CHECK(s >= 8.0);
     CHECK(s <= 10.5);
-    // Con el segundo brazo a x ≈ 11 (2,9 m entre núcleos) vale.
+    // Con el segundo brazo a x ≈ 12,7 (4,7 m entre núcleos) vale. A x ≈ 11 (2,9 m) ya no: con la
+    // banda del formato 2, dos núcleos necesitan 3,1 m (es el caso de 2,9 m del criterio 9 de
+    // formato-2, en test_stage_band.cpp).
     const std::string wide = "straight 100\narc " + num(10.0 * 3.14159265358979323846) +
-                             " 10\narc 30 100\narc 30 -100\nstraight 20\narc " +
+                             " 10\narc 27 100\narc 27 -100\nstraight 20\narc " +
                              num(15.0 * 3.14159265358979323846) + " -30\n";
-    const double wide_length = length - 6.6;
+    const double wide_length = length - 12.6;
     const rally::sim::StageParseResult ok = StageTrack::build(stage_text(wide, wide_length), track);
     INFO(ok.error);
     CHECK(ok.ok);

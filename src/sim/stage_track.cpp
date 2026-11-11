@@ -3,6 +3,7 @@
 #include "sim/check.h"
 #include "sim/fnv1a.h"
 #include "sim/rmath.h"
+#include "sim/stage_ground.h"
 
 #include <algorithm>
 #include <array>
@@ -373,6 +374,40 @@ bool StageTrack::on_any_road(double x, double z, StageProjection& out, double ma
     return found;
 }
 
+int StageTrack::other_feet(double x, double z, double s_self, double gap, StageProjection* out,
+                           int capacity) const {
+    const Cell* cell = find_cell(x, z);
+    if (cell == nullptr) {
+        return 0;
+    }
+    int count = 0;
+    for (std::uint32_t i = 0; i < cell->far_count; ++i) {
+        const Interval& iv = intervals_[cell->far_first + i];
+        for_each_candidate(x, z, iv.s0, iv.s1, [&](const Candidate& c) {
+            if (!(rmath::abs(c.s - s_self) > gap)) {
+                return;
+            }
+            const StagePose p = pose(c.s);
+            const double along =
+                (x - p.x) * rmath::sin(p.heading) - (z - p.z) * rmath::cos(p.heading);
+            if (rmath::abs(along) > kPerpendicularTolerance) {
+                return; // un extremo de pieza o de intervalo, no un pie
+            }
+            // El mismo pie desde dos piezas o dos intervalos: una vez.
+            for (int k = 0; k < rmath::min(count, capacity); ++k) {
+                if (out[k].s == c.s) {
+                    return;
+                }
+            }
+            if (count < capacity) {
+                out[count] = finish(x, z, c.s);
+            }
+            ++count; // los que no caben se cuentan: quien llama ve el desborde
+        });
+    }
+    return count;
+}
+
 std::size_t StageTrack::index_bytes() const {
     return pieces_.size() * sizeof(Piece) +
            (sample_s_.size() + sample_x_.size() + sample_z_.size()) * sizeof(double) +
@@ -388,6 +423,11 @@ StageParseResult StageTrack::build(std::string_view text, StageTrack& out) {
         return parsed;
     }
     std::string error = track.prepare();
+    if (error.empty()) {
+        // Validación 3 (formato 2): la banda de entorno cabe entre las pasadas; se guarda para
+        // StageGround::build.
+        error = stage_band_attach(track);
+    }
     if (!error.empty()) {
         StageParseResult result;
         result.error = std::move(error);

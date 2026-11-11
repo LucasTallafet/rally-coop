@@ -11,6 +11,8 @@ rally_add_test_executable(rally_tests_sim
     test_rmath.cpp
     test_sim_world.cpp
     test_stage_axis.cpp
+    test_stage_band.cpp
+    test_stage_exits.cpp
     test_stage_ground.cpp
     test_stage_track.cpp
     test_stage_world.cpp
@@ -29,6 +31,16 @@ add_executable(rally_stage_measure stage_measure.cpp)
 target_include_directories(rally_stage_measure PRIVATE common)
 target_link_libraries(rally_stage_measure PRIVATE rally_sim rally_io rally_warnings)
 target_compile_definitions(rally_stage_measure PRIVATE
+    RALLY_TEST_DATA_DIR="${RALLY_TEST_DATA}"
+    RALLY_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
+# Salidas guionizadas de formato-2 (lote 6, criterios 1 y 11): la tabla del lote 5 por bandas de
+# distancia al borde, en lazadas. No va en ctest: se lanza a mano en Release
+# (build/windows-release/tests/sim/Release/rally_stage_exits.exe).
+add_executable(rally_stage_exits stage_exits.cpp)
+target_include_directories(rally_stage_exits PRIVATE common)
+target_link_libraries(rally_stage_exits PRIVATE rally_sim rally_io rally_warnings)
+target_compile_definitions(rally_stage_exits PRIVATE
     RALLY_TEST_DATA_DIR="${RALLY_TEST_DATA}"
     RALLY_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
