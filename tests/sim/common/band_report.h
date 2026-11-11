@@ -742,31 +742,90 @@ inline void edge_report(const std::string& text, double active_deg) {
     }
 }
 
-// Invariante 7b (respuesta del consultor a la parada de la parte B, §2): el escalón de la malla a
-// la rejilla de Jolt (cuantizada: un mundo con el terreno solo) 2 cm dentro del final de cada lado
-// expuesto (libre, rampa o recortada) de cada sección: toda la costura, no una muestra.
+// Casos aviso de la costura (respuesta del consultor a la tercera parada de la parte B de
+// formato-2, §3), por el sitio y con los datos de la banda:
+// (a) hueco de rampas de muro: un lado en rampa cuyo final, o el del lado de enfrente (el pie de
+//     su eje medio), está a más de 1 m de su plano del arcén, por encima o por debajo;
+// (b) junto a un extremo del tramo: un lado expuesto enfrentado a un extremo (su eje medio es con
+//     el segmento de más allá del extremo) o a menos de d₁ + D de él, donde baja el tope del
+//     extremo.
+enum class SeamWarning : int { None = 0, WallGap = 1, StageEnd = 2 };
+
+inline const char* seam_warning_name(SeamWarning w) {
+    return w == SeamWarning::WallGap    ? "(a) hueco de rampas de muro"
+           : w == SeamWarning::StageEnd ? "(b) junto a un extremo del tramo"
+                                        : "—";
+}
+
+// El lado `side` (−1, +1) de la sección más cercana a s.
+inline std::size_t band_side_index(const sim::StageGround& g, double s, int side) {
+    const std::vector<double>& sections = g.sections();
+    auto it = std::lower_bound(sections.begin(), sections.end(), s);
+    if (it == sections.end()) {
+        --it;
+    } else if (it != sections.begin() && s - *(it - 1) < *it - s) {
+        --it;
+    }
+    return static_cast<std::size_t>(it - sections.begin()) * 2 + (side > 0 ? 1 : 0);
+}
+
+inline SeamWarning seam_warning(const sim::StageTrack& track, const sim::StageGround& g,
+                                std::size_t index) {
+    const sim::StageBandSide& b = g.band_sides()[index];
+    constexpr double kEndReach = sim::kStageEdgeBand + sim::kStageEdgeBlend;
+    const bool facing_end =
+        std::isfinite(b.delta) && (b.other_s <= track.s_begin() || b.other_s >= track.s_end());
+    if (facing_end || b.s - track.s_begin() < kEndReach || track.s_end() - b.s < kEndReach) {
+        return SeamWarning::StageEnd;
+    }
+    if (b.kind != sim::StageBandKind::Ramp && b.kind != sim::StageBandKind::Meet) {
+        return SeamWarning::None;
+    }
+    bool wall = b.kind == sim::StageBandKind::Ramp && std::abs(b.plane_gap) > 1.0;
+    if (std::isfinite(b.delta)) {
+        // El lado de enfrente: el de la sección del pie cuyo propio pie vuelve aquí.
+        for (const int other : {-1, 1}) {
+            const sim::StageBandSide& o = g.band_sides()[band_side_index(g, b.other_s, other)];
+            if (std::abs(o.other_s - b.s) < 2.0 && std::abs(o.plane_gap) > 1.0 &&
+                (o.kind == sim::StageBandKind::Ramp || b.kind == sim::StageBandKind::Ramp)) {
+                wall = true;
+            }
+        }
+    }
+    return wall ? SeamWarning::WallGap : SeamWarning::None;
+}
+
+// Invariante 7b y el 7 con el barrido (respuestas del consultor a las paradas de la parte B): el
+// escalón de la malla a la rejilla de Jolt (cuantizada: un mundo con el terreno solo) 2 cm dentro
+// del final de cada lado expuesto de cada sección, y el margen de la malla sobre la rejilla a
+// 0,02, 0,25, 0,5, 0,75 y 1 m dentro: toda la costura, no una muestra. Los casos aviso se cuentan
+// y se listan aparte.
 struct SeamStep {
     double s = 0.0;
     int side = 0;
     sim::StageBandKind kind = sim::StageBandKind::Free;
     double step = 0.0;      // malla − rejilla (m)
+    double lowest = 1e9;    // el menor margen dentro del final (m)
     double from_edge = 0.0; // del borde de la calzada al final (m)
     double end_u = 0.0;
     double slope = 0.0;     // la tira de la cabeza al final
     double plane_gap = 0.0; // el final − el plano del arcén prolongado
     double e = 0.0;         // e(s)
+    SeamWarning warning = SeamWarning::None;
 };
 
 struct SeamScan {
     int sides = 0;
-    SeamStep worst;
-    // El menor margen de la malla sobre la rejilla de 2 cm a d₁ dentro del final (< 0: la rejilla
-    // asoma) y dónde.
+    SeamStep worst; // fuera de los casos aviso
+    // El menor margen de la malla sobre la rejilla dentro del final, fuera de los casos aviso
+    // (< 0: la rejilla asoma), y dónde.
     double lowest = 1e9;
     double lowest_s = 0.0;
     int lowest_side = 0;
     double lowest_depth = 0.0;
-    std::vector<SeamStep> over; // los de más de `limit`
+    std::vector<SeamStep> over;     // de más de `limit`, fuera de los casos aviso
+    std::vector<SeamStep> warnings; // casos aviso con escalón > `limit` o margen ≤ 0
+    int warned_sides = 0;           // lados en un caso aviso (pasen o no)
 };
 
 inline SeamScan seam_scan(const std::string& text, double limit) {
@@ -784,7 +843,8 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
     terrain.seal();
     const sim::StageCellError error(track);
     SeamScan out;
-    for (const sim::StageBandSide& b : g.band_sides()) {
+    for (std::size_t index = 0; index < g.band_sides().size(); ++index) {
+        const sim::StageBandSide& b = g.band_sides()[index];
         if (!sim::stage_band_exposed(track, b)) {
             continue;
         }
@@ -813,6 +873,8 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
         st.slope = b.slope;
         st.plane_gap = b.plane_gap;
         st.e = error.at(b.s, b.side);
+        st.warning = seam_warning(track, g, index);
+        double depth_low = 0.0;
         for (const double depth : {0.02, 0.25, 0.5, 0.75, 1.0}) {
             const double td =
                 static_cast<double>(b.side) * (edge + sim::kStageShoulderWidth + b.end_u - depth);
@@ -820,12 +882,23 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
                 mesh.probe_ground(p.x + td * std::cos(p.heading), p.z + td * std::sin(p.heading));
             const sim::GroundProbe rd = terrain.probe_ground(p.x + td * std::cos(p.heading),
                                                              p.z + td * std::sin(p.heading));
-            if (md.hit && rd.hit && md.y - rd.y < out.lowest) {
-                out.lowest = md.y - rd.y;
-                out.lowest_s = b.s;
-                out.lowest_side = b.side;
-                out.lowest_depth = depth;
+            if (md.hit && rd.hit && md.y - rd.y < st.lowest) {
+                st.lowest = md.y - rd.y;
+                depth_low = depth;
             }
+        }
+        if (st.warning != SeamWarning::None) {
+            ++out.warned_sides;
+            if (st.step > limit || st.lowest <= 0.0) {
+                out.warnings.push_back(st);
+            }
+            continue;
+        }
+        if (st.lowest < out.lowest) {
+            out.lowest = st.lowest;
+            out.lowest_s = b.s;
+            out.lowest_side = b.side;
+            out.lowest_depth = depth_low;
         }
         if (st.step > out.worst.step) {
             out.worst = st;
@@ -839,13 +912,14 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
 
 inline void seam_report(const char* name, const std::string& text, double limit) {
     const SeamScan scan = seam_scan(text, limit);
-    std::printf("%s: %d lados expuestos; escalón máximo %.1f mm (s %.3f, lado %+d, %s); %zu de "
-                "más de %.0f mm\n",
-                name, scan.sides, 1000.0 * scan.worst.step, scan.worst.s, scan.worst.side,
-                band_kind_name(scan.worst.kind), scan.over.size(), 1000.0 * limit);
     std::printf(
-        "  margen mínimo de la malla sobre la rejilla dentro del final: %.1f mm (s %.3f, lado "
-        "%+d, a %.2f m del final)\n",
+        "%s: %d lados expuestos (%d en casos aviso); fuera de ellos, escalón máximo %.1f mm "
+        "(s %.3f, lado %+d, %s), %zu de más de %.0f mm\n",
+        name, scan.sides, scan.warned_sides, 1000.0 * scan.worst.step, scan.worst.s,
+        scan.worst.side, band_kind_name(scan.worst.kind), scan.over.size(), 1000.0 * limit);
+    std::printf(
+        "  margen mínimo de la malla sobre la rejilla dentro del final, fuera de los casos aviso: "
+        "%.1f mm (s %.3f, lado %+d, a %.2f m del final)\n",
         1000.0 * scan.lowest, scan.lowest_s, scan.lowest_side, scan.lowest_depth);
     for (const SeamStep& st : scan.over) {
         std::printf("  s %10.3f lado %+d %-10s escalón %6.1f mm, final a %6.3f m del borde, "
@@ -853,8 +927,15 @@ inline void seam_report(const char* name, const std::string& text, double limit)
                     st.s, st.side, band_kind_name(st.kind), 1000.0 * st.step, st.from_edge,
                     st.slope, 1000.0 * st.plane_gap, 1000.0 * st.e);
     }
+    std::printf("  casos aviso que no pasan: %zu\n", scan.warnings.size());
+    for (const SeamStep& st : scan.warnings) {
+        std::printf(
+            "    aviso s %10.3f lado %+d %-10s %s: escalón %6.1f mm, margen %6.1f mm, final "
+            "− plano del arcén %7.1f mm\n",
+            st.s, st.side, band_kind_name(st.kind), seam_warning_name(st.warning), 1000.0 * st.step,
+            1000.0 * st.lowest, 1000.0 * st.plane_gap);
+    }
 }
-
 inline void band_report() {
     std::printf("== formato 2: banda de entorno (premisas P1, P2, P3 y P6) ==\n");
     band_report_stage("lazadas.stage", lazadas_stage_text(), true);

@@ -728,7 +728,7 @@ constexpr double kFocalRoot = 0.01;
 // La cuerda del final de la banda no parte tramos de menos de 2 veces esto (m), y como mucho en
 // tantas pasadas.
 constexpr double kStageBandMinRefine = 0.05;
-constexpr int kBandRefinePasses = 6;
+constexpr int kBandRefinePasses = 8; // 8 y no 6: la mezcla de las rampas se recalcula en cada una
 // Sin eje medio antes del centro de curvatura (no debería pasar fuera de un arco), el rayo para
 // esto antes (m).
 constexpr double kFocalMargin = 0.05;
@@ -1234,7 +1234,8 @@ private:
         std::vector<char> meet(count * 2, 0);
         for (std::size_t slot = 0; slot < count * 2; ++slot) {
             const SideEnd& e = ends_[slot];
-            meet[slot] = e.open && e.has_delta && e.delta <= kStageBandMeet ? 1 : 0;
+            meet[slot] =
+                e.open && e.has_delta && !faces_end(e) && e.delta <= kStageBandMeet ? 1 : 0;
         }
         // El mismo pie: un lado enfrentado hace enfrentado a su pie de enfrente.
         for (int pass = 0; pass < 4; ++pass) {
@@ -1247,7 +1248,7 @@ private:
                 const std::size_t j = nearest_section(e.band.other_s);
                 const std::size_t other = j * 2 + static_cast<std::size_t>(e.other_lane);
                 const SideEnd& o = ends_[other];
-                if (meet[other] == 0 && o.open && o.has_delta) {
+                if (meet[other] == 0 && o.open && o.has_delta && !faces_end(o)) {
                     meet[other] = 1;
                     changed = true;
                 }
@@ -1340,6 +1341,13 @@ private:
                 place_end(secs_[i], lane, e, r);
             }
         }
+    }
+
+    // Enfrentado a un extremo del tramo: allí no hay banda de enfrente, así que es libre
+    // (formato-2, respuesta del consultor a la tercera parada de la parte B, §2.4).
+    bool faces_end(const SideEnd& e) const {
+        return e.has_delta && !e.at_focal &&
+               (e.band.other_s <= track_.s_begin() || e.band.other_s >= track_.s_end());
     }
 
     // La mezcla en la longitud l del final de un lado (w = 0 lejos de los tramos enfrentados); con

@@ -35,8 +35,9 @@ namespace {
 // FNV-1a de la geometría de colisión de lazadas.stage (StageGround::hash, diseño de 0,75 m).
 // Cambia si cambia la malla, el terreno o lazadas.stage; se actualiza como la huella. Formato 2
 // (formato-2, lote 6): 0xdd438cd676e8c121 → 0x56180e49eb1ff6a8; con 40 tramos de cuneta y la
-// regla de la rejilla por lado (respuesta a la parada de la parte B), → 0xfce2b56c48cd9d1c.
-constexpr std::uint64_t kExpectedStageGroundHash = 0xfce2'b56c'48cd'9d1cull;
+// regla de la rejilla por lado (respuesta a la parada de la parte B), → 0xfce2b56c48cd9d1c; con la
+// rampa por la longitud del final (propuesta (A)), → 0xacdcd1b800bb9d7d.
+constexpr std::uint64_t kExpectedStageGroundHash = 0xacdc'd1b8'00bb'9d7dull;
 
 constexpr double kMm = 1.0e-3;
 
@@ -762,7 +763,9 @@ struct GridMargins {
     double step_s = 0.0;
     double step_side = 0.0;
     double step_e = 0.0;
-    double step_r80 = 0.0; // el mayor en la curva de R 80 por fuera (s 100–160, izquierda)
+    double step_r80 = 0.0;  // el mayor en la curva de R 80 por fuera (s 100–160, izquierda)
+    int excluded = 0;       // puntos en un caso aviso (band_report.h, seam_warning)
+    int excluded_above = 0; // de ellos, con la rejilla encima
 };
 
 // Criterio 7 y la costura banda–rejilla del criterio 10: la rejilla de Jolt (cuantizada: un mundo
@@ -787,6 +790,15 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         const StageBandSide& b = band_side_at(g, s, side);
         return half_width(track.pose(s), side) + kStageShoulderWidth + b.end_u;
     };
+    // Un punto a menos de 2·d₁ del final de un lado en un caso aviso (el hueco de su celda).
+    const auto warned = [&](double s, double t) {
+        const int side = t >= 0.0 ? 1 : -1;
+        if (std::abs(t) < end_of(s, side) - 2.0 * rally::sim::kStageEdgeBand) {
+            return false;
+        }
+        return rally::tests::seam_warning(track, g, rally::tests::band_side_index(g, s, side)) !=
+               rally::tests::SeamWarning::None;
+    };
     rally::sim::Pcg32 rng(seed, 11);
     for (int i = 0; i < random; ++i) {
         const double s = track.s_begin() + (track.s_end() - track.s_begin()) * rand01(rng);
@@ -800,8 +812,13 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         if (!m.hit || !r.hit) {
             continue; // fuera de la franja
         }
-        ++out.points;
         const double margin = m.y - r.y;
+        if (warned(s, t)) {
+            ++out.excluded;
+            out.excluded_above += margin <= 0.0 ? 1 : 0;
+            continue;
+        }
+        ++out.points;
         out.above += margin <= 0.0 ? 1 : 0;
         if (margin < out.lowest) {
             out.lowest = margin;
@@ -828,6 +845,11 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         }
         ++count;
         const double margin = m.y - r.y;
+        if (warned(s, t)) {
+            ++out.excluded;
+            out.excluded_above += margin <= 0.0 ? 1 : 0;
+            continue;
+        }
         out.above += margin <= 0.0 ? 1 : 0;
         if (margin < out.lowest) {
             out.lowest = margin;
@@ -855,7 +877,9 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
 TEST_CASE("stage_ground: the grid never shows above the band or the core") {
     // Criterio 7: la rejilla de Jolt, cuantizada, nunca queda encima de la malla, en puntos al azar
     // de la banda y del núcleo y en celdas que cruzan un final libre. Diagnóstico del criterio 10:
-    // el escalón de la malla a la rejilla en el final libre, y en la curva de R 80 por fuera.
+    // el escalón de la malla a la rejilla en el final libre, y en la curva de R 80 por fuera. Fuera
+    // de los casos aviso (band_report.h, seam_warning), que se cuentan; los 30 km, diagnóstico
+    // (respuesta del consultor a la tercera parada de la parte B, §3).
     const rally::sim::JoltRuntime runtime;
     struct Case {
         const char* name;
@@ -880,44 +904,92 @@ TEST_CASE("stage_ground: the grid never shows above the band or the core") {
                 "); puntos con la rejilla encima ", m.above, "; escalón en el final libre hasta ",
                 m.step / kMm, " mm (s = ", m.step_s, ", lado ", m.step_side,
                 ", e = ", m.step_e / kMm, " mm); en la R 80 por fuera (s 100–160), ",
-                m.step_r80 / kMm, " mm");
+                m.step_r80 / kMm, " mm; en casos aviso, ", m.excluded, " puntos (",
+                m.excluded_above, " con la rejilla encima)");
+        if (std::string(c.name) == "sintético 30 km") {
+            continue; // diagnóstico
+        }
         CHECK(m.above == 0);
         CHECK(m.lowest > 0.0);
     }
 }
 
+namespace {
+
+// Las cuatro pasadas de la costura (7b y el 7 con el barrido): los tres tramos que deciden y, en
+// Release, los 30 km de diagnóstico.
+struct SeamCase {
+    const char* name;
+    std::string text;
+    bool decides;
+};
+
+std::vector<SeamCase> seam_cases() {
+    std::vector<SeamCase> cases = {
+        {"lazadas", rally::tests::lazadas_stage_text(), true},
+        {"hairpin_flat", hairpin_text(), true},
+        {"peralte 10 %", max_bank_text(), true},
+    };
+    if constexpr (kFull) {
+        cases.push_back({"sintético 30 km", rally::tests::synthetic_stage_30km(), false});
+    }
+    return cases;
+}
+
+} // namespace
+
 TEST_CASE(
     "stage_ground: the step from the band to the grid is at most 40 mm along the whole seam") {
     // Invariante 7b (respuesta del consultor a la parada de la parte B de formato-2, §2): en cada
-    // lado expuesto (libre, rampa o recortado) de cada sección, la malla menos la rejilla de Jolt
-    // 2 cm dentro del final ≤ 40 mm (el mayor escalón aceptado del formato 1, 38,6 mm, docs/02
-    // §6.6). En Debug, lazadas, hairpin_flat y el peralte; los 30 km, solo en Release.
+    // lado expuesto de cada sección, la malla menos la rejilla de Jolt 2 cm dentro del final
+    // ≤ 40 mm (el mayor escalón aceptado del formato 1, 38,6 mm, docs/02 §6.6). Fuera de los casos
+    // aviso (a) y (b) (respuesta a la tercera parada, §3), que se cuentan. Deciden lazadas,
+    // hairpin_flat y el peralte; los 30 km (solo en Release) son diagnóstico.
     const rally::sim::JoltRuntime runtime;
-    struct Case {
-        const char* name;
-        std::string text;
-    };
-    std::vector<Case> cases = {
-        {"lazadas", rally::tests::lazadas_stage_text()},
-        {"hairpin_flat", hairpin_text()},
-        {"peralte 10 %", max_bank_text()},
-    };
-    if constexpr (kFull) {
-        cases.push_back({"sintético 30 km", rally::tests::synthetic_stage_30km()});
-    }
-    for (const Case& c : cases) {
+    for (const SeamCase& c : seam_cases()) {
         const rally::tests::SeamScan scan = rally::tests::seam_scan(c.text, 0.040);
-        MESSAGE(std::string(c.name), ": ", scan.sides, " lados expuestos; escalón máximo ",
+        int warned_steps = 0;
+        for (const rally::tests::SeamStep& w : scan.warnings) {
+            warned_steps += w.step > 0.040 ? 1 : 0;
+        }
+        MESSAGE(std::string(c.name), ": ", scan.sides, " lados expuestos, ", scan.warned_sides,
+                " en casos aviso (", warned_steps,
+                " de más de 40 mm); fuera de ellos, escalón "
+                "máximo ",
                 scan.worst.step / kMm, " mm (s = ", scan.worst.s, ", lado ", scan.worst.side, ", ",
                 std::string(rally::tests::band_kind_name(scan.worst.kind)),
-                "); de más de 40 mm: ", scan.over.size(), "; margen mínimo dentro del final ",
-                scan.lowest / kMm, " mm");
+                "), de más de 40 mm: ", scan.over.size());
         CHECK(scan.sides > 100);
-        CHECK(scan.over.empty());
-        CHECK(scan.lowest > 0.0);
+        if (c.decides) {
+            CHECK(scan.over.empty());
+        }
     }
 }
 
+TEST_CASE("stage_ground: along the whole seam the grid never shows above the band") {
+    // Invariante 7 con el barrido completo (respuesta del consultor a la segunda parada de la
+    // parte B, §1.3): el margen de la malla sobre la rejilla de Jolt a 0,02, 0,25, 0,5, 0,75 y 1 m
+    // dentro del final de cada lado expuesto de cada sección, > 0, fuera de los casos aviso, que se
+    // cuentan. Deciden lazadas, hairpin_flat y el peralte; los 30 km son diagnóstico.
+    const rally::sim::JoltRuntime runtime;
+    for (const SeamCase& c : seam_cases()) {
+        const rally::tests::SeamScan scan = rally::tests::seam_scan(c.text, 0.040);
+        int warned_above = 0;
+        for (const rally::tests::SeamStep& w : scan.warnings) {
+            warned_above += w.lowest <= 0.0 ? 1 : 0;
+        }
+        MESSAGE(std::string(c.name), ": ", scan.sides, " lados expuestos, ", scan.warned_sides,
+                " en casos aviso (", warned_above,
+                " con la rejilla encima); fuera de ellos, "
+                "margen mínimo ",
+                scan.lowest / kMm, " mm (s = ", scan.lowest_s, ", lado ", scan.lowest_side, ", a ",
+                scan.lowest_depth, " m del final)");
+        CHECK(scan.sides > 100);
+        if (c.decides) {
+            CHECK(scan.lowest > 0.0);
+        }
+    }
+}
 TEST_CASE("stage_ground: e bounds the interpolation error of the band end plane in a cell") {
     // Tercera respuesta del consultor a tramo-fisica, §7, premisa 1, en el final libre de la banda
     // (la explanada en el plano del arcén prolongado): la interpolación de S en la celda de la
