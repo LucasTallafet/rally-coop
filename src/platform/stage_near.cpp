@@ -1,5 +1,7 @@
 #include "platform/stage_near.h"
 
+#include "platform/stage_look.h"
+
 namespace rally::platform {
 
 double StageNearSampler::relief(double x, double z, double s_hint) const {
@@ -15,7 +17,9 @@ NearTexel StageNearSampler::at(double x, double z) const {
         return texel;
     }
     texel.height = static_cast<float>(hit.y);
-    texel.surface = static_cast<float>(hit.surface);
+    // Del núcleo, el índice de color del aspecto (muro, cuneta y talud tienen el suyo, >= 5).
+    texel.surface = static_cast<float>(hit.core ? stage_color_index(hit.surface, hit.look)
+                                                : static_cast<int>(hit.surface));
     texel.micro = static_cast<float>(relief(x, z, track_->acquire(x, z).s));
     return texel;
 }

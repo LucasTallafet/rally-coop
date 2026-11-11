@@ -41,8 +41,25 @@ float stage_shade(float nx, float ny, float nz) {
     return 0.5f + 0.5f * std::max(0.0f, dot);
 }
 
+std::array<unsigned char, 3> stage_core_rgb(const StagePalette& palette,
+                                            const StageLookStyle& style, sim::Surface surface,
+                                            sim::StageLook look) {
+    const int index = stage_color_index(surface, look);
+    if (index == kStageColorRock) {
+        return style.wall;
+    }
+    if (index == kStageColorDitch) {
+        const auto& dirt = palette[static_cast<std::size_t>(sim::Surface::Dirt)];
+        return {shaded_channel(dirt[0], style.ditch_darken),
+                shaded_channel(dirt[1], style.ditch_darken),
+                shaded_channel(dirt[2], style.ditch_darken)};
+    }
+    return palette[static_cast<std::size_t>(surface)];
+}
+
 void build_core_mesh(const sim::StageGround& ground, const std::uint32_t* triangles,
-                     std::size_t count, const StagePalette& palette, StageMeshBuffers& out) {
+                     std::size_t count, const StagePalette& palette, StageMeshBuffers& out,
+                     const StageLookStyle& style) {
     out.positions.clear();
     out.colors.clear();
     out.indices.clear();
@@ -64,7 +81,7 @@ void build_core_mesh(const sim::StageGround& ground, const std::uint32_t* triang
             nz = -nz;
         }
         const float shade = stage_shade(nx, ny, nz);
-        const auto& rgb = palette[static_cast<std::size_t>(t.surface)];
+        const std::array<unsigned char, 3> rgb = stage_core_rgb(palette, style, t.surface, t.look);
         for (const sim::StageVertex* v : {a, b, c}) {
             push_vertex(out, v->x, v->y, v->z, shaded_channel(rgb[0], shade),
                         shaded_channel(rgb[1], shade), shaded_channel(rgb[2], shade));

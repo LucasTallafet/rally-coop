@@ -99,7 +99,8 @@ StageSurface::StageSurface(const sim::StageGround& ground) : ground_(&ground) {
     }
 }
 
-bool StageSurface::core_at(double x, double z, double& y, sim::Surface& surface) const {
+bool StageSurface::core_at(double x, double z, double& y, sim::Surface& surface,
+                           sim::StageLook* look) const {
     if (cell_first_.empty()) {
         return false;
     }
@@ -139,6 +140,9 @@ bool StageSurface::core_at(double x, double z, double& y, sim::Surface& surface)
         if (!found || h > y) {
             y = h;
             surface = tri.surface;
+            if (look != nullptr) {
+                *look = tri.look;
+            }
             found = true;
         }
     }
@@ -228,13 +232,15 @@ StageHit StageSurface::query(double x, double z) const {
     double core_y = 0.0;
     sim::Surface core_surface = sim::Surface::Dirt;
     double terrain_y = 0.0;
-    const bool core = core_at(x, z, core_y, core_surface);
+    sim::StageLook core_look = sim::StageLook::Road;
+    const bool core = core_at(x, z, core_y, core_surface, &core_look);
     const bool terrain = terrain_at(x, z, terrain_y);
     if (core && (!terrain || core_y >= terrain_y)) {
         hit.valid = true;
         hit.y = core_y;
         hit.surface = core_surface;
         hit.core = true;
+        hit.look = core_look;
     } else if (terrain) {
         hit.valid = true;
         hit.y = terrain_y;

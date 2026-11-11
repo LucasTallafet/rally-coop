@@ -43,6 +43,9 @@ void main() {
 // por la normal de los vecinos. La textura está en anillo: la celda del vértice (i, j) es
 // ((anchorSlot + (i, j)) mod cells). Una celda con alfa < 1 es un hueco: el fragmento
 // (valor interpolado) se descarta.
+// Debe coincidir con el tamaño de `surfaceColors` del shader de vértices.
+constexpr int kMaxColors = 8;
+
 constexpr const char* kNearVertexShader = R"(#version 330
 in vec3 vertexPosition;
 uniform mat4 mvp;
@@ -53,7 +56,7 @@ uniform float spacing;
 uniform vec2 eyeGrid;
 uniform float fadeStart;
 uniform float radius;
-uniform vec3 surfaceColors[5];
+uniform vec3 surfaceColors[8];
 uniform vec3 light;
 out vec4 fragColor;
 out vec2 fragXZ;
@@ -147,7 +150,8 @@ void ClipShader::draw(const Mesh& mesh, const Vec3d& origin, float radius, float
 }
 
 NearGrid::NearGrid(double radius, double fade_start, double spacing,
-                   const std::array<Color, sim::kSurfaceCount>& colors)
+                   const std::array<Color, sim::kSurfaceCount>& colors, const Color* extra_colors,
+                   int extra_count)
     : ring_(radius, spacing), spacing_(spacing) {
     // Malla fija (vértice (i, j) en (i, 0, j) × spacing) y textura.
     const int n = ring_.cells();
@@ -201,15 +205,19 @@ NearGrid::NearGrid(double radius, double fade_start, double spacing,
     SetShaderValue(shader_, GetShaderLocation(shader_, "radius"), &radius_f, SHADER_UNIFORM_FLOAT);
     const float light[3] = {kLight.x, kLight.y, kLight.z};
     SetShaderValue(shader_, GetShaderLocation(shader_, "light"), light, SHADER_UNIFORM_VEC3);
-    float rgb[3 * sim::kSurfaceCount];
-    for (int s = 0; s < sim::kSurfaceCount; ++s) {
-        const Color c = colors[static_cast<std::size_t>(s)];
+    // Los de las superficies (índices 0..4) y, detrás, los extra (índices >= 5; ZoneDraw no los
+    // usa).
+    const int color_count = sim::kSurfaceCount + extra_count;
+    float rgb[3 * kMaxColors];
+    for (int s = 0; s < color_count && s < kMaxColors; ++s) {
+        const Color c = s < sim::kSurfaceCount ? colors[static_cast<std::size_t>(s)]
+                                               : extra_colors[s - sim::kSurfaceCount];
         rgb[3 * s + 0] = c.r / 255.0f;
         rgb[3 * s + 1] = c.g / 255.0f;
         rgb[3 * s + 2] = c.b / 255.0f;
     }
     SetShaderValueV(shader_, GetShaderLocation(shader_, "surfaceColors"), rgb, SHADER_UNIFORM_VEC3,
-                    sim::kSurfaceCount);
+                    color_count < kMaxColors ? color_count : kMaxColors);
     material_ = LoadMaterialDefault();
     material_.shader = shader_;
     material_.maps[MATERIAL_MAP_DIFFUSE].texture =

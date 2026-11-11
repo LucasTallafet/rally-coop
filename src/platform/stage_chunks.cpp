@@ -10,12 +10,10 @@ StageChunks StageChunks::build(const sim::StageGround& ground) {
     const std::vector<sim::StageVertex>& vertices = ground.vertices();
     const std::vector<sim::StageTriangle>& triangles = ground.triangles();
     const std::vector<double>& sections = ground.sections();
-    // Núcleo: el trozo de un triángulo es el de la s de su sección menor.
+    // Núcleo: el trozo de un triángulo es el de la s de su sección (`section`, índice en
+    // sections(): la banda del formato 2 hace que una sección tenga más de 5 vértices).
     const auto chunk_of = [&](const sim::StageTriangle& t) {
-        const std::uint32_t section =
-            std::min({t.a, t.b, t.c}) / static_cast<std::uint32_t>(sim::kStageSectionVertices);
-        const double s =
-            sections.empty() ? 0.0 : sections[std::min<std::size_t>(section, sections.size() - 1)];
+        const double s = sections[std::min<std::size_t>(t.section, sections.size() - 1)];
         return static_cast<std::int64_t>(
             std::floor((s - sections.front()) / kStageCoreChunkLength));
     };
