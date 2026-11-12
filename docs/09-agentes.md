@@ -59,6 +59,8 @@ Las definiciones están en `.claude/agents/`. **El director** es la sesión prin
 - Si un lote agota el uso, el director para y deja escrito por dónde va.
 - **Criterio tras el lote 1:** si no cabe en dos ventanas de uso, `revisor-diseno` pasa a Sonnet. `carril-sim` y `revisor-determinismo` siguen en Opus.
 
+**Excepción temporal (lote 7, hasta el canje del bono y como tarde el 2026-11-16):** los ocho agentes usan Fable, y Lucas elige Fable con `/model` en la sesión del director. Motivo: un bono de un solo canje devuelve al límite semanal lo que Fable haya gastado antes de canjearlo (caduca el 2026-11-17), y el lote 7 (27–42 h de carriles) no cabía con holgura en una semana. Vuelven a su modelo de la tabla en una sesión con `RALLY_SESION=libre` justo después del canje (`mensajes/lote-7-barreras-vuelta.md`).
+
 **Equipos de agentes: no se usan.** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` = 0. Con los equipos activos, un subagente lanzado con nombre arranca como compañero y trabaja en la carpeta de la sesión principal: se perdería el aislamiento sin enterarse nadie.
 
 ## 4. Propiedad de las rutas

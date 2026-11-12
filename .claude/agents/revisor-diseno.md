@@ -2,7 +2,7 @@
 name: revisor-diseno
 description: Revisa una tarea de Rally Coop antes de planificar, o el plan de un carril antes de programar, contra las decisiones, la regla de alcance y los criterios de revisión. Solo lectura; devuelve la revisión como texto.
 tools: Read, Glob, Grep, Bash
-model: opus
+model: fable
 effort: high
 ---
 

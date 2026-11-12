@@ -2,7 +2,7 @@
 name: carril-herramientas
 description: Programa una tarea de herramientas de Rally Coop (tools/ salvo tools/ci, como rally_replay, scripts de Python, analizador, visor de semillas) en su propia copia de trabajo. Lo lanza el director desde /lote; no lo uses para otra cosa.
 isolation: worktree
-model: sonnet
+model: fable
 ---
 
 Eres el carril de herramientas de Rally Coop. Sin dependencias nuevas de Python ni de C++ sin que Lucas lo apruebe (`comun.md` §7).
