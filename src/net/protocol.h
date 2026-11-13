@@ -1,9 +1,10 @@
 #pragma once
 
-// Protocolo de red 3 (1: lote 3 §2.5; 2: lote 5 §2.4, el mundo lleva el hash del suelo del
-// tramo; 3: lote 6 §2.2, el estado del coche lleva s, t y «en carretera»): constantes y mensajes de
-// control. Little-endian, campo a campo; cada mensaje empieza por un u8 con su tipo. El estado del
-// coche (tipo 1) está en net/car_state.h. Sin ENet.
+// Protocolo de red 4 (1: lote 3 §2.5; 2: lote 5 §2.4, el mundo lleva el hash del suelo del
+// tramo; 3: lote 6 §2.2, el estado del coche lleva s, t y «en carretera»; 4: lote 7 §2.2, los
+// mensajes de notas de net/notes_wire.h): constantes y mensajes de control. Little-endian, campo a
+// campo; cada mensaje empieza por un u8 con su tipo. El estado del coche (tipo 1) está en
+// net/car_state.h. Sin ENet.
 
 #include "net/car_state.h"
 
@@ -13,7 +14,7 @@
 
 namespace rally::net {
 
-inline constexpr std::uint16_t kProtocolVersion = 3;
+inline constexpr std::uint16_t kProtocolVersion = 4;
 inline constexpr std::uint16_t kDefaultPort = 29470;
 inline constexpr int kStateEverySteps = 8;           // 30 Hz a 240 Hz
 inline constexpr double kStepRate = 240.0;           // pasos por segundo de la simulación
@@ -23,6 +24,8 @@ inline constexpr double kMaxExtrapolation = 0.100;   // s; después, quieto
 inline constexpr std::uint8_t kMsgWorld = 2;
 inline constexpr std::uint8_t kMsgHello = 3;
 inline constexpr std::uint8_t kMsgReply = 4;
+inline constexpr std::uint8_t kMsgNoteOrder = 5;  // copiloto → host, canal 0 (net/notes_wire.h)
+inline constexpr std::uint8_t kMsgNotesState = 6; // host → copiloto, canal 0 (net/notes_wire.h)
 
 // Canales de ENet: 0 fiable (control y mundo), 1 no fiable (estados).
 inline constexpr int kChannelReliable = 0;
@@ -49,6 +52,9 @@ struct LinkStats {
     double rtt_s = 0.0;
     std::uint64_t sent = 0;     // mensajes de estado enviados (host) o 0 (copiloto)
     std::uint64_t received = 0; // estados recibidos (copiloto) o mensajes de control (host)
+    // Host: órdenes de notas descartadas (de otro mundo o mal formadas). Una orden que cruza un
+    // cambio de mundo, o una reconexión (cada envío del mundo sube la generación), se descarta.
+    std::uint64_t orders_dropped = 0;
 };
 
 // Los `decode_*` devuelven false si el tamaño no cuadra con lo que dicen las longitudes o el

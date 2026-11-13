@@ -44,6 +44,11 @@ struct Copilot::Impl {
     std::optional<WorldInfo> pending;
     std::uint64_t received = 0;
 
+    // Notas (protocolo 4): lo que dice el host, del mundo recibido.
+    NotesState notes;
+    std::uint8_t world_generation = 0;
+    bool has_world = false;
+
     void update_status() {
         if (state == State::Active) {
             status = kStatusConnected;
@@ -86,6 +91,13 @@ struct Copilot::Impl {
             buffer.reset(world.generation);
             link.clear();
             pending = std::move(world);
+            has_world = true;
+            world_generation = pending->generation;
+            notes = NotesState{};
+        } else if (NotesState incoming; decode_notes_state(bytes, incoming)) {
+            if (has_world && incoming.generation == world_generation) {
+                notes = incoming;
+            }
         }
     }
 };
@@ -157,6 +169,8 @@ void Copilot::service(double now_s) {
             s.state = Impl::State::Idle;
             s.retry_at = now_s + kRetrySeconds;
             s.link.clear();
+            s.notes = NotesState{};
+            s.has_world = false;
             break;
         case ENET_EVENT_TYPE_NONE:
             break;
@@ -193,6 +207,18 @@ std::optional<WorldInfo> Copilot::take_world() {
 }
 
 const StateBuffer& Copilot::buffer() const { return impl_->buffer; }
+
+bool Copilot::send_note_order(const game::NoteOrder& order) {
+    Impl& s = *impl_;
+    if (s.state != Impl::State::Active || s.peer == nullptr ||
+        s.peer->state != ENET_PEER_STATE_CONNECTED || !s.has_world || !game::valid(order)) {
+        return false;
+    }
+    send_reliable(s.peer, encode_note_order(order, s.world_generation));
+    return true;
+}
+
+const NotesState& Copilot::notes() const { return impl_->notes; }
 
 void Copilot::set_impairment(const Impairment& impairment, std::uint64_t seed) {
     impl_->link.set(impairment, seed);

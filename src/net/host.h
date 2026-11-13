@@ -4,6 +4,7 @@
 // mundo (canal fiable) y el estado del coche a 30 Hz (canal no fiable, protocolo 2). No lee la
 // simulación salvo en after_steps, y solo la lee. Sin enet.h en este encabezado.
 
+#include "game/notes.h"
 #include "net/protocol.h"
 #include "sim/sim_world.h"
 
@@ -41,6 +42,18 @@ public:
 
     // Una vez por fotograma: acepta, responde y recibe.
     void service();
+
+    // Órdenes de notas del copiloto aceptado (canal fiable), en el orden en que llegaron. false si
+    // no hay. Solo las del mundo actual: la generación sube en cada envío del mundo (también al
+    // reconectar), y una orden en vuelo de la anterior se descarta y se cuenta
+    // (LinkStats::orders_dropped). El buzón está reservado a kMaxNotes y nunca descarta por
+    // tamaño; quien lo vacía es quien aplica las órdenes a su NoteQueue.
+    bool take_note_order(game::NoteOrder& out);
+
+    // Manda al copiloto el estado de las notas (cola, última, pendientes) si cambió la revisión,
+    // si es un mundo o un copiloto nuevo. Una vez por fotograma, tras aplicar las órdenes. Sin
+    // copiloto no hace nada.
+    void publish_notes(const game::NoteQueue& queue);
 
     bool copilot_connected() const;
     LinkStats stats() const;

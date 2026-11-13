@@ -1,11 +1,13 @@
 #include "net/host.h"
 
 #include "net/enet_runtime.h"
+#include "net/notes_wire.h"
 
 #include <array>
 #include <enet/enet.h>
 #include <span>
 #include <utility>
+#include <vector>
 
 namespace rally::net {
 
@@ -45,6 +47,13 @@ struct Host::Impl {
     std::uint64_t sent = 0;
     std::uint64_t received = 0;
 
+    // Notas (protocolo 4): buzón de órdenes aceptadas y qué revisión de la cola se mandó ya.
+    std::vector<game::NoteOrder> inbox;
+    std::size_t inbox_head = 0;
+    std::uint64_t orders_dropped = 0;
+    bool notes_published = false;
+    std::uint32_t published_revision = 0;
+
     void send_world() {
         ++generation; // cada envío del mundo sube la generación (u8, con vuelta)
         WorldInfo info;
@@ -57,6 +66,9 @@ struct Host::Impl {
         last_index = -1;
         reset_count = 0;
         shortcuts_seen = -1;
+        inbox.clear(); // lo aceptado del mundo anterior ya no vale
+        inbox_head = 0;
+        notes_published = false; // el copiloto vacía sus notas con cada mundo
     }
 
     void reject(ENetPeer* peer, const std::string& reason) {
@@ -100,6 +112,21 @@ struct Host::Impl {
             return;
         }
         const std::span<const std::uint8_t> bytes(packet->data, packet->dataLength);
+        if (!bytes.empty() && bytes[0] == kMsgNoteOrder) {
+            if (peer != active) {
+                return; // un copiloto rechazado todavía conectado no cuenta
+            }
+            game::NoteOrder order;
+            std::uint8_t order_generation = 0;
+            if (has_world && decode_note_order(bytes, order, order_generation) &&
+                order_generation == generation) {
+                ++received;
+                inbox.push_back(order);
+            } else {
+                ++orders_dropped;
+            }
+            return;
+        }
         std::uint16_t version = 0;
         if (decode_hello(bytes, version)) {
             ++received;
@@ -108,7 +135,9 @@ struct Host::Impl {
     }
 };
 
-Host::Host() : impl_(std::make_unique<Impl>()) {}
+Host::Host() : impl_(std::make_unique<Impl>()) {
+    impl_->inbox.reserve(static_cast<std::size_t>(game::kMaxNotes));
+}
 
 Host::~Host() {
     if (impl_->host == nullptr) {
@@ -219,6 +248,32 @@ void Host::service() {
     }
 }
 
+bool Host::take_note_order(game::NoteOrder& out) {
+    Impl& s = *impl_;
+    if (s.inbox_head >= s.inbox.size()) {
+        return false;
+    }
+    out = s.inbox[s.inbox_head++];
+    if (s.inbox_head == s.inbox.size()) {
+        s.inbox.clear(); // conserva la capacidad
+        s.inbox_head = 0;
+    }
+    return true;
+}
+
+void Host::publish_notes(const game::NoteQueue& queue) {
+    Impl& s = *impl_;
+    if (s.active == nullptr || !s.has_world) {
+        return;
+    }
+    if (s.notes_published && queue.revision() == s.published_revision) {
+        return;
+    }
+    send_reliable(s.active, encode_notes_state(notes_state_from(queue, s.generation)));
+    s.notes_published = true;
+    s.published_revision = queue.revision();
+}
+
 bool Host::copilot_connected() const { return impl_->active != nullptr; }
 
 LinkStats Host::stats() const {
@@ -227,6 +282,7 @@ LinkStats Host::stats() const {
     stats.rtt_s = stats.connected ? impl_->active->roundTripTime / 1000.0 : 0.0;
     stats.sent = impl_->sent;
     stats.received = impl_->received;
+    stats.orders_dropped = impl_->orders_dropped;
     return stats;
 }
 

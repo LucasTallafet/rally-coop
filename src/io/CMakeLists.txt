@@ -17,6 +17,7 @@ add_custom_target(rally_build_info
 add_library(rally_io STATIC
     atomic_file.cpp
     crash_save.cpp
+    notes_log.cpp
     recording.cpp
     replay.cpp
     telemetry_csv.cpp

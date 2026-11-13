@@ -1,5 +1,6 @@
 #include "net/car_state.h"
 
+#include "net/wire.h"
 #include "sim/check.h"
 #include "sim/rmath.h"
 
@@ -61,10 +62,6 @@ private:
 std::int64_t round_clamped(double v, double lo, double hi) {
     const double r = rmath::floor(v + 0.5);
     return static_cast<std::int64_t>(rmath::clamp(r, lo, hi));
-}
-
-std::int32_t to_mm(double meters) {
-    return static_cast<std::int32_t>(round_clamped(meters * 1000.0, -2147483648.0, 2147483647.0));
 }
 
 std::int16_t to_cm_s(float v) {
