@@ -826,6 +826,12 @@ struct SeamScan {
     std::vector<SeamStep> over;     // de más de `limit`, fuera de los casos aviso
     std::vector<SeamStep> warnings; // casos aviso con escalón > `limit` o margen ≤ 0
     int warned_sides = 0;           // lados en un caso aviso (pasen o no)
+    // Criterio 17 (parte 0 de irregularidad): el peor valor de los casos aviso, pasen o no: el
+    // mayor escalón y el menor margen, y dónde.
+    double warned_worst_step = -1e9;
+    double warned_worst_step_s = 0.0;
+    double warned_lowest = 1e9;
+    double warned_lowest_s = 0.0;
 };
 
 inline SeamScan seam_scan(const std::string& text, double limit) {
@@ -889,6 +895,14 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
         }
         if (st.warning != SeamWarning::None) {
             ++out.warned_sides;
+            if (st.step > out.warned_worst_step) {
+                out.warned_worst_step = st.step;
+                out.warned_worst_step_s = st.s;
+            }
+            if (st.lowest < out.warned_lowest) {
+                out.warned_lowest = st.lowest;
+                out.warned_lowest_s = st.s;
+            }
             if (st.step > limit || st.lowest <= 0.0) {
                 out.warnings.push_back(st);
             }

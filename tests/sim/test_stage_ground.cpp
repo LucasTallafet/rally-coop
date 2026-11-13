@@ -40,6 +40,9 @@ namespace {
 constexpr std::uint64_t kExpectedStageGroundHash = 0xacdc'd1b8'00bb'9d7dull;
 
 constexpr double kMm = 1.0e-3;
+// Holgura de los topes del peor valor de las exclusiones (criterio 17): las cifras son
+// deterministas (Debug = Release) y se escriben con 6 decimales en mm; esto solo cubre el redondeo.
+constexpr double kCapSlackMm = 0.01;
 
 // En Debug, versiones cortas de las pruebas que recorren todo el tramo (respuesta del consultor a
 // tramo-fisica, §5): bastan para Debug = Release; las cifras son las de Release.
@@ -766,6 +769,18 @@ struct GridMargins {
     double step_r80 = 0.0;  // el mayor en la curva de R 80 por fuera (s 100–160, izquierda)
     int excluded = 0;       // puntos en un caso aviso (band_report.h, seam_warning)
     int excluded_above = 0; // de ellos, con la rejilla encima
+    // Criterio 17: el menor margen de los puntos en un caso aviso, y dónde.
+    double excluded_lowest = 1e9;
+    double excluded_lowest_s = 0.0;
+
+    void exclude(double margin, double s) {
+        ++excluded;
+        excluded_above += margin <= 0.0 ? 1 : 0;
+        if (margin < excluded_lowest) {
+            excluded_lowest = margin;
+            excluded_lowest_s = s;
+        }
+    }
 };
 
 // Criterio 7 y la costura banda–rejilla del criterio 10: la rejilla de Jolt (cuantizada: un mundo
@@ -814,8 +829,7 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         }
         const double margin = m.y - r.y;
         if (warned(s, t)) {
-            ++out.excluded;
-            out.excluded_above += margin <= 0.0 ? 1 : 0;
+            out.exclude(margin, s);
             continue;
         }
         ++out.points;
@@ -846,8 +860,7 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
         ++count;
         const double margin = m.y - r.y;
         if (warned(s, t)) {
-            ++out.excluded;
-            out.excluded_above += margin <= 0.0 ? 1 : 0;
+            out.exclude(margin, s);
             continue;
         }
         out.above += margin <= 0.0 ? 1 : 0;
@@ -880,21 +893,34 @@ TEST_CASE("stage_ground: the grid never shows above the band or the core") {
     // el escalón de la malla a la rejilla en el final libre, y en la curva de R 80 por fuera. Fuera
     // de los casos aviso (band_report.h, seam_warning), que se cuentan; los 30 km, diagnóstico
     // (respuesta del consultor a la tercera parada de la parte B, §3).
+    // Criterio 17 (parte 0 de irregularidad): las exclusiones tienen tope. Por tramo, cuántos
+    // puntos caen en un caso aviso, cuántos de ellos con la rejilla encima y su menor margen,
+    // medidos el 2026-11-13 sobre 293cdd6; falla si cualquiera empeora (Debug usa menos puntos: sus
+    // cifras).
     const rally::sim::JoltRuntime runtime;
+    struct Cap {
+        int excluded;     // puntos en casos aviso, como mucho
+        int above;        // de ellos, con la rejilla encima, como mucho
+        double lowest_mm; // su menor margen, como poco
+    };
     struct Case {
         const char* name;
         std::string text;
         int random;
         int edge;
+        Cap cap;
     };
     std::vector<Case> cases = {
-        {"lazadas", rally::tests::lazadas_stage_text(), kFull ? 10'000 : 1'000,
-         kFull ? 2'000 : 200},
-        {"hairpin_flat", hairpin_text(), kFull ? 4'000 : 400, kFull ? 1'000 : 100},
-        {"peralte 10 %", max_bank_text(), kFull ? 4'000 : 400, kFull ? 1'000 : 100},
+        {"lazadas", rally::tests::lazadas_stage_text(), kFull ? 10'000 : 1'000, kFull ? 2'000 : 200,
+         kFull ? Cap{94, 2, 0.0} : Cap{8, 0, 5.004883}},
+        {"hairpin_flat", hairpin_text(), kFull ? 4'000 : 400, kFull ? 1'000 : 100,
+         kFull ? Cap{60, 0, 4.882812} : Cap{4, 0, 5.493164}},
+        {"peralte 10 %", max_bank_text(), kFull ? 4'000 : 400, kFull ? 1'000 : 100,
+         kFull ? Cap{34, 0, 4.272461} : Cap{3, 0, 5.615234}},
     };
     if constexpr (kFull) {
-        cases.push_back({"sintético 30 km", rally::tests::synthetic_stage_30km(), 10'000, 2'000});
+        cases.push_back(
+            {"sintético 30 km", rally::tests::synthetic_stage_30km(), 10'000, 2'000, Cap{}});
     }
     for (const Case& c : cases) {
         const GridMargins m = grid_margins(c.text, c.random, c.edge, 10'000);
@@ -905,30 +931,39 @@ TEST_CASE("stage_ground: the grid never shows above the band or the core") {
                 m.step / kMm, " mm (s = ", m.step_s, ", lado ", m.step_side,
                 ", e = ", m.step_e / kMm, " mm); en la R 80 por fuera (s 100–160), ",
                 m.step_r80 / kMm, " mm; en casos aviso, ", m.excluded, " puntos (",
-                m.excluded_above, " con la rejilla encima)");
+                m.excluded_above, " con la rejilla encima; margen mínimo ", m.excluded_lowest / kMm,
+                " mm en s = ", m.excluded_lowest_s, ")");
         if (std::string(c.name) == "sintético 30 km") {
             continue; // diagnóstico
         }
         CHECK(m.above == 0);
         CHECK(m.lowest > 0.0);
+        CHECK(m.excluded <= c.cap.excluded);
+        CHECK(m.excluded_above <= c.cap.above);
+        CHECK(m.excluded_lowest >= (c.cap.lowest_mm - kCapSlackMm) * kMm);
     }
 }
 
 namespace {
 
 // Las cuatro pasadas de la costura (7b y el 7 con el barrido): los tres tramos que deciden y, en
-// Release, los 30 km de diagnóstico.
+// Release, los 30 km de diagnóstico. Criterio 17 (parte 0 de irregularidad): en los que deciden,
+// los lados en casos aviso tienen tope, y su peor escalón y su menor margen también (medidos el
+// 2026-11-13 sobre 293cdd6, los mismos en Debug y en Release); falla si cualquiera empeora.
 struct SeamCase {
     const char* name;
     std::string text;
     bool decides;
+    int warned_sides = 0;          // lados en casos aviso, como mucho
+    double warned_step_mm = 0.0;   // su mayor escalón, como mucho
+    double warned_margin_mm = 0.0; // su menor margen, como poco
 };
 
 std::vector<SeamCase> seam_cases() {
     std::vector<SeamCase> cases = {
-        {"lazadas", rally::tests::lazadas_stage_text(), true},
-        {"hairpin_flat", hairpin_text(), true},
-        {"peralte 10 %", max_bank_text(), true},
+        {"lazadas", rally::tests::lazadas_stage_text(), true, 154, 523.071289, 0.0},
+        {"hairpin_flat", hairpin_text(), true, 23, 68.176270, 5.004883},
+        {"peralte 10 %", max_bank_text(), true, 4, 5.493164, 5.126953},
     };
     if constexpr (kFull) {
         cases.push_back({"sintético 30 km", rally::tests::synthetic_stage_30km(), false});
@@ -958,10 +993,13 @@ TEST_CASE(
                 "máximo ",
                 scan.worst.step / kMm, " mm (s = ", scan.worst.s, ", lado ", scan.worst.side, ", ",
                 std::string(rally::tests::band_kind_name(scan.worst.kind)),
-                "), de más de 40 mm: ", scan.over.size());
+                "), de más de 40 mm: ", scan.over.size(), "; el mayor escalón de los casos aviso, ",
+                scan.warned_worst_step / kMm, " mm (s = ", scan.warned_worst_step_s, ")");
         CHECK(scan.sides > 100);
         if (c.decides) {
             CHECK(scan.over.empty());
+            CHECK(scan.warned_sides <= c.warned_sides);
+            CHECK(scan.warned_worst_step <= (c.warned_step_mm + kCapSlackMm) * kMm);
         }
     }
 }
@@ -983,13 +1021,17 @@ TEST_CASE("stage_ground: along the whole seam the grid never shows above the ban
                 " con la rejilla encima); fuera de ellos, "
                 "margen mínimo ",
                 scan.lowest / kMm, " mm (s = ", scan.lowest_s, ", lado ", scan.lowest_side, ", a ",
-                scan.lowest_depth, " m del final)");
+                scan.lowest_depth, " m del final); el menor margen de los casos aviso, ",
+                scan.warned_lowest / kMm, " mm (s = ", scan.warned_lowest_s, ")");
         CHECK(scan.sides > 100);
         if (c.decides) {
             CHECK(scan.lowest > 0.0);
+            CHECK(scan.warned_sides <= c.warned_sides);
+            CHECK(scan.warned_lowest >= (c.warned_margin_mm - kCapSlackMm) * kMm);
         }
     }
 }
+
 TEST_CASE("stage_ground: e bounds the interpolation error of the band end plane in a cell") {
     // Tercera respuesta del consultor a tramo-fisica, §7, premisa 1, en el final libre de la banda
     // (la explanada en el plano del arcén prolongado): la interpolación de S en la celda de la
