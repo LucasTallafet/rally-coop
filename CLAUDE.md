@@ -15,6 +15,7 @@ Léelos cuando la tarea toque su tema; no los cargues todos por defecto.
 - `docs/07-entorno-y-portabilidad.md`: montar el entorno en otro PC y comprobar que da los mismos resultados.
 - `docs/08-bitacora-de-desarrollo.md`: el porqué de las decisiones, problemas encontrados y esperados, ideas de futuro.
 - `docs/09-agentes.md`: desarrollo por lotes con agentes (roles, carriles, rutas y ciclo). `docs/agentes/criterios-revision.md`: lo que comprueban los revisores.
+- `docs/agentes/criterio-de-lucas.md`: lo que Lucas quiere del juego y lo que los agentes deciden solos (colores, valores por defecto, textos).
 - `docs/prompts/fase-2/`: un prompt por tarea de la fase 2 y reglas comunes (`comun.md`).
 
 ## Cómo trabajamos

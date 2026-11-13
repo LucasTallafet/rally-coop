@@ -25,5 +25,11 @@ Prompts de las tareas de la fase 3 (corte vertical), en el orden en que entran e
 | `cambios-direccion` | 6 | juego | `red-tramo` |
 | `tablet` | 6 | plataforma | `red-tramo`, `cambios-direccion` |
 | `tramo-dibujo-2` | 6 | plataforma | `formato-2` |
+| `irregularidad` | 7 | sim | — |
+| `notas` | 7 | juego | — |
+| `bordes-dibujo` | 7 | plataforma | — |
+| `diales` | 7 | plataforma | `notas`, `bordes-dibujo` |
+| `panel` | 7 | plataforma | `diales`; su apartado 5, `irregularidad` |
+| `analizador` | 7 | herramientas | — |
 
-Siguientes (lote 7, sin prompt todavía): la capa de irregularidad del trazado (antes del tramo de verdad); el modelo de nota, los diales, el panel del salpicadero, la velocidad de referencia y el copiloto bot de desarrollo; el tramo de 3–5 km y el dibujo en un hilo de fondo.
+Siguientes (lote 8, sin prompt todavía): el tramo de 3–5 km a mano, con irregularidad; el copiloto bot de desarrollo; la velocidad de referencia y el perfil de velocidad; los objetos que castigan el atajar. El dibujo en un hilo de fondo, cuando una medida lo pida.

@@ -31,6 +31,8 @@ Lee el prompt de la tarea, el lote, `05-decisiones.md` y el código que va a toc
 16. **¿Algún test copia una cifra que calcula otro carril?** Un hash, un tiempo o un número de pasos de una grabación o de una geometría que no es de la tarea. → Que compruebe la forma o una relación (por ejemplo, que el tiempo sale de los pasos), y que la cifra exacta la fije el carril dueño de su fuente. Si no, cuando ese carril cambie su fuente, la fusión falla en un test que no puede tocar. Origen: en el lote 6, `replay.info_stage_v8`, `replay.run_stage_pass` y `replay.stage_v8` copiaban el hash del suelo y la pasada de `stage_lazadas.rrec`, que cambia con el formato 2.
 17. **¿Algún test excluye casos?** → Que fije cuántos excluye y su peor valor, y que falle si cualquiera de los dos empeora. Una exclusión sin tope deja pasar el test vacío: si el criterio que marca los casos se rompe, lo excluye todo. Origen: en el lote 6, los tests de la costura de `formato-2` pasaban con los 1692 lados de `lazadas` en aviso (reserva del verificador).
 
+18. **¿Es una decisión de gusto?** Un color, un tamaño, un texto de pantalla, un valor por defecto, un tiempo de animación. → Si `docs/agentes/criterio-de-lucas.md` la cubre, no es un «Necesita consultor»: el carril decide según ese documento y pone el valor en su informe. Lo que cambia `01`–`05`, o cómo se siente el coche, sigue siendo de Lucas o del consultor.
+
 **Formato de `<tarea>-revision.md`:**
 - veredicto: **Adelante**, **Adelante con cambios** o **Necesita consultor**;
 - los cambios numerados, cada uno con su motivo y, si hay, su cifra;
