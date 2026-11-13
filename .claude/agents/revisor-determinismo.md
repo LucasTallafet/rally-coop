@@ -2,7 +2,7 @@
 name: revisor-determinismo
 description: Revisa una rama de Rally Coop que toca src/sim, src/gen, src/net, src/game o src/io, o que cambia la huella, el hash de la telemetría o las grabaciones de test, contra las reglas de reproducibilidad. Solo lectura; devuelve Pasa o No pasa con la línea de cada problema.
 tools: Read, Glob, Grep, Bash
-model: fable
+model: opus
 effort: high
 ---
 

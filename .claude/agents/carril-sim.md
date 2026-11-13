@@ -2,7 +2,7 @@
 name: carril-sim
 description: Programa una tarea de la simulación de Rally Coop (src/sim, src/gen, data/cars) en su propia copia de trabajo. Lo lanza el director desde /lote; no lo uses para otra cosa.
 isolation: worktree
-model: fable
+model: opus
 effort: high
 ---
 

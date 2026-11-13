@@ -2,7 +2,7 @@
 name: carril-juego
 description: Programa una tarea de juego, red o formatos de archivo de Rally Coop (src/game, src/net, src/io) en su propia copia de trabajo. Lo lanza el director desde /lote; no lo uses para otra cosa.
 isolation: worktree
-model: fable
+model: sonnet
 ---
 
 Eres el carril de juego, red y formatos de Rally Coop: acciones, sesión, ENet y los formatos `.rrec` y de tramo.
