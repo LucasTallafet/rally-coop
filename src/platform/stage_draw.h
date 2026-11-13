@@ -5,7 +5,6 @@
 #include "platform/near_grid.h"
 #include "platform/stage_chunks.h"
 #include "platform/stage_mesh.h"
-#include "platform/stage_near.h"
 #include "platform/stage_surface.h"
 #include "sim/stage_ground.h"
 #include "sim/stage_track.h"
@@ -24,21 +23,18 @@ namespace rally::platform {
 // física: la StageGround que construye es la de SimWorld (misma función, mismos argumentos) y su
 // hash se compara con el de la simulación.
 //
-// - Lejos (a más de ZoneDraw::kNearRadius del ojo): el terreno, una malla por baldosa, y el
-//   núcleo, una malla por tramo de ~64 m de s, con un color por superficie; solo los trozos a
-//   menos de kStageDrawDistance del ojo. El núcleo va con desplazamiento de polígonos: gana al
-//   terreno, que está 5 mm bajo su borde. Las muestras sin colisión no se dibujan.
-// - Cerca: la rejilla en anillo de ZoneDraw (platform/near_grid) con la altura del suelo del tramo
-//   (platform/stage_surface) y el microrrelieve de la rueda (stage_relief_frame y
-//   stage_relief_height): lo que se ve es lo que se pisa (01 §7.3).
+// - El terreno, una malla por baldosa, y el núcleo, una malla por tramo de ~64 m de s, con un
+//   color por triángulo (superficie y aspecto); solo los trozos a menos de kStageDrawDistance del
+//   ojo, y a cualquier distancia, también junto al ojo (bordes-dibujo, lote 7): los bordes entre
+//   superficies están donde están en la geometría, sin costura. El núcleo va con desplazamiento
+//   de polígonos: gana al terreno, que está 5 mm bajo su borde. Las muestras sin colisión no se
+//   dibujan. Hasta el lote 6 cerca del ojo (30 m) se dibujaba la rejilla en anillo de ZoneDraw con
+//   un color por celda de 0,25 m, y los bordes salían en dientes. Sin ella, el microrrelieve h de
+//   la rueda (mm) ya no se ve en el tramo (docs/02 §6.6).
 // - Líneas de salida, de cada parcial y de meta sobre el núcleo.
 // El paisaje más allá de la franja del terreno es de la fase 6.
 class StageDraw {
 public:
-    static constexpr double kNearRadius = 30.0;
-    static constexpr double kNearFadeStart = 27.0;
-    static constexpr double kNearSpacing = 0.25;
-
     // Necesita la ventana abierta (shaders).
     StageDraw();
     ~StageDraw();
@@ -58,6 +54,11 @@ public:
     // se dibujan los trozos (en planta, desde el ojo); la vista de todo el tramo pasa la suya.
     void draw(const Vec3d& eye, const Vec3d& origin, double distance = kStageDrawDistance);
 
+    // Diagnóstico (--stage-shot --stage-layers): qué capas se dibujan. Quitando una se ve quién
+    // dibuja cada píxel.
+    enum Layer : unsigned { kLayerCore = 2, kLayerTiles = 4, kLayerLines = 8 };
+    void set_layers(unsigned mask) { layers_ = mask; }
+
     // Altura del suelo del tramo (núcleo y terreno) en (x, z); false sin suelo.
     bool ground_height(double x, double z, double& y) const;
 
@@ -68,8 +69,7 @@ public:
     void reset_totals() { stats_.reset_totals(); }
     double total_mean_ms() const { return stats_.total_mean(); }
     double total_max_ms() const { return stats_.total_max(); }
-    // Del último draw(): la rejilla cercana, los trozos y los triángulos dibujados.
-    const NearStats& last_near() const { return near_stats_; }
+    // Del último draw(): los trozos y los triángulos dibujados.
     int last_chunks() const { return chunks_drawn_; }
     std::int64_t last_triangles() const { return triangles_drawn_; }
     // Totales de la construcción.
@@ -84,13 +84,11 @@ private:
     Mesh upload(const StageMeshBuffers& buffers);
 
     ClipShader clip_;
-    NearGrid near_;
     PolygonOffset offset_;
     const sim::StageTrack* track_ = nullptr;
     sim::TestZone noise_;
     sim::StageGround ground_;
     std::unique_ptr<StageSurface> surface_;
-    std::unique_ptr<StageNearSampler> sampler_;
     StageChunks chunks_;
     std::vector<Mesh> core_meshes_; // en el orden de chunks_.core()
     std::vector<Mesh> tile_meshes_; // en el orden de chunks_.tiles(); vacía sin celdas
@@ -98,9 +96,9 @@ private:
     std::vector<int> core_selected_;
     std::vector<int> tiles_selected_;
     bool built_ = false;
+    unsigned layers_ = kLayerCore | kLayerTiles | kLayerLines;
 
     DrawTimeStats stats_;
-    NearStats near_stats_;
     int chunks_drawn_ = 0;
     std::int64_t triangles_drawn_ = 0;
     std::int64_t triangle_total_ = 0;

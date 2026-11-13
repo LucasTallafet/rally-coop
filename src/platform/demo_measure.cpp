@@ -156,6 +156,15 @@ void DemoMeasure::start_stage_bench(DemoContext& ctx) {
     road_data_.frames.reserve(40000);
 }
 
+void DemoMeasure::start_stage_shot(DemoContext& ctx, const StageShot& shot) {
+    start_stage_bench(ctx);
+    if (stage_draw_ != nullptr) {
+        stage_draw_->set_layers(shot.layers);
+    }
+    stage_shot_ = shot;
+    stage_shot_frames_ = 0;
+}
+
 void DemoMeasure::collect(StageBenchData& data, const DemoFrame& frame, double draw_ms,
                           double near_ms, int near_cells, std::int64_t triangles) {
     const FrameSample& sample = frame.perf.last_sample();
@@ -170,24 +179,39 @@ void DemoMeasure::collect(StageBenchData& data, const DemoFrame& frame, double d
 }
 
 void DemoMeasure::advance_stage_bench(DemoContext& ctx, const DemoFrame& frame) {
+    if (stage_shot_) {
+        // Unos fotogramas para que el anillo y la ventana estén listos, la captura y fuera.
+        constexpr double kDegrees = 3.14159265358979323846 / 180.0;
+        const double heading = stage_shot_->heading_deg * kDegrees;
+        const double pitch = stage_shot_->pitch_deg * kDegrees;
+        const Vec3d forward{std::sin(heading) * std::cos(pitch), std::sin(pitch),
+                            -std::cos(heading) * std::cos(pitch)};
+        ctx.camera_override = std::pair{stage_shot_->eye, forward};
+        ++stage_shot_frames_;
+        if (stage_shot_frames_ == 8) {
+            capture_requested_ = true;
+        } else if (stage_shot_frames_ > 8) {
+            zone_bench_done_ = true;
+        }
+        return;
+    }
     stage_renderer_ = frame.perf.renderer();
     const bool was_measuring = stage_ns_ >= kZoneBenchWarmupNs;
     stage_ns_ += frame.frame_ns;
     const bool measuring = stage_ns_ >= kZoneBenchWarmupNs;
-    const NearStats& near_stats = stage_draw_->last_near();
     if (!measuring) {
-        // El primer dibujo llena todo el anillo.
-        stage_full_fill_ms_ = std::max(stage_full_fill_ms_, near_stats.near_ms);
+        // calentamiento
     } else if (!was_measuring) {
         stage_draw_->reset_totals();
     } else if (stage_skip_ > 0) {
         --stage_skip_; // el fotograma de una captura no cuenta
     } else {
-        collect(stage_data_, frame, stage_draw_->last_cpu_ms(), near_stats.near_ms,
-                near_stats.cells, stage_draw_->last_triangles());
+        // Sin rejilla cercana en el tramo (bordes-dibujo): sus columnas van a 0.
+        collect(stage_data_, frame, stage_draw_->last_cpu_ms(), 0.0, 0,
+                stage_draw_->last_triangles());
     }
     const double travelled =
-        measuring ? static_cast<double>(stage_ns_ - kZoneBenchWarmupNs) * 1e-9 * kStageBenchSpeed
+        measuring ? static_cast<double>(stage_ns_ - kZoneBenchWarmupNs) * 1e-9 * stage_bench_speed_
                   : 0.0;
     const double s = kStageBenchStartS + travelled;
     if (s >= stage_length_) {
@@ -302,6 +326,8 @@ void DemoMeasure::end_frame(DemoContext& ctx, const DemoFrame& /*frame*/) {
     if (capture_requested_) {
         if (ctx.golden != nullptr) {
             save_screenshot_to(ctx.golden->output);
+        } else if (stage_shot_) {
+            save_screenshot_to(stage_shot_->output);
         } else {
             save_screenshot();
         }
@@ -467,13 +493,15 @@ void DemoMeasure::write_stage_bench_report(const DemoContext& ctx) const {
     std::fprintf(file,
                  "- Tramo: data/stages/lazadas.stage, %.0f m; cámara por el eje de s = %.0f m a "
                  "la meta a %.0f km/h, ojo a %.1f m (sin simular el coche)\n",
-                 stage_length_, kStageBenchStartS, kStageBenchSpeed * 3.6, kZoneBenchEyeHeight);
+                 stage_length_, kStageBenchStartS, stage_bench_speed_ * 3.6, kZoneBenchEyeHeight);
     std::fprintf(file,
                  "- Referencia: la carretera de prueba de la 2.6b (como --bench-road, a %.0f "
                  "km/h), en la misma ejecución\n",
                  kZoneBenchSpeed * 3.6);
-    std::fprintf(file, "- Distancia de dibujo del tramo: %.0f m; rejilla cercana: radio %.0f m\n",
-                 kStageDrawDistance, StageDraw::kNearRadius);
+    std::fprintf(file,
+                 "- Distancia de dibujo del tramo: %.0f m; sin rejilla cercana (el núcleo y las "
+                 "baldosas se dibujan también junto al ojo)\n",
+                 kStageDrawDistance);
     std::fprintf(file, "- Hash del suelo (física = dibujo): 0x%016llx\n",
                  static_cast<unsigned long long>(stage_ground_hash_));
     std::fprintf(file,
@@ -482,8 +510,7 @@ void DemoMeasure::write_stage_bench_report(const DemoContext& ctx) const {
                  stage_build_ms_, stage_draw_->chunk_count(),
                  static_cast<long long>(stage_draw_->triangle_total()),
                  mb_of(stage_draw_->gpu_bytes()));
-    std::fprintf(file, "- Primer dibujo (llena todo el anillo de 241² celdas): %.1f ms\n\n",
-                 stage_full_fill_ms_);
+    std::fprintf(file, "\n");
     struct Row {
         const char* name;
         const StageBenchData* data;

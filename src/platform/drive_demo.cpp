@@ -87,6 +87,11 @@ void DriveDemo::start_stage_bench() {
     apply_rebuild();
 }
 
+void DriveDemo::start_stage_shot(const DemoMeasure::StageShot& shot) {
+    measure_.start_stage_shot(ctx_, shot);
+    apply_rebuild();
+}
+
 void DriveDemo::start_zone_bench(bool road) {
     measure_.start_zone_bench(ctx_, road);
     apply_rebuild();

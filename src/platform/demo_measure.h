@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace rally::platform {
@@ -44,9 +45,21 @@ public:
     // 60 km/h con el ojo a kZoneBenchEyeHeight, dibujando el tramo con StageDraw (sin simular el
     // coche); después, en la misma ejecución, la carretera de prueba como --bench-road. Escribe
     // rendimiento_tramo_NNN.txt junto al exe. Pide la zona para tener la carretera de referencia.
-    static constexpr double kStageBenchSpeed = 60.0 / 3.6;
+    static constexpr double kStageBenchSpeed = 60.0 / 3.6; // por defecto; --bench-speed la cambia
+    void set_stage_bench_speed(double kmh) { stage_bench_speed_ = kmh / 3.6; }
     static constexpr double kStageBenchStartS = -5.0;
     void start_stage_bench(DemoContext& ctx);
+    // --stage-shot (bordes-dibujo): una captura de lazadas desde un ojo fijo del mundo, sin simular
+    // el coche, y fuera. Rumbo como el del tramo (0 = norte, −z; 90 = +x); cabeceo positivo hacia
+    // arriba. `layers`: las capas de StageDraw que se dibujan (diagnóstico).
+    struct StageShot {
+        Vec3d eye;
+        double heading_deg = 0.0;
+        double pitch_deg = 0.0;
+        std::string output; // .png (UTF-8)
+        unsigned layers = ~0u;
+    };
+    void start_stage_shot(DemoContext& ctx, const StageShot& shot);
     void request_capture() { capture_requested_ = true; }
     void start_frame_log() { frame_log_.start(); }
     void set_forest_mode(DemoContext& ctx, ForestMode mode) { ctx.forest_mode = mode; }
@@ -111,10 +124,12 @@ private:
     std::uint64_t stage_ground_hash_ = 0;
     double stage_build_ms_ = 0.0;
     std::int64_t stage_ns_ = 0; // tiempo de la fase del tramo
-    double stage_full_fill_ms_ = 0.0;
     double stage_length_ = 0.0;
     StageBenchData stage_data_;
     StageBenchData road_data_;
+    std::optional<StageShot> stage_shot_; // --stage-shot
+    int stage_shot_frames_ = 0;
+    double stage_bench_speed_ = kStageBenchSpeed;
 };
 
 } // namespace rally::platform

@@ -14,18 +14,6 @@ namespace rally::platform {
 
 namespace {
 
-static_assert(StageDraw::kNearRadius == ZoneDraw::kNearRadius);
-static_assert(StageDraw::kNearFadeStart == ZoneDraw::kNearFadeStart);
-static_assert(StageDraw::kNearSpacing == ZoneDraw::kNearSpacing);
-
-std::array<Color, sim::kSurfaceCount> palette_colors() {
-    std::array<Color, sim::kSurfaceCount> colors{};
-    for (int s = 0; s < sim::kSurfaceCount; ++s) {
-        colors[static_cast<std::size_t>(s)] = surface_color(static_cast<sim::Surface>(s));
-    }
-    return colors;
-}
-
 StagePalette palette() {
     StagePalette p{};
     for (int s = 0; s < sim::kSurfaceCount; ++s) {
@@ -35,25 +23,9 @@ StagePalette palette() {
     return p;
 }
 
-// Colores de los índices nuevos de la rejilla cercana: los de stage_look.h, los mismos que la malla
-// lejana (roca; tierra de la cuneta y el talud).
-std::array<Color, 2> look_colors() {
-    const StagePalette p = palette();
-    const auto& dirt = p[static_cast<std::size_t>(sim::Surface::Dirt)];
-    const auto darker = [&](int c) {
-        return static_cast<unsigned char>(static_cast<float>(dirt[static_cast<std::size_t>(c)]) *
-                                          kStageDitchDarken);
-    };
-    static_assert(kStageColorRock == sim::kSurfaceCount &&
-                  kStageColorDitch == sim::kSurfaceCount + 1);
-    return {Color{kStageRockRgb[0], kStageRockRgb[1], kStageRockRgb[2], 255},
-            Color{darker(0), darker(1), darker(2), 255}};
-}
-
 } // namespace
 
-StageDraw::StageDraw()
-    : near_(kNearRadius, kNearFadeStart, kNearSpacing, palette_colors(), look_colors().data(), 2) {}
+StageDraw::StageDraw() = default;
 
 StageDraw::~StageDraw() { unload(); }
 
@@ -71,7 +43,6 @@ void StageDraw::unload() {
     }
     lines_ = Mesh{};
     surface_.reset();
-    sampler_.reset();
     built_ = false;
     triangle_total_ = 0;
     gpu_bytes_ = 0;
@@ -109,7 +80,6 @@ bool StageDraw::build(const sim::StageTrack& track, std::uint64_t expected_groun
         return false;
     }
     surface_ = std::make_unique<StageSurface>(ground_);
-    sampler_ = std::make_unique<StageNearSampler>(track, *surface_, noise_);
     chunks_ = StageChunks::build(ground_);
     const StagePalette colors = palette();
     StageMeshBuffers buffers;
@@ -125,7 +95,6 @@ bool StageDraw::build(const sim::StageTrack& track, std::uint64_t expected_groun
     build_stage_lines(track, *surface_, noise_, buffers);
     lines_ = upload(buffers);
     chunks_.reserve_selection(core_selected_, tiles_selected_);
-    near_.invalidate();
     built_ = true;
     return true;
 }
@@ -157,10 +126,10 @@ void StageDraw::draw(const Vec3d& eye, const Vec3d& origin, double distance) {
                             eye.z - ground_origin.z};
     triangles_drawn_ = 0;
     chunks_drawn_ = 0;
-    constexpr auto far_radius = static_cast<float>(kNearRadius);
+    constexpr auto far_radius = static_cast<float>(kStageNearClipRadius);
     for (const int i : tiles_selected_) {
         const Mesh& mesh = tile_meshes_[static_cast<std::size_t>(i)];
-        if (mesh.vertexCount > 0) {
+        if (mesh.vertexCount > 0 && (layers_ & kLayerTiles) != 0) {
             clip_.draw(mesh, shifted_origin, far_radius, 1.0f, shifted_eye);
             triangles_drawn_ += mesh.triangleCount;
             ++chunks_drawn_;
@@ -170,18 +139,14 @@ void StageDraw::draw(const Vec3d& eye, const Vec3d& origin, double distance) {
     offset_.set(-1.0f, -1.0f);
     for (const int i : core_selected_) {
         const Mesh& mesh = core_meshes_[static_cast<std::size_t>(i)];
-        if (mesh.vertexCount > 0) {
+        if (mesh.vertexCount > 0 && (layers_ & kLayerCore) != 0) {
             clip_.draw(mesh, shifted_origin, far_radius, 1.0f, shifted_eye);
             triangles_drawn_ += mesh.triangleCount;
             ++chunks_drawn_;
         }
     }
     offset_.off();
-    const StageNearSampler& sampler = *sampler_;
-    const auto sample = [&sampler](double x, double z) { return sampler.at(x, z); };
-    near_stats_ = near_.draw(eye, origin, sample);
-    triangles_drawn_ += near_.triangle_count();
-    if (lines_.vertexCount > 0) {
+    if (lines_.vertexCount > 0 && (layers_ & kLayerLines) != 0) {
         offset_.set(-2.0f, -2.0f);
         clip_.draw(lines_, shifted_origin, 0.0f, 1.0f, shifted_eye);
         offset_.off();

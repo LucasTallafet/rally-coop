@@ -96,6 +96,9 @@ public:
     // --bench-zone y --bench-road (demo_measure).
     void start_zone_bench(bool road = false);
     void start_stage_bench();
+    // --stage-shot: una captura de lazadas desde un ojo fijo (demo_measure).
+    void start_stage_shot(const DemoMeasure::StageShot& shot);
+    void set_stage_bench_speed(double kmh) { measure_.set_stage_bench_speed(kmh); }
     bool zone_bench_done() const { return measure_.zone_bench_done(); }
     void request_capture() { measure_.request_capture(); }
 

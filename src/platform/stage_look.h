@@ -19,6 +19,12 @@ inline constexpr std::array<unsigned char, 3> kStageRockRgb = {100, 112, 138};
 // Cuneta y talud: la tierra x este factor, para que no se confundan con el terreno lejano.
 inline constexpr float kStageDitchDarken = 0.82f;
 
+// Radio (m) por debajo del cual el recorte del dibujo del tramo descarta las mallas del terreno y
+// del núcleo: 0, no se descarta nada, así que los bordes entre superficies cerca del ojo salen de
+// la geometría (bordes-dibujo, lote 7). Lo lee StageDraw::draw y los tests de bordes: si vuelve a
+// haber recorte cerca, fallan.
+inline constexpr double kStageNearClipRadius = 0.0;
+
 // Índices de color de la rejilla cercana: 0..4 son sim::Surface (como en ZoneDraw); los nuevos
 // empiezan en kSurfaceCount.
 inline constexpr int kStageColorRock = sim::kSurfaceCount;
