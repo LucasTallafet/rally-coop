@@ -1,6 +1,6 @@
 # Carril de los formatos (src/io): grabaciones, su repetición y el guardado de emergencia.
 rally_add_test_executable(rally_tests_io test_recording.cpp test_format7.cpp
-    test_actions_recording.cpp test_csv_hash.cpp test_stage_v8.cpp)
+    test_actions_recording.cpp test_csv_hash.cpp test_stage_v8.cpp test_notes_log.cpp)
 target_link_libraries(rally_tests_io PRIVATE rally_game)
 target_compile_definitions(rally_tests_io PRIVATE
     RALLY_GAME_DATA_DIR="${PROJECT_SOURCE_DIR}/data/game")

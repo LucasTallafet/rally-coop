@@ -7,9 +7,10 @@ add_library(rally_net STATIC
     copilot.cpp
     enet_runtime.cpp
     host.cpp
+    notes_wire.cpp
     protocol.cpp
     state_buffer.cpp
 )
 target_include_directories(rally_net PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(rally_net PUBLIC rally_sim PRIVATE enet rally_warnings)
+target_link_libraries(rally_net PUBLIC rally_sim rally_game PRIVATE enet rally_warnings)
 target_compile_definitions(rally_net PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
