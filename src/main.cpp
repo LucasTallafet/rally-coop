@@ -130,6 +130,44 @@ int main(int argc, char** argv) {
             demo.set_render_size(1920, 1080);
             perf.set_visible(true);
             demo.start_stage_bench();
+        } else if (std::strcmp(argv[i], "--stage-shot") == 0 && i + 6 < argc && !bench) {
+            // Diagnóstico del dibujo del tramo (bordes-dibujo): --stage-shot <x> <y> <z> <rumbo°>
+            // <cabeceo°> <salida.png> [--stage-layers <máscara>]: una captura de lazadas desde ese
+            // ojo y fuera. Capas: 1 rejilla cercana, 2 núcleo, 4 baldosas, 8 líneas.
+            rally::platform::DemoMeasure::StageShot shot;
+            double* const values[5] = {&shot.eye.x, &shot.eye.y, &shot.eye.z, &shot.heading_deg,
+                                       &shot.pitch_deg};
+            bool ok = true;
+            for (int n = 0; n < 5; ++n) {
+                const char* text = argv[i + 1 + n];
+                const std::from_chars_result parsed =
+                    std::from_chars(text, text + std::strlen(text), *values[n]);
+                ok = ok && parsed.ec == std::errc{} && *parsed.ptr == '\0';
+            }
+            shot.output = argv[i + 6];
+            i += 6;
+            for (int k = 1; k + 1 < argc; ++k) {
+                if (std::strcmp(argv[k], "--stage-layers") == 0) {
+                    const char* text = argv[k + 1];
+                    std::from_chars(text, text + std::strlen(text), shot.layers);
+                }
+            }
+            if (!ok) {
+                std::fprintf(stderr, "--stage-shot: argumentos\n");
+                return 2;
+            }
+            demo.start_stage_shot(shot);
+        } else if (std::strcmp(argv[i], "--bench-speed") == 0 && i + 1 < argc) {
+            // Velocidad del recorrido de --bench-stage en km/h (por defecto 60).
+            const char* text = argv[++i];
+            double kmh = 0.0;
+            const std::from_chars_result parsed =
+                std::from_chars(text, text + std::strlen(text), kmh);
+            if (parsed.ec == std::errc{} && kmh > 0.0) {
+                demo.set_stage_bench_speed(kmh);
+            }
+        } else if (std::strcmp(argv[i], "--stage-layers") == 0 && i + 1 < argc) {
+            ++i; // ya leído
         } else if (std::strcmp(argv[i], "--tramo") == 0 && i + 1 < argc) {
             // El juego arranca en el modo tramo con ese .stage (UTF-8); si no vale, lo dice y
             // sigue en la zona.
@@ -154,7 +192,8 @@ int main(int argc, char** argv) {
     // El juego hace de host de la red (127.0.0.1), salvo en las medidas (--bench-*).
     bool benchmark = false;
     for (int i = 1; i < argc; ++i) {
-        benchmark = benchmark || std::strncmp(argv[i], "--bench-", 8) == 0;
+        benchmark = benchmark || std::strncmp(argv[i], "--bench-", 8) == 0 ||
+                    std::strcmp(argv[i], "--stage-shot") == 0;
     }
     if (!benchmark) {
         demo.start_host();
