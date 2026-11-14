@@ -4,6 +4,7 @@
 #include "car_worlds.h"
 #include "game/notes.h"
 #include "net/copilot.h"
+#include "net/enet_runtime.h"
 #include "net/host.h"
 #include "net/notes_wire.h"
 #include "net/protocol.h"
@@ -161,9 +162,9 @@ TEST_CASE("net_notes: with the bad link the orders still arrive, because they go
     auto copilot = start_copilot(host->port());
     connect_with_world(side, *copilot);
     // 250 ± 80 ms y 20 % de pérdida. set_impairment solo actúa sobre los ESTADOS del coche que
-    // recibe el copiloto (LinkSimulator): el canal 0 no pasa por ella. Lo que esta prueba
-    // comprueba es que las órdenes llegan todas mientras los estados se pierden y se retrasan,
-    // no que se pierdan paquetes de órdenes.
+    // recibe el copiloto (LinkSimulator): el canal 0 no pasa por ella. Esta prueba NO comprueba
+    // robustez frente a pérdida en las órdenes: solo que las órdenes llegan todas y en orden
+    // mientras los estados se pierden y se retrasan. La fiabilidad del canal 0 es la de ENet.
     copilot->set_impairment({0.250, 0.080, 0.20}, 99);
 
     rally::sim::SimWorld world;
@@ -314,16 +315,19 @@ TEST_CASE("net_notes: a rejected second copilot cannot put orders in the queue")
         ENetEvent event;
         while (enet_host_service(client, &event, 0) > 0) {
             if (event.type == ENET_EVENT_TYPE_CONNECT) {
-                const std::string hello = encode_hello(kProtocolVersion);
-                enet_peer_send(
-                    peer, 0,
-                    enet_packet_create(hello.data(), hello.size(), ENET_PACKET_FLAG_RELIABLE));
-                // Sin esperar la respuesta: una orden con la generación buena.
+                // La orden va ANTES del saludo, con la generación buena: el par está conectado pero
+                // nunca fue el copiloto aceptado. Si el saludo fuese primero, el host lo rechaza
+                // con disconnect_later y ENet ya no entrega lo que llega detrás, y la guarda
+                // `peer != active` no haría falta para que el test pasara.
                 const std::string order =
                     encode_note_order(corner_order(5.0, NoteGrade::G1, NoteSide::Left), generation);
                 enet_peer_send(
                     peer, 0,
                     enet_packet_create(order.data(), order.size(), ENET_PACKET_FLAG_RELIABLE));
+                const std::string hello = encode_hello(kProtocolVersion);
+                enet_peer_send(
+                    peer, 0,
+                    enet_packet_create(hello.data(), hello.size(), ENET_PACKET_FLAG_RELIABLE));
                 sent = true;
             } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
                 enet_packet_destroy(event.packet);
@@ -344,6 +348,79 @@ TEST_CASE("net_notes: a rejected second copilot cannot put orders in the queue")
         side.frame();
         return side.taken.size() == 1;
     }));
+}
+
+TEST_CASE("net_notes: the copilot ignores a notes state from another world generation") {
+    // Un «host» a mano con ENet: acepta al copiloto, le manda un mundo de generación 5 y tres
+    // estados de notas: uno bueno (generación 5, dos notas), uno de la generación 4 (vieja, vacío)
+    // y uno de la 6 (de un mundo que el copiloto aún no ha recibido, con una nota). Solo el
+    // primero cuenta, aunque los otros lleguen después.
+    ensure_enet_initialized();
+    ENetAddress address{};
+    enet_address_set_host_ip(&address, "127.0.0.1");
+    address.port = 0;
+    ENetHost* server = enet_host_create(&address, 2, 2, 0, 0);
+    REQUIRE(server != nullptr);
+    auto copilot = start_copilot(server->address.port);
+
+    NoteQueue good;
+    good.reset(1000.0);
+    good.apply(corner_order(100.0, NoteGrade::G3, NoteSide::Left), 0.0);
+    good.apply(corner_order(200.0, NoteGrade::G5, NoteSide::Right), 0.0);
+    NoteQueue other;
+    other.reset(1000.0);
+    other.apply(corner_order(300.0, NoteGrade::G1, NoteSide::Right), 0.0);
+    const NotesState state_ok = notes_state_from(good, 5);
+    const NotesState state_old = notes_state_from(NoteQueue{}, 4);
+    const NotesState state_future = notes_state_from(other, 6);
+
+    auto send = [](ENetPeer* peer, const std::string& bytes) {
+        enet_peer_send(peer, 0,
+                       enet_packet_create(bytes.data(), bytes.size(), ENET_PACKET_FLAG_RELIABLE));
+    };
+    bool sent = false;
+    const double end = wall_seconds() + 3.0;
+    while (wall_seconds() < end) {
+        ENetEvent event;
+        while (enet_host_service(server, &event, 0) > 0) {
+            if (event.type == ENET_EVENT_TYPE_CONNECT) {
+                enet_peer_timeout(event.peer, 32, 3000, 6000);
+            } else if (event.type == ENET_EVENT_TYPE_RECEIVE) {
+                if (!sent) {
+                    Reply reply;
+                    reply.accepted = true;
+                    send(event.peer, encode_reply(reply));
+                    WorldInfo world;
+                    world.generation = 5;
+                    world.world_bytes = "mundo";
+                    world.car_text = "coche";
+                    send(event.peer, encode_world(world));
+                    send(event.peer, encode_notes_state(state_ok));
+                    send(event.peer, encode_notes_state(state_old));
+                    send(event.peer, encode_notes_state(state_future));
+                    sent = true;
+                }
+                enet_packet_destroy(event.packet);
+            }
+        }
+        copilot->service(wall_seconds());
+        if (sent && copilot->notes().count == 2) {
+            // Da tiempo a que lleguen y se procesen los dos estados que vienen detrás.
+            const double settle = wall_seconds() + 0.3;
+            while (wall_seconds() < settle) {
+                enet_host_service(server, &event, 0);
+                copilot->service(wall_seconds());
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    REQUIRE(sent);
+    CHECK(copilot->notes() == state_ok);
+    CHECK(copilot->notes().generation == 5);
+    copilot.reset();
+    enet_host_destroy(server);
 }
 
 TEST_CASE("net_notes: cost of the notes in a host frame") {

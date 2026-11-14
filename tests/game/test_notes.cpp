@@ -222,6 +222,20 @@ TEST_CASE("notes: each order does what the design says") {
     REQUIRE(q.size() == 1);
     CHECK(q.at(0).id == 1); // la de 100 m ya estaba pasada
     CHECK(q.erased_total() == 3);
+    // Una nota con `s` igual a la del coche sigue por delante: vaciar la quita (`>=`), y la de un
+    // milímetro por detrás se queda.
+    q.reset(1000.0);
+    q.apply(corner(100.0, NoteGrade::G3, NoteSide::Left), 0.0);
+    q.apply(corner(99.999, NoteGrade::G3, NoteSide::Right), 0.0);
+    q.apply(corner(300.0, NoteGrade::G3, NoteSide::Left), 0.0);
+    CHECK(q.view(100.0).ahead == 2);
+    a = q.apply(clear_pending_order(), 100.0);
+    CHECK(a.erased == 2);
+    REQUIRE(q.size() == 1);
+    CHECK(q.at(0).s == 99.999);
+    q.reset(1000.0);
+    q.apply(corner(100.0, NoteGrade::G3, NoteSide::Left), 0.0);
+    q.apply(corner(200.0, NoteGrade::G5, NoteSide::Right), 0.0);
     // Vaciar sin pendientes tampoco falla.
     a = q.apply(clear_pending_order(), 250.0);
     CHECK(a.result == NoteResult::Applied);
