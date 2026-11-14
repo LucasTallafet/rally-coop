@@ -232,8 +232,13 @@ struct StageReliefFrame {
     double t = 0.0;
     double tx = 0.0; // avance del eje en s (sin θ, −cos θ)
     double tz = -1.0;
-    double half_left = 0.0; // semianchos de la calzada en s
+    // La calzada real en s (StageRoadEdges): su centro en t, sus semianchos desde él y los anchos
+    // de los arcenes (sin irregularidad: 0, los del esqueleto y kStageShoulderWidth).
+    double center = 0.0;
+    double half_left = 0.0;
     double half_right = 0.0;
+    double shoulder_left = kStageShoulderWidth;
+    double shoulder_right = kStageShoulderWidth;
     double surface_break = 0.0; // s del cambio de [surface] más cercano (+∞ sin cambios)
     Surface before = Surface::Gravel;
     Surface after = Surface::Gravel;

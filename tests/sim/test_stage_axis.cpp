@@ -437,7 +437,9 @@ TEST_CASE("stage_axis: every format rule fails with its line") {
     const std::vector<ErrorCase> cases = {
         {"format que falta", erased(1), 1, "falta 'format'"},
         {"format que no es la primera clave", swapped, 1, "falta 'format'"},
-        {"format = 2", replaced(1, "format = 2"), 1, "formato 2 no soportado"},
+        {"format = 3", replaced(1, "format = 3"), 1, "formato 3 no soportado"},
+        {"format = 0", replaced(1, "format = 0"), 1, "formato 0 no soportado"},
+        {"[irregularity] en el formato 1", inserted(12, "[irregularity]"), 12, "es del formato 2"},
         {"format mal escrito", replaced(1, "format = uno"), 1, "número mal escrito"},
         {"clave desconocida", inserted(3, "start_y = 0"), 3, "clave desconocida 'start_y'"},
         {"clave repetida", inserted(4, "start_x = 1"), 4, "repetida (ya en la línea 3)"},

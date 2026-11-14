@@ -273,8 +273,9 @@ inline int core_rays_wrong(const sim::StageGround& g, const sim::StageTrack& tra
         const double s = track.s_begin() + (track.s_end() - track.s_begin()) *
                                                (static_cast<double>(rng.next_u32()) / 4294967296.0);
         const sim::StagePose p = track.pose(s);
-        const double left = p.half_width_left + sim::kStageShoulderWidth;
-        const double right = p.half_width_right + sim::kStageShoulderWidth;
+        // Los bordes reales del núcleo (con la irregularidad; sin ella, semiancho + arcén).
+        const double left = track.core_half_width(s, -1);
+        const double right = track.core_half_width(s, 1);
         const double t =
             -left + (left + right) * (static_cast<double>(rng.next_u32()) / 4294967296.0);
         query.heights(p.x + t * std::cos(p.heading), p.z + t * std::sin(p.heading), h, &ids);
@@ -309,8 +310,7 @@ inline double seam_step(const sim::StageGround& g, const sim::StageTrack& track,
             continue;
         }
         const sim::StagePose p = track.pose(side.s);
-        const double edge =
-            (side.side > 0 ? p.half_width_right : p.half_width_left) + sim::kStageShoulderWidth;
+        const double edge = track.core_half_width(side.s, side.side);
         const double t = static_cast<double>(side.side) * (edge + side.delta);
         query.heights(p.x + t * std::cos(p.heading), p.z + t * std::sin(p.heading), h);
         if (h.size() < 2) {
@@ -437,8 +437,8 @@ inline EndCurvature end_curvature(const sim::StageGround& g, const sim::StageTra
         for (std::size_t i = 0; i < count; ++i) {
             const sim::StageBandSide& b = sides[i * 2 + static_cast<std::size_t>(lane)];
             const sim::StagePose p = track.pose(b.s);
-            const double half = lane == 1 ? p.half_width_right : p.half_width_left;
-            const double t = (lane == 1 ? 1.0 : -1.0) * (half + sim::kStageShoulderWidth + b.end_u);
+            const double t = (lane == 1 ? 1.0 : -1.0) *
+                             (track.core_half_width(b.s, lane == 1 ? 1 : -1) + b.end_u);
             x[i] = p.x + t * std::cos(p.heading);
             z[i] = p.z + t * std::sin(p.heading);
         }
@@ -858,9 +858,9 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
             continue;
         }
         const sim::StagePose p = track.pose(b.s);
-        const double edge = b.side > 0 ? p.half_width_right : p.half_width_left;
-        const double t =
-            static_cast<double>(b.side) * (edge + sim::kStageShoulderWidth + b.end_u - 0.02);
+        // El borde real del núcleo (con la irregularidad; sin ella, semiancho + arcén).
+        const double core = track.core_half_width(b.s, b.side);
+        const double t = static_cast<double>(b.side) * (core + b.end_u - 0.02);
         const double x = p.x + t * std::cos(p.heading);
         const double z = p.z + t * std::sin(p.heading);
         const sim::GroundProbe m = mesh.probe_ground(x, z);
@@ -874,7 +874,7 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
         st.side = b.side;
         st.kind = b.kind;
         st.step = m.y - r.y;
-        st.from_edge = sim::kStageShoulderWidth + b.end_u;
+        st.from_edge = core - (b.side > 0 ? p.half_width_right : p.half_width_left) + b.end_u;
         st.end_u = b.end_u;
         st.slope = b.slope;
         st.plane_gap = b.plane_gap;
@@ -882,8 +882,7 @@ inline SeamScan seam_scan(const std::string& text, double limit) {
         st.warning = seam_warning(track, g, index);
         double depth_low = 0.0;
         for (const double depth : {0.02, 0.25, 0.5, 0.75, 1.0}) {
-            const double td =
-                static_cast<double>(b.side) * (edge + sim::kStageShoulderWidth + b.end_u - depth);
+            const double td = static_cast<double>(b.side) * (core + b.end_u - depth);
             const sim::GroundProbe md =
                 mesh.probe_ground(p.x + td * std::cos(p.heading), p.z + td * std::sin(p.heading));
             const sim::GroundProbe rd = terrain.probe_ground(p.x + td * std::cos(p.heading),

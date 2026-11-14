@@ -756,12 +756,14 @@ TEST_CASE("stage_world: state_hash includes the run state that restore_state doe
 // --- Criterios 7 y 8: reservas y coste
 // ---------------------------------------------------------------
 
-TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt as in the zone") {
+namespace {
+
+// 2000 pasos del conductor a 20 m/s desde s = 100: ninguna reserva nuestra y las de Jolt, 0 o 1
+// por paso, como en la zona.
+void check_step_allocations(const std::string& text, const StageTrack& track, const char* name) {
     const rally::sim::JoltRuntime runtime;
-    const StageTrack& track = lazadas();
     SimWorld world;
-    world.build(stage_desc(rally::tests::lazadas_stage_text(),
-                           spawn_at(track, 100.0, 0.0, static_cast<float>(20.0))));
+    world.build(stage_desc(text, spawn_at(track, 100.0, 0.0, static_cast<float>(20.0))));
     world.seal();
     rally::tests::StageDriver driver(track, 20.0);
     // Las entradas, antes: el conductor reserva (pose del tramo no, pero sí el vector).
@@ -794,8 +796,8 @@ TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt a
         mean += m;
     }
     mean /= kCount;
-    MESSAGE("en el tramo: reservas de Jolt en ", kCount, " pasos: ", jolt.count(), "; paso medio ",
-            mean, " ms");
+    MESSAGE(std::string(name), ": reservas de Jolt en ", kCount, " pasos: ", jolt.count(),
+            "; nuestras: ", ours, "; paso medio ", mean, " ms");
     CHECK(ours == 0);
     CHECK(steps_other == 0);
     CHECK(jolt.count() <= kCount);
@@ -803,6 +805,20 @@ TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt a
     // Holgado: las cifras de verdad las da rally_stage_measure (presupuesto 0,06 ms).
     CHECK(mean <= 0.5);
 #endif
+}
+
+} // namespace
+
+TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt as in the zone") {
+    check_step_allocations(rally::tests::lazadas_stage_text(), lazadas(), "lazadas");
+}
+
+TEST_CASE("stage_world: a step on the irregular stage allocates nothing of ours") {
+    // Irregularidad, premisa P6: los bordes reales (StageTrack::road_edges, en carretera y el
+    // microrrelieve de las ruedas) no reservan en el paso.
+    const StageTrack track = load(rally::tests::lazadas_irregular_stage_text());
+    check_step_allocations(rally::tests::lazadas_irregular_stage_text(), track,
+                           "lazadas_irregular");
 }
 
 // --- Regímenes

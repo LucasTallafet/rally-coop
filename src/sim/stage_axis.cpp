@@ -92,10 +92,34 @@ std::size_t last_at_or_before(const std::vector<T>& items, double s, Key key) {
     return static_cast<std::size_t>(it - items.begin()) - 1;
 }
 
-// Secciones del archivo.
-enum class Section : std::uint8_t { None, Plan, Profile, Bank, Width, Surface };
-constexpr std::array<std::string_view, 5> kSectionNames = {"plan", "profile", "bank", "width",
-                                                           "surface"};
+// Secciones del archivo: las cinco primeras, obligatorias; [irregularity], opcional y solo en el
+// formato 2.
+enum class Section : std::uint8_t { None, Plan, Profile, Bank, Width, Surface, Irregularity };
+constexpr std::array<std::string_view, 6> kSectionNames = {"plan",  "profile", "bank",
+                                                           "width", "surface", "irregularity"};
+constexpr std::size_t kRequiredSections = 5;
+constexpr std::size_t kIrregularitySection = 5;
+// Componentes de [irregularity], en el orden de StageIrregularitySpec.
+constexpr std::array<std::string_view, 5> kComponentNames = {"axis", "width", "edge", "bank",
+                                                             "height"};
+
+// La línea sin su comentario y sin espacios, como la lee el parser.
+std::string_view clean_line(std::string_view line) {
+    const std::size_t comment = line.find('#');
+    if (comment != std::string_view::npos) {
+        line = line.substr(0, comment);
+    }
+    return trim(line);
+}
+
+// El nombre de la sección si la línea (ya limpia) es una cabecera «[nombre]» bien cerrada; vacío
+// si no.
+std::string_view section_header(std::string_view clean) {
+    if (clean.empty() || clean.front() != '[' || clean.back() != ']') {
+        return {};
+    }
+    return trim(clean.substr(1, clean.size() - 2));
+}
 
 // Claves de la cabecera (después de format).
 constexpr std::array<std::string_view, 5> kHeaderKeys = {"name", "start_x", "start_z",
@@ -171,6 +195,14 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
     std::vector<PointLine> bank;
     std::vector<PointLine> width;
     std::vector<PointLine> surface;
+    int format = 0;
+    // [irregularity]: la línea de la semilla y de cada componente (0 si no está), sus valores y
+    // los puntos de la escala.
+    int seed_line = 0;
+    std::uint64_t seed = 0;
+    std::array<int, kComponentNames.size()> component_line{};
+    std::array<StageIrregularityComponent, kComponentNames.size()> components{};
+    std::vector<PointLine> scale;
     int line_number = 0;
 
     // Al empezar la primera sección (o al final, si no hay ninguna), la cabecera está completa.
@@ -209,7 +241,6 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
                 return fail(line_number, "falta 'format' (tiene que ser la primera clave)");
             }
             const std::string_view value = trim(line.substr(equals + 1));
-            int format = 0;
             const std::from_chars_result parsed =
                 std::from_chars(value.data(), value.data() + value.size(), format);
             if (value.empty() || parsed.ec != std::errc{} ||
@@ -217,9 +248,9 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
                 return fail(line_number,
                             "número mal escrito en 'format': '" + std::string(value) + "'");
             }
-            if (format != kStageFormatVersion) {
+            if (format < 1 || format > kStageFormatVersion) {
                 return fail(line_number, "formato " + std::to_string(format) +
-                                             " no soportado: este juego lee el " +
+                                             " no soportado: este juego lee del 1 al " +
                                              std::to_string(kStageFormatVersion));
             }
             format_line = line_number;
@@ -239,6 +270,11 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
             }
             if (index == kSectionNames.size()) {
                 return fail(line_number, "sección desconocida [" + std::string(section_name) + "]");
+            }
+            if (index == kIrregularitySection && format < 2) {
+                return fail(line_number, "la sección [irregularity] es del formato 2 (este archivo "
+                                         "es del formato " +
+                                             std::to_string(format) + ")");
             }
             if (section_line[index] != 0) {
                 return fail(line_number, "sección [" + std::string(section_name) +
@@ -309,7 +345,7 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
             std::size_t count;
             std::string_view values;
         };
-        constexpr std::array<Shape, 7> kShapes = {
+        constexpr std::array<Shape, 14> kShapes = {
             Shape{Section::Plan, "straight", 1, "L"},
             Shape{Section::Plan, "arc", 2, "L R"},
             Shape{Section::Plan, "spiral", 3, "L R0 R1"},
@@ -317,6 +353,13 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
             Shape{Section::Bank, "bank", 2, "s %"},
             Shape{Section::Width, "width", 3, "s izquierda derecha"},
             Shape{Section::Surface, "surface", 2, "s superficie"},
+            Shape{Section::Irregularity, "seed", 1, "semilla"},
+            Shape{Section::Irregularity, "axis", 3, "amplitud λmin λmax"},
+            Shape{Section::Irregularity, "width", 3, "amplitud λmin λmax"},
+            Shape{Section::Irregularity, "edge", 3, "amplitud λmin λmax"},
+            Shape{Section::Irregularity, "bank", 3, "amplitud(%) λmin λmax"},
+            Shape{Section::Irregularity, "height", 3, "amplitud λmin λmax"},
+            Shape{Section::Irregularity, "scale", 2, "s escala"},
         };
         const Shape* shape = nullptr;
         for (const Shape& candidate : kShapes) {
@@ -337,8 +380,8 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
         // Los valores numéricos (la superficie es un nombre; los R de spiral pueden ser inf).
         std::array<double, kMaxValues> v{};
         for (std::size_t i = 0; i < tokens.count; ++i) {
-            if (section == Section::Surface && i == 1) {
-                continue;
+            if ((section == Section::Surface && i == 1) || tokens.word == "seed") {
+                continue; // un nombre y un entero de 64 bits, abajo
             }
             if (tokens.word == "spiral" && i > 0 && tokens.values[i] == "inf") {
                 v[i] = std::numeric_limits<double>::infinity();
@@ -456,6 +499,60 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
             points.push_back(p);
             break;
         }
+        case Section::Irregularity: {
+            if (tokens.word == "seed") {
+                if (seed_line != 0) {
+                    return fail(line_number, "'seed' repetida (ya en la línea " +
+                                                 std::to_string(seed_line) + ")");
+                }
+                const std::string_view value = tokens.values[0];
+                const std::from_chars_result parsed =
+                    std::from_chars(value.data(), value.data() + value.size(), seed);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) {
+                    return fail(line_number, "semilla mal escrita: '" + std::string(value) +
+                                                 "' (un entero de 0 a 2^64 − 1)");
+                }
+                seed_line = line_number;
+            } else if (tokens.word == "scale") {
+                PointLine p;
+                p.s = v[0];
+                p.a = v[1];
+                p.line = line_number;
+                if (scale.empty() ? p.s != 0.0 : !(p.s > scale.back().s)) {
+                    return fail(line_number, scale.empty()
+                                                 ? "la primera 'scale' tiene que ir en s = 0"
+                                                 : "las s de 'scale' tienen que crecer");
+                }
+                if (!(p.a >= 0.0)) {
+                    return fail(line_number, "la escala tiene que ser ≥ 0");
+                }
+                scale.push_back(p);
+            } else {
+                std::size_t c = 0;
+                while (kComponentNames[c] != tokens.word) {
+                    ++c;
+                }
+                if (component_line[c] != 0) {
+                    return fail(line_number, "'" + std::string(tokens.word) +
+                                                 "' repetida (ya en la línea " +
+                                                 std::to_string(component_line[c]) + ")");
+                }
+                if (!(v[0] >= 0.0)) {
+                    return fail(line_number, "la amplitud tiene que ser ≥ 0");
+                }
+                if (!(v[1] >= kStageIrregularityMinWavelength)) {
+                    return fail(line_number, "λmin tiene que ser ≥ 1 m");
+                }
+                if (!(v[2] >= v[1])) {
+                    return fail(line_number, "λmax tiene que ser ≥ λmin");
+                }
+                // El peralte va en %, como en [bank].
+                const double amplitude = tokens.word == "bank" ? v[0] / 100.0 : v[0];
+                components[c] = StageIrregularityComponent{amplitude, v[1], v[2]};
+                component_line[c] = line_number;
+            }
+            break;
+        }
         case Section::None:
             break;
         }
@@ -471,14 +568,14 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
             return header;
         }
     }
-    for (std::size_t s = 0; s < kSectionNames.size(); ++s) {
+    for (std::size_t s = 0; s < kRequiredSections; ++s) {
         if (section_line[s] == 0) {
             return fail(line_number, "falta la sección [" + std::string(kSectionNames[s]) + "]");
         }
     }
-    const std::array<std::size_t, 5> counts = {plan.size(), profile.size(), bank.size(),
-                                               width.size(), surface.size()};
-    for (std::size_t s = 0; s < kSectionNames.size(); ++s) {
+    const std::array<std::size_t, kRequiredSections> counts = {
+        plan.size(), profile.size(), bank.size(), width.size(), surface.size()};
+    for (std::size_t s = 0; s < kRequiredSections; ++s) {
         if (counts[s] == 0) {
             return fail(section_line[s],
                         "la sección [" + std::string(kSectionNames[s]) + "] está vacía");
@@ -535,6 +632,28 @@ StageParseResult StageAxis::parse(std::string_view text, StageAxis& out) {
     }
     for (const PointLine& p : surface) {
         axis.surface_.push_back({rmath::min(p.s, length), p.surface});
+    }
+
+    axis.format_ = format;
+    if (section_line[kIrregularitySection] != 0) {
+        if (seed_line == 0) {
+            return fail(section_line[kIrregularitySection], "falta 'seed' en [irregularity]");
+        }
+        if (!scale.empty() && scale.back().s > length + kLengthTolerance) {
+            return fail(scale.back().line,
+                        "s fuera del tramo (longitud " + std::to_string(length) + ")");
+        }
+        StageIrregularitySpec& irr = axis.irregularity_;
+        irr.present = true;
+        irr.seed = seed;
+        irr.axis = components[0];
+        irr.width = components[1];
+        irr.edge = components[2];
+        irr.bank = components[3];
+        irr.height = components[4];
+        for (const PointLine& p : scale) {
+            irr.scale.push_back({rmath::min(p.s, length), p.a});
+        }
     }
 
     axis.build();
@@ -743,7 +862,8 @@ void StageAxis::surface_change_near(double s, double& s_break, Surface& before,
 
 std::uint64_t StageAxis::hash() const {
     Fnv1a64 hash;
-    hash.add_u32(static_cast<std::uint32_t>(kStageFormatVersion));
+    // El formato del archivo (1 en los de antes del formato 2: el mismo hash que entonces).
+    hash.add_u32(static_cast<std::uint32_t>(format_));
     hash.add_f64(start_x_);
     hash.add_f64(start_z_);
     hash.add_f64(start_heading_);
@@ -776,7 +896,48 @@ std::uint64_t StageAxis::hash() const {
         hash.add_f64(p.s);
         hash.add_byte(static_cast<std::uint8_t>(p.surface));
     }
+    if (format_ >= 2) {
+        const StageIrregularitySpec& irr = irregularity_;
+        hash.add_byte(irr.present ? 1 : 0);
+        if (irr.present) {
+            hash.add_u64(irr.seed);
+            for (const StageIrregularityComponent* c :
+                 {&irr.axis, &irr.width, &irr.edge, &irr.bank, &irr.height}) {
+                hash.add_f64(c->amplitude);
+                hash.add_f64(c->wavelength_min);
+                hash.add_f64(c->wavelength_max);
+            }
+            hash.add_u32(static_cast<std::uint32_t>(irr.scale.size()));
+            for (const StageIrregularitySpec::ScalePoint& p : irr.scale) {
+                hash.add_f64(p.s);
+                hash.add_f64(p.value);
+            }
+        }
+    }
     return hash.value();
+}
+
+std::string stage_text_without_irregularity(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    bool skipping = false;
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+        const std::size_t end = text.find('\n', pos);
+        const std::size_t next = end == std::string_view::npos ? text.size() : end + 1;
+        // La línea con su fin de línea, y limpia como la lee el parser.
+        const std::string_view raw = text.substr(pos, next - pos);
+        const std::string_view name = section_header(clean_line(
+            text.substr(pos, (end == std::string_view::npos ? text.size() : end) - pos)));
+        if (!name.empty()) {
+            skipping = name == kSectionNames[kIrregularitySection];
+        }
+        if (!skipping) {
+            out.append(raw);
+        }
+        pos = next;
+    }
+    return out;
 }
 
 } // namespace rally::sim

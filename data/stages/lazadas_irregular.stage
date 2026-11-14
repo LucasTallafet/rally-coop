@@ -1,0 +1,110 @@
+# Tramo de prueba «lazadas irregular» (tarea irregularidad, lote 7): el esqueleto de
+# lazadas.stage, igual línea a línea, en el formato de tramo 2 con la capa de irregularidad
+# (sim/stage_irregularity.h; docs/02-arquitectura.md §6.1). Es el que juega Lucas para comparar,
+# con la tecla que la quita, con el mismo tramo sin ella. lazadas.stage no se toca.
+#
+# La irregularidad: el centro de la calzada se aparta del eje (d), el ancho cambia despacio, el
+# borde exterior del arcén se rompe en ondas cortas, el peralte cambia y la rasante ondula. En las
+# horquillas (radio < 30 m) el eje y el ancho no se mueven: manda el esqueleto. La recta de meta
+# (desde s 1040) es un trecho en mal estado: todo ×1,5.
+#
+# Partes del esqueleto (s en metros): como lazadas.stage.
+
+format = 2
+name = Lazadas irregular (prueba)
+start_x = -262.5
+start_z = 217.5
+start_heading_deg = 0
+start_height = 0
+
+[plan]
+straight 100
+# Curva a derechas.
+spiral 40 inf 80
+arc 70 80
+spiral 40 80 inf
+# Recta de la cresta.
+straight 140
+# Inflexión.
+spiral 30 inf -40
+arc 40 -40
+spiral 120 -40 40
+arc 40 40
+spiral 30 40 inf
+straight 80
+# Lazada 1: horquilla a derechas.
+spiral 10 inf 6
+arc 8.849555921538759 6
+spiral 10 6 inf
+straight 70
+# Lazada 2: horquilla a izquierdas.
+spiral 10 inf -6
+arc 8.849555921538759 -6
+spiral 10 -6 inf
+# Salida.
+straight 50
+spiral 30 inf 100
+arc 60 100
+spiral 30 100 inf
+straight 122.30088815692488
+
+[profile]
+pvi 0 0 0
+pvi 200 6.0 40
+# Cresta.
+pvi 320 13.2 60
+pvi 470 4.2 40
+pvi 660 0.4 40
+# Subida de las lazadas al 8 %.
+pvi 900 19.6 40
+pvi 1050 15.1 40
+pvi 1150 15.1 0
+
+[bank]
+bank 0 0
+bank 100 0
+bank 140 -5
+bank 210 -5
+bank 250 0
+bank 390 0
+bank 420 4
+bank 460 4
+bank 580 -4
+bank 620 -4
+bank 650 0
+bank 730 0
+bank 740 -6
+bank 748 -6
+bank 758 0
+bank 829 0
+bank 839 6
+bank 847 6
+bank 857 0
+bank 908 0
+bank 938 -3
+bank 997 -3
+bank 1027 0
+
+[width]
+width 0 3.0 3.0
+width 650 3.0 3.0
+width 700 2.6 2.6
+
+[surface]
+surface 0 gravel
+surface 650 dirt
+
+# Irregularidad: amplitud (m; el peralte en %) y longitudes de onda mínima y máxima (m) de cada
+# componente, y la escala por s, que multiplica todas las amplitudes (entre dos puntos, con un
+# paso suave, no lineal: cada tramo entre dos puntos es su propia rampa).
+[irregularity]
+seed 20261113
+axis 0.45 40 120
+width 0.25 40 150
+edge 0.12 4 8
+bank 1.5 30 150
+height 0.06 20 60
+scale 0 1
+# Recta de meta en mal estado.
+scale 1000 1
+scale 1040 1.5
