@@ -230,3 +230,18 @@ else()
     message(WARNING "Python 3.12 o posterior no encontrado: los tests replay.run_stage_csv*, "
         "replay.variant_*, replay.pass_line_*, replay.run_stage_changed y replay.info_stage_* no se añaden")
 endif()
+
+# Analizador reducido de tramos reales (lote 7, tools/stages): un test por grupo, con Python 3.12
+# o posterior (solo biblioteca estándar), sin red ni archivos de fuera del repositorio. Los
+# límites del caso sintético son lo medido con tools/stages/measure.py.
+if(Python3_Interpreter_FOUND AND Python3_VERSION VERSION_GREATER_EQUAL 3.12)
+    foreach(_group synthetic lazadas profile readers threshold report download)
+        add_test(NAME stages_py.${_group}
+            COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/stages/test_stages.py
+                    ${_group})
+        set_tests_properties(stages_py.${_group} PROPERTIES
+            PASS_REGULAR_EXPRESSION "stages ok: ${_group}")
+    endforeach()
+else()
+    message(WARNING "Python 3.12 o posterior no encontrado: los tests stages_py.* no se añaden")
+endif()
