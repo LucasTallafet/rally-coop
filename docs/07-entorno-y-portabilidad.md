@@ -223,7 +223,9 @@ La tabla de teclas está en `docs/teclas.md`.
 | `--bench-forest` | Mide los cuatro modos del bosque en el recinto a 1920×1080 sin sincronización vertical, escribe `rendimiento_NNN.txt` junto al exe y se cierra |
 | `--bench-zone` | Mide la CPU del dibujo del suelo de la zona en pantalla completa sin bordes, con la cámara por la pista ciega a 100 km/h (3 s de calentamiento y 20 s de medida); escribe `rendimiento_zona_NNN.txt` junto al exe y se cierra |
 | `--bench-road` | Lo mismo con la cámara por la carretera de prueba (con sus árboles), de la entrada a la frenada; escribe `rendimiento_carretera_NNN.txt` |
-| `--bench-stage` | Lazadas de s = −5 m a la meta a 60 km/h y, en la misma ejecución, la carretera de referencia; escribe `rendimiento_tramo_NNN.txt` junto al exe |
+| `--bench-stage` | Lazadas de s = −5 m a la meta a 60 km/h, o a `--bench-speed`, y, en la misma ejecución, la carretera de referencia; escribe `rendimiento_tramo_NNN.txt` junto al exe |
+| `--bench-speed <km/h>` | Velocidad del recorrido de `--bench-stage` (por defecto 60) |
+| `--stage-shot <x> <y> <z> <rumbo°> <cabeceo°> <salida.png> [--stage-layers <máscara>]` | Diagnóstico del dibujo: una captura de lazadas desde un ojo fijo del mundo (rumbo 0 = norte, −z), sin simular el coche, y se cierra. Máscara de capas: 2 núcleo, 4 baldosas, 8 líneas (por defecto, todas) |
 | `--tramo <archivo .stage>` | Arranca en el modo tramo con ese archivo; sin él, K carga `data/stages/lazadas.stage` |
 | `--hide-config` | La pantalla no dice qué configuración del coche se lleva (F8 sigue cambiándola): bloque C del protocolo de la 2.10 |
 | `--blind-seed <n>` | Semilla de la serie de 15 pruebas a ciegas (M); por defecto, 1 |
