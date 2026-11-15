@@ -47,6 +47,8 @@ La simulación no depende del render ni del audio. Lo que se dibuja o suena lee 
 
 **Tablet (lote 6).** La tablet lee solo `SampledState::s`, `t` y `on_road` del host y el `StageTrack` recibido; nunca una proyección propia. La geometría (rumbo suavizado, zoom de 3 niveles con histéresis, polilíneas por superficie sobre una tabla del eje cada 0,5 m, perfil, cinta y cursor) está en `rally_loop` sin raylib (`platform/tablet_view`, `tablet_geometry`, `tablet_cursor`, `pointer_mode`) y `platform/tablet_draw` la pinta.
 
+**Diales del copiloto (lote 7).** Mando, ratón y teclado se reducen a un `DialsInput` por fotograma (`platform/copilot_dial_input`) y una sola máquina (`platform/copilot_dials`, sin raylib) decide qué dial está abierto, qué posición elige el vector del stick o del puntero (`platform/copilot_wheel`: zona muerta 0,50 al entrar y 0,40 al seguir, histéresis de 4°) y qué `game::NoteOrder` sale al soltar. El contador de metros no recibe la `s` del coche ni los cambios de dirección: el juego nunca rellena la distancia. Los diales ocupan dos capas junto a la tablet (`copilot_dials_layout`, `dials_draw`). El cursor (`tablet_cursor`) salta al siguiente cambio sin nota usando `net::NotesState`. Lado host: `platform/notes_host` (`NotesSession`) aplica las órdenes a la `NoteQueue`, las registra (`io::NotesLog`) y publica el estado; todo fuera del paso de simulación.
+
 ## 3. Bucle principal
 
 - Paso fijo de física a **240 Hz** con acumulador y tope de pasos por fotograma (evita la espiral de retraso).
