@@ -47,6 +47,8 @@ public:
     // rendimiento_tramo_NNN.txt junto al exe. Pide la zona para tener la carretera de referencia.
     static constexpr double kStageBenchSpeed = 60.0 / 3.6; // por defecto; --bench-speed la cambia
     void set_stage_bench_speed(double kmh) { stage_bench_speed_ = kmh / 3.6; }
+    // --bench-stage con --tramo <archivo> (lote 7, 5c): mide ese tramo; sin él, lazadas.stage.
+    void set_stage_bench_path(std::string path) { stage_bench_path_ = std::move(path); }
     static constexpr double kStageBenchStartS = -5.0;
     void start_stage_bench(DemoContext& ctx);
     // --stage-shot (bordes-dibujo): una captura de lazadas desde un ojo fijo del mundo, sin simular
@@ -125,6 +127,8 @@ private:
     double stage_build_ms_ = 0.0;
     std::int64_t stage_ns_ = 0; // tiempo de la fase del tramo
     double stage_length_ = 0.0;
+    std::string stage_bench_path_; // vacío: data/stages/lazadas.stage
+    std::string stage_bench_file_; // el que se midió, para el informe
     StageBenchData stage_data_;
     StageBenchData road_data_;
     std::optional<StageShot> stage_shot_; // --stage-shot

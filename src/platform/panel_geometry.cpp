@@ -20,9 +20,9 @@ constexpr CockpitColor kStrike{255, 70, 60};
 
 // Medidas de un hueco (m en el plano del panel).
 constexpr double kMargin = 0.004;
-constexpr double kStripHeight = 0.015;  // fila de los iconos de las marcas
-constexpr double kIconCell = 0.0125;    // ancho máximo de un icono de la fila
-constexpr double kDigitWidth = 0.021;   // número de la curva
+constexpr double kStripHeight = 0.015; // fila de los iconos de las marcas
+constexpr double kIconCell = 0.0125;   // ancho máximo de un icono de la fila
+constexpr double kDigitWidth = 0.021;  // número de la curva
 constexpr double kDistanceHeight = 0.036;
 constexpr double kDistanceCell = 0.0195;
 
@@ -80,12 +80,12 @@ void glyph(std::vector<CockpitTri>& out, const Layer& layer, char c, double x, d
         double x0, y0, x1, y1;
     };
     const std::array<Seg, 7> segments = {{
-        {x, y + h - t, x + w, y + h},                   // a
-        {x + w - t, y + 0.5 * h, x + w, y + h},         // b
-        {x + w - t, y, x + w, y + 0.5 * h},             // c
-        {x, y, x + w, y + t},                           // d
-        {x, y, x + t, y + 0.5 * h},                     // e
-        {x, y + 0.5 * h, x + t, y + h},                 // f
+        {x, y + h - t, x + w, y + h},                             // a
+        {x + w - t, y + 0.5 * h, x + w, y + h},                   // b
+        {x + w - t, y, x + w, y + 0.5 * h},                       // c
+        {x, y, x + w, y + t},                                     // d
+        {x, y, x + t, y + 0.5 * h},                               // e
+        {x, y + 0.5 * h, x + t, y + h},                           // f
         {x, y + 0.5 * h - 0.5 * t, x + w, y + 0.5 * h + 0.5 * t}, // g
     }};
     for (std::size_t i = 0; i < segments.size(); ++i) {
@@ -99,7 +99,9 @@ void glyph(std::vector<CockpitTri>& out, const Layer& layer, char c, double x, d
 // Una marca (modificador o peligro) como icono en la caja de centro (cx, cy) y lado `size`.
 void mark_icon(std::vector<CockpitTri>& out, const Layer& base, const Layer& front,
                game::NoteMark mark, double cx, double cy, double size, double dim_factor) {
-    const auto p = [&](double x, double y) { return std::array<double, 2>{cx + x * size, cy + y * size}; };
+    const auto p = [&](double x, double y) {
+        return std::array<double, 2>{cx + x * size, cy + y * size};
+    };
     const CockpitColor modifier = dim(kModifier, dim_factor);
     const CockpitColor hazard = dim(kHazard, dim_factor);
     switch (mark) {
@@ -227,8 +229,8 @@ void draw_slot(std::vector<CockpitTri>& out, const NotePanelFrame& f, const Laye
         const double ny = -hx;
         constexpr double kHeadBack = 0.0;
         content.tri(out, map(last[0] + nx * kHeadHalf + hx * kHeadBack, last[1] + ny * kHeadHalf),
-                    map(last[0] - nx * kHeadHalf, last[1] - ny * kHeadHalf), map(a.tip[0], a.tip[1]),
-                    color);
+                    map(last[0] - nx * kHeadHalf, last[1] - ny * kHeadHalf),
+                    map(a.tip[0], a.tip[1]), color);
     }
     if (big_hazard) {
         const double size = std::min(x1 - x0 - 2.0 * kMargin, main_h);
@@ -277,9 +279,9 @@ NotePanelFrame note_panel_frame(const sim::CarData& car) {
     f.height = kPanelHeightScale * k.display_height;
     // De cara al ojo, como la pantalla de la marcha: el plano se inclina lo que baja la línea del
     // ojo a su centro.
-    const double tilt = std::atan2(static_cast<double>(k.display_below), k.display_ahead);
-    f.center = cockpit_point(car, k.display_ahead, 0.5 * (left + right),
-                             -static_cast<double>(k.display_below));
+    const double below = static_cast<double>(k.display_below) - kPanelRaise;
+    const double tilt = std::atan2(below, static_cast<double>(k.display_ahead));
+    f.center = cockpit_point(car, k.display_ahead, 0.5 * (left + right), -below);
     f.u = {1.0, 0.0, 0.0};
     f.v = {0.0, std::cos(tilt), -std::sin(tilt)};
     double x = -0.5 * f.width;
@@ -305,6 +307,21 @@ void append_note_panel(std::vector<CockpitTri>& out, const sim::CarData& car,
     const double hw = 0.5 * f.width;
     const double hh = 0.5 * f.height;
     board.rect(out, -hw, -hh, hw, hh, kBoard);
+    // El pie: del salpicadero al panel, para que no flote (la base del parabrisas va a 0,30 m por
+    // debajo del ojo; el panel está más arriba).
+    {
+        const sim::CockpitData& k = car.cockpit;
+        const Vec3d top = f.at(0.0, -hh);
+        const Vec3d foot =
+            cockpit_point(car, k.display_ahead, 0.0, -static_cast<double>(k.windshield_base_below));
+        constexpr double kPostHalf = 0.012;
+        out.push_back({to_f({top.x - kPostHalf, top.y, top.z - 0.004}),
+                       to_f({top.x + kPostHalf, top.y, top.z - 0.004}),
+                       to_f({foot.x + kPostHalf, foot.y, foot.z}), kBoard});
+        out.push_back({to_f({top.x - kPostHalf, top.y, top.z - 0.004}),
+                       to_f({foot.x + kPostHalf, foot.y, foot.z}),
+                       to_f({foot.x - kPostHalf, foot.y, foot.z}), kBoard});
+    }
     for (std::size_t i = 0; i < 3; ++i) {
         back.rect(out, f.slot_edge[i] + 0.002, -hh + 0.002, f.slot_edge[i + 1] - 0.002, hh - 0.002,
                   kSlotBack);

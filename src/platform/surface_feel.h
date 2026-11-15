@@ -73,14 +73,22 @@ inline constexpr float kRumbleSendDelta = 0.02f;
 inline constexpr std::int64_t kRumbleResendNs = 100'000'000;
 inline constexpr int kRumbleSendMs = 200;
 
+// Ganancia general de la vibración (lote 7, tarea panel; decisión 6 del lote): a Lucas le parece
+// demasiada. Valor de partida ×0,6 sobre lo que ya se calcula; no es un ajuste por jugador (2.10).
+inline constexpr float kRumbleGain = 0.6f;
+
 class RumbleMixer {
 public:
+    // `gain`: se multiplica a lo que sale (low y high); 1 es la vibración de antes.
+    explicit RumbleMixer(float gain = 1.0f) : gain_(gain) {}
+
     // `silent`: en pausa o al reconstruir el mundo; manda 0 (una vez) y olvida el impacto.
     // Devuelve lo que hay que enviar en este fotograma, si hay que enviar algo.
     std::optional<Rumble> update(const Rumble& continuous, float frame_impact, std::int64_t now_ns,
                                  bool silent);
 
 private:
+    float gain_ = 1.0f;
     Rumble impact_; // niveles del último impacto
     std::int64_t impact_until_ns_ = 0;
     Rumble sent_; // lo último enviado (duración 0 si nada)

@@ -25,19 +25,24 @@ namespace rally::platform {
 // flecha está más curvada cuanto más cerrada es la curva y los peligros y los modificadores tienen
 // icono propio.
 
-inline constexpr double kPanelGap = 0.010;     // m entre el panel y la pantalla de la marcha
-inline constexpr double kPanelDoorGap = 0.005; // m entre el panel y la puerta
+inline constexpr double kPanelGap = 0.010;       // m entre el panel y la pantalla de la marcha
+inline constexpr double kPanelDoorGap = 0.005;   // m entre el panel y la puerta
 inline constexpr double kPanelHeightScale = 1.2; // × display_height
-inline constexpr double kPanelMinWidth = 0.12;   // m: más estrecho no cabe y no se dibuja
+// Cuánto más arriba que la pantalla de la marcha va el centro del panel (m): al ras de la pantalla,
+// el aro del volante lo tapa con el asiento abajo, atrás o a la derecha y con el asiento arriba
+// sale de la imagen; subido, cae entero en la imagen y sin volante delante desde todos los extremos
+// del asiento (tests/platform/test_panel_geometry.cpp). Valor de partida: se ajusta jugando.
+inline constexpr double kPanelRaise = 0.12;
+inline constexpr double kPanelMinWidth = 0.12; // m: más estrecho no cabe y no se dibuja
 // Reparto del ancho: curva, distancia, curva.
 inline constexpr std::array<double, 3> kPanelSlotShare = {0.30, 0.40, 0.30};
 
 // El plano del panel. `valid` es falso si el coche no tiene el interior.
 struct NotePanelFrame {
     bool valid = false;
-    Vec3d center;  // centro del rectángulo, en ejes del coche
-    Vec3d u;       // a la derecha del plano
-    Vec3d v;       // arriba del plano
+    Vec3d center; // centro del rectángulo, en ejes del coche
+    Vec3d u;      // a la derecha del plano
+    Vec3d v;      // arriba del plano
     double width = 0.0;
     double height = 0.0;
     // Coordenadas x de los bordes de los tres huecos en el plano (de −width/2 a width/2).
@@ -52,7 +57,8 @@ NotePanelFrame note_panel_frame(const sim::CarData& car);
 
 // Añade el panel con lo que enseña `view` (vacío: el fondo y los tres huecos). No hace nada si el
 // coche no tiene el interior.
-void append_note_panel(std::vector<CockpitTri>& out, const sim::CarData& car, const PanelView& view);
+void append_note_panel(std::vector<CockpitTri>& out, const sim::CarData& car,
+                       const PanelView& view);
 
 // La escala de colores de docs/01 §5.1: 6 azul, 5 cian, 4 verde, 3 amarillo, 2 naranja, 1 rojo, H
 // morado. Sin grado (peligro solo): ámbar.

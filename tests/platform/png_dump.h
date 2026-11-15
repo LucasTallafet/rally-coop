@@ -159,7 +159,8 @@ inline RgbImage crop_scaled(const RgbImage& src, int x0, int y0, int x1, int y1,
     for (int y = 0; y < out.height; ++y) {
         for (int x = 0; x < out.width; ++x) {
             const std::size_t s = (static_cast<std::size_t>(y0 + y / scale) * src.width +
-                                   static_cast<std::size_t>(x0 + x / scale)) * 3;
+                                   static_cast<std::size_t>(x0 + x / scale)) *
+                                  3;
             const std::size_t d = (static_cast<std::size_t>(y) * out.width + x) * 3;
             out.rgb[d] = src.rgb[s];
             out.rgb[d + 1] = src.rgb[s + 1];

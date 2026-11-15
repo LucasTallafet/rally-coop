@@ -7,12 +7,13 @@
 
 namespace rally::platform {
 
-// Salida del sonido del coche (tarea 2.7) con el audio de raylib (miniaudio): un AudioStream mono
-// en float a 48 kHz con callback. En raylib 6.0 el callback de un stream se llama desde el
-// callback del dispositivo (otro hilo), con las muestras que pide la mezcla en ese momento: la
-// latencia es la del periodo del dispositivo (10 ms por defecto en raylib), no la del búfer del
-// stream. El callback no recibe un puntero de usuario: el sintetizador y la instantánea son
-// estáticos de este módulo. Solo puede haber una AudioOutput.
+// Salida del sonido del coche (tarea 2.7) con el audio de raylib (miniaudio): un AudioStream
+// estéreo (el coche en mono a los dos canales, y los pitidos por lado) en float a 48 kHz con
+// callback. En raylib 6.0 el callback de un stream se llama desde el callback del dispositivo (otro
+// hilo), con las muestras que pide la mezcla en ese momento: la latencia es la del periodo del
+// dispositivo (10 ms por defecto en raylib), no la del búfer del stream. El callback no recibe un
+// puntero de usuario: el sintetizador y la instantánea son estáticos de este módulo. Solo puede
+// haber una AudioOutput.
 //
 // El bucle principal publica la instantánea una vez por fotograma (TripleBuffer: el callback no
 // espera nunca) y cambia el volumen con una ganancia atómica del sintetizador, sin llamar a raylib

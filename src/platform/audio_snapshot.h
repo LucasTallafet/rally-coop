@@ -45,6 +45,12 @@ struct AudioSnapshot {
     float blowoff_bar = 0.0f; // presión del último soplido
     std::uint32_t impacts = 0;
     float impact_peak = 0.0f; // m/s del último impacto
+    // Pitidos de las notas del copiloto (platform/note_beeps; lote 7): los publica el panel, no
+    // CarFeedback.
+    std::uint32_t note_beeps_left = 0;
+    std::uint32_t note_beeps_right = 0;
+    std::uint32_t note_hazard_beeps = 0;
+    std::uint32_t note_erase_beeps = 0;
     // Para el test del triple búfer: el bucle no lo usa.
     std::uint64_t sequence = 0;
 };

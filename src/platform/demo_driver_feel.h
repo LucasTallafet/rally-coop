@@ -4,6 +4,7 @@
 #include "platform/car_feedback.h"
 #include "platform/cockpit.h"
 #include "platform/demo_part.h"
+#include "platform/note_panel.h"
 #include "platform/surface_feel.h"
 
 #include <cstdint>
@@ -38,8 +39,9 @@ private:
     std::vector<CockpitTri> cockpit_frame_;
     float previous_steer_ = 0.0f;
     float current_steer_ = 0.0f;
-    RumbleMixer rumble_mixer_;
-    std::unique_ptr<AudioOutput> audio_; // null con --golden
+    RumbleMixer rumble_mixer_{kRumbleGain}; // ×0,6 de partida (lote 7)
+    NotePanel panel_;                       // el panel de notas del salpicadero (lote 7)
+    std::unique_ptr<AudioOutput> audio_;    // null con --golden
     std::uint32_t audio_generation_ = 0;
     bool rebuilt_ = true; // el mundo se ha reconstruido desde el último after_steps
 };

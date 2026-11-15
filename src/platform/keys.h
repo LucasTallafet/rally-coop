@@ -141,7 +141,8 @@ enum KeyContext : std::uint8_t {
     kContextZone = 1,
     kContextBlind = 2,
     kContextArena = 4,
-    kContextStage = 16, // el modo tramo (K; lote 5): la zona sin G, M, U ni Y
+    kContextStage =
+        16, // el modo tramo (K; lote 5): la zona sin G, M ni Y; su U es la irregularidad
     kContextAll = kContextZone | kContextBlind | kContextArena | kContextStage,
     // La ventana de rally.exe --copiloto (lote 3). No está en kContextAll: sus teclas propias (Z)
     // nunca se disparan en el juego; las del juego que valen en el copiloto se leen con

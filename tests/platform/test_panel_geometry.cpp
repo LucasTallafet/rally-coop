@@ -3,10 +3,10 @@
 // geometría de cada nota lleve su número o letra, su flecha y sus iconos. Sin ventana.
 
 #include "io/recording.h"
-#include "png_dump.h"
 #include "platform/cockpit.h"
 #include "platform/panel_geometry.h"
 #include "platform/seat.h"
+#include "png_dump.h"
 #include "sim/car_data.h"
 
 #include <doctest/doctest.h>
@@ -89,8 +89,8 @@ bool inside_screen(const Px& p) {
 std::array<Px, 4> panel_corners(const NotePanelFrame& f, const Seat& seat) {
     const double hw = 0.5 * f.width;
     const double hh = 0.5 * f.height;
-    return {project(f.at(-hw, -hh), seat), project(f.at(hw, -hh), seat), project(f.at(hw, hh), seat),
-            project(f.at(-hw, hh), seat)};
+    return {project(f.at(-hw, -hh), seat), project(f.at(hw, -hh), seat),
+            project(f.at(hw, hh), seat), project(f.at(-hw, hh), seat)};
 }
 
 bool in_triangle(double px, double py, const Px& a, const Px& b, const Px& c) {
@@ -161,20 +161,8 @@ TEST_CASE("panel geometry: the panel is inside the 16:9 screen from the nominal 
             min_y = std::min(min_y, p.y);
             max_y = std::max(max_y, p.y);
         }
-        MESSAGE("asiento ", seat.name, ": panel de y ", min_y, " a ", max_y, " px de ", kHeightPx,
-                all_inside ? " (entero)" : " (SALE de la imagen)");
-        if (std::string(seat.name) == "arriba") {
-            // Con el asiento 15 cm arriba el salpicadero entero baja por debajo del borde (−27,5°):
-            // la pantalla de la marcha también. Se mide y se informa; no se puede cumplir sin
-            // subir el panel sobre el salpicadero.
-            const Px display = project(
-                cockpit_point(car_205(), car_205().cockpit.display_ahead,
-                              car_205().cockpit.display_right,
-                              -static_cast<double>(car_205().cockpit.display_below)),
-                seat);
-            CHECK_FALSE(inside_screen(display));
-            continue;
-        }
+        MESSAGE("asiento ", std::string(seat.name), ": panel de y ", min_y, " a ", max_y, " px de ",
+                kHeightPx, all_inside ? " (entero)" : " (SALE de la imagen)");
         CHECK(all_inside);
     }
 }
@@ -185,14 +173,9 @@ TEST_CASE("panel geometry: the straight steering wheel does not cover the panel"
     std::vector<CockpitTri> wheel;
     append_steering_wheel(wheel, car_205(), 0.0);
     for (const Seat& seat : kSeats) {
-        if (std::string(seat.name) == "arriba") {
-            continue; // el panel ya no está en la imagen
-        }
         std::vector<std::array<Px, 3>> projected;
         for (const CockpitTri& t : wheel) {
-            const auto v = [&](const Vec3f& p) {
-                return project({p.x, p.y, p.z}, seat);
-            };
+            const auto v = [&](const Vec3f& p) { return project({p.x, p.y, p.z}, seat); };
             const std::array<Px, 3> px = {v(t.a), v(t.b), v(t.c)};
             if (px[0].ahead && px[1].ahead && px[2].ahead) {
                 projected.push_back(px);
@@ -213,7 +196,8 @@ TEST_CASE("panel geometry: the straight steering wheel does not cover the panel"
                 }
             }
         }
-        MESSAGE("asiento ", seat.name, ": puntos del panel tapados por el volante: ", covered);
+        MESSAGE("asiento ", std::string(seat.name),
+                ": puntos del panel tapados por el volante: ", covered);
         CHECK(covered == 0);
     }
 }
@@ -223,9 +207,6 @@ TEST_CASE("panel geometry: every slot is large enough to read the number at 1280
     REQUIRE(f.valid);
     const double hh = 0.5 * f.height;
     for (const Seat& seat : kSeats) {
-        if (std::string(seat.name) == "arriba") {
-            continue;
-        }
         double smallest = 1e9;
         for (std::size_t s = 0; s < 3; ++s) {
             const Px bl = project(f.at(f.slot_edge[s], -hh), seat);
@@ -240,7 +221,8 @@ TEST_CASE("panel geometry: every slot is large enough to read the number at 1280
             }
             CHECK(h >= kMinSlotPx);
         }
-        MESSAGE("asiento ", seat.name, ": el lado menor de un hueco mide ", smallest, " px");
+        MESSAGE("asiento ", std::string(seat.name), ": el lado menor de un hueco mide ", smallest,
+                " px");
     }
     // Alto del hueco desde el ojo nominal, el dato del informe.
     const Px bl = project(f.at(0.0, -hh), kSeats[0]);
@@ -250,8 +232,8 @@ TEST_CASE("panel geometry: every slot is large enough to read the number at 1280
 
 TEST_CASE("panel geometry: grade colours follow the scale and the arrow bends more the tighter the "
           "curve") {
-    const std::array<NoteGrade, 7> order = {NoteGrade::G6, NoteGrade::G5, NoteGrade::G4,
-                                            NoteGrade::G3, NoteGrade::G2, NoteGrade::G1,
+    const std::array<NoteGrade, 7> order = {NoteGrade::G6,     NoteGrade::G5, NoteGrade::G4,
+                                            NoteGrade::G3,     NoteGrade::G2, NoteGrade::G1,
                                             NoteGrade::Hairpin};
     for (std::size_t i = 0; i < order.size(); ++i) {
         for (std::size_t j = i + 1; j < order.size(); ++j) {
@@ -287,7 +269,7 @@ TEST_CASE("panel geometry: grade colours follow the scale and the arrow bends mo
             previous = heading;
             // Hacia su lado.
             CHECK((side == NoteSide::Left ? a.axis[kArrowSegments][0] <= 0.0
-                                           : a.axis[kArrowSegments][0] >= 0.0));
+                                          : a.axis[kArrowSegments][0] >= 0.0));
         }
     }
     CHECK(arrow_turn(NoteGrade::Hairpin) > 0.9 * kPi);
@@ -308,7 +290,7 @@ TEST_CASE("panel geometry: every note has its number or letter, arrow and icons 
         y = dx * f.v.x + dy * f.v.y + dz * f.v.z;
     };
     constexpr double kTol = 0.0015; // el desvío en z de las capas, proyectado
-    const NoteGrade grades[] = {NoteGrade::G1, NoteGrade::G2, NoteGrade::G3, NoteGrade::G4,
+    const NoteGrade grades[] = {NoteGrade::G1, NoteGrade::G2, NoteGrade::G3,     NoteGrade::G4,
                                 NoteGrade::G5, NoteGrade::G6, NoteGrade::Hairpin};
     for (const NoteGrade grade : grades) {
         for (const NoteSide side : {NoteSide::Left, NoteSide::Right}) {
@@ -393,10 +375,15 @@ TEST_CASE("panel geometry: cost of the panel and captures for the report") {
             " us, ", tris.size(), " triángulos");
     CHECK(tris.size() > 0);
 
-    const char* dir = std::getenv("RALLY_PANEL_CAPTURES");
-    if (dir == nullptr || dir[0] == '\0') {
+    char* env = nullptr;
+    std::size_t env_size = 0;
+    _dupenv_s(&env, &env_size, "RALLY_PANEL_CAPTURES");
+    const std::string dir_text = env != nullptr ? env : "";
+    std::free(env);
+    if (dir_text.empty()) {
         return;
     }
+    const char* dir = dir_text.c_str();
     // Capturas sin ventana: el interior desde el ojo nominal a 1280×720, con el panel ampliado.
     struct Scene {
         const char* name;

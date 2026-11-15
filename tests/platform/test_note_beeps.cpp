@@ -105,10 +105,11 @@ TEST_CASE("note beeps: the erase tone is another sound, longer, on both channels
     AudioSnapshot s = base_snapshot();
     render_energy(beeps, s, 480);
     s.note_erase_beeps = 1;
-    // Dura 140 ms: a los 100 ms todavía suena y a los 200 ms ya no.
-    const Energy early = render_energy(beeps, s, 4800);
+    // Dura 140 ms: a los 62 ms suena y a los 200 ms ya no.
+    const Energy early = render_energy(beeps, s, 3000);
     CHECK(early.left > 1.0);
     CHECK(early.right > 1.0);
+    render_energy(beeps, s, 3720); // hasta los 140 ms
     const Energy late = render_energy(beeps, s, 4800);
     CHECK(late.left == 0.0);
 }
@@ -121,6 +122,10 @@ TEST_CASE("note beeps: pause is silent, blind mode does not mute, a new world ta
     s.note_beeps_left = 1;
     Energy e = render_energy(beeps, s, 4800);
     CHECK(e.left == 0.0);
+    // El pitido de la pausa no se pierde: suena al reanudar.
+    s.paused = false;
+    e = render_energy(beeps, s, 4800);
+    CHECK(e.left > 1.0);
     // A ciegas el sonido del coche cambia de perfil, pero los pitidos siguen.
     NoteBeeps blind;
     AudioSnapshot b = base_snapshot();

@@ -54,6 +54,9 @@ void NoteBeeps::render_add(float* out, int frames, const AudioSnapshot& s, float
         voices_ = {};
         return;
     }
+    if (s.paused && started_ && s.generation == generation_) {
+        return; // en pausa no se consumen los contadores: suenan al reanudar
+    }
     if (!started_ || s.generation != generation_) {
         generation_ = s.generation;
         left_ = s.note_beeps_left;

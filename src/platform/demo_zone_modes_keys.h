@@ -17,6 +17,7 @@ enum class ZoneModeAction : std::uint8_t {
     ZoneStart,
     ToggleArena,
     FarOrigin,
+    StageIrregularity,
     Count,
 };
 

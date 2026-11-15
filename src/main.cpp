@@ -129,6 +129,12 @@ int main(int argc, char** argv) {
             window.toggle_fullscreen();
             demo.set_render_size(1920, 1080);
             perf.set_visible(true);
+            // Con --tramo <archivo> (en cualquier posición de la línea) mide ese tramo.
+            for (int k = 1; k + 1 < argc; ++k) {
+                if (std::strcmp(argv[k], "--tramo") == 0) {
+                    demo.set_stage_bench_path(argv[k + 1]);
+                }
+            }
             demo.start_stage_bench();
         } else if (std::strcmp(argv[i], "--stage-shot") == 0 && i + 6 < argc && !bench) {
             // Diagnóstico del dibujo del tramo (bordes-dibujo): --stage-shot <x> <y> <z> <rumbo°>
@@ -171,7 +177,16 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(argv[i], "--tramo") == 0 && i + 1 < argc) {
             // El juego arranca en el modo tramo con ese .stage (UTF-8); si no vale, lo dice y
             // sigue en la zona.
-            demo.use_stage(argv[++i]);
+            // Con --bench-stage solo elige el tramo de la medida (ya leído arriba).
+            bool bench_stage = false;
+            for (int k = 1; k < argc; ++k) {
+                bench_stage = bench_stage || std::strcmp(argv[k], "--bench-stage") == 0;
+            }
+            if (bench_stage) {
+                ++i;
+            } else {
+                demo.use_stage(argv[++i]);
+            }
         } else if (std::strcmp(argv[i], "--car") == 0 && i + 1 < argc) {
             ++i; // ya leído
         } else if (std::strcmp(argv[i], "--hide-config") == 0) {

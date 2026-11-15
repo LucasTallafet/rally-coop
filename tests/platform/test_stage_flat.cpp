@@ -92,7 +92,7 @@ TEST_CASE("stage flat: the key rebuilds the world without the irregularity and b
     CHECK(again.stage_text == irregular_text());
     CHECK(world_ground_hash(again.stage_text) == hash_with);
     // La salida sale del trazado que se juega, no del otro.
-    CHECK(with.car_spawn.position.x != doctest::Approx(0.0)); // hay salida
+    CHECK(with.car_spawn.x != 0.0); // hay salida
 }
 
 TEST_CASE("stage flat: the spawn comes from the track that is played") {
@@ -101,17 +101,17 @@ TEST_CASE("stage flat: the spawn comes from the track that is played") {
     toggle_irregularity(selection);
     const sim::WorldDesc without = stage_world_desc(selection, sim::CarData{}, {});
     sim::StageTrack flat_track;
-    REQUIRE(sim::StageTrack::build(sim::stage_text_without_irregularity(irregular_text()),
-                                   flat_track)
-                .ok);
+    REQUIRE(
+        sim::StageTrack::build(sim::stage_text_without_irregularity(irregular_text()), flat_track)
+            .ok);
     const sim::CarSpawn expected = sim::stage_spawn(flat_track, kGameStageSpawnS);
-    CHECK(without.car_spawn.position.x == expected.position.x);
-    CHECK(without.car_spawn.position.z == expected.position.z);
-    CHECK(without.car_spawn.position.y == expected.position.y);
+    CHECK(without.car_spawn.x == expected.x);
+    CHECK(without.car_spawn.z == expected.z);
+    CHECK(without.car_spawn.y == expected.y);
     // Con la irregularidad, la salida está en el centro real de la calzada: no es la misma.
-    const bool same = with.car_spawn.position.x == without.car_spawn.position.x &&
-                      with.car_spawn.position.z == without.car_spawn.position.z &&
-                      with.car_spawn.position.y == without.car_spawn.position.y;
+    const bool same = with.car_spawn.x == without.car_spawn.x &&
+                      with.car_spawn.z == without.car_spawn.z &&
+                      with.car_spawn.y == without.car_spawn.y;
     CHECK_FALSE(same);
 }
 
@@ -186,7 +186,7 @@ struct Lines {
 
 // FNV-1a de la malla de las líneas de lazadas.stage (posiciones y colores), medido antes del
 // cambio de 5b: sin irregularidad, las líneas salen como siempre, byte a byte.
-constexpr std::uint64_t kLazadasLinesHash = 0x0ull;
+constexpr std::uint64_t kLazadasLinesHash = 128873085524123928ull;
 
 TEST_CASE("stage flat: the lines of a stage without irregularity are the ones of before") {
     Lines lines(lazadas_text());
@@ -226,8 +226,9 @@ TEST_CASE("stage flat: the ends of every line sit on the real edges of the road"
         vertex += count;
         worst = std::max({worst, std::abs(t_min + real.pose.half_width_left),
                           std::abs(t_max - real.pose.half_width_right)});
-        skeleton_gap = std::max({skeleton_gap, std::abs(pose.half_width_left - real.pose.half_width_left),
-                                 std::abs(pose.half_width_right - real.pose.half_width_right)});
+        skeleton_gap =
+            std::max({skeleton_gap, std::abs(pose.half_width_left - real.pose.half_width_left),
+                      std::abs(pose.half_width_right - real.pose.half_width_right)});
     }
     CHECK(vertex == lines.buffers.vertex_count());
     MESSAGE("extremos de las líneas frente a los bordes reales: ", worst * 1000.0,

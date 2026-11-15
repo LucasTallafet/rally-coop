@@ -80,7 +80,8 @@ void NotePanel::update(const game::NoteQueue& queue, double car_s, std::int64_t 
         shown_left_ = out.left.note.id;
         if (out.left.note.id != beeped_left_) {
             beeped_left_ = out.left.note.id;
-            if (out.left.kind == PanelSlotKind::Hazard || out.left.note.side == game::NoteSide::None) {
+            if (out.left.kind == PanelSlotKind::Hazard ||
+                out.left.note.side == game::NoteSide::None) {
                 ++sounds_.hazard_beeps;
             } else if (out.left.note.side == game::NoteSide::Left) {
                 ++sounds_.beeps_left;
