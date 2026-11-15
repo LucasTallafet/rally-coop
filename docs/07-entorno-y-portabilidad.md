@@ -249,6 +249,10 @@ Scripts en `tools/telemetry` (ver su `README.md`):
 - `compare.py <a.csv> <b.csv> <columnas...>`: dos grabaciones superpuestas.
 - `drift_check.py <csv> <zona.json>`: la prueba de derrape.
 
+### Analizador de tramos reales
+
+`tools/stages/` (Python 3.12+, solo biblioteca estándar; los tests son `stages_py.*` en ctest). `python tools/stages/analyze.py trazo.gpx --out salida/` escribe un JSON, un CSV con la lista de cambios de dirección (s, ángulo, radio mínimo: el guion para un `.stage` a mano) y `informe.md` con la tabla comparativa. `python tools/stages/download.py --name X --start lat,lon --end lat,lon [--ref CO-3314] [--elevation] --out X.gpx` baja la carretera de OpenStreetMap (Overpass) y alturas de Open-Meteo; necesita red y los datos llevan atribución ODbL. `measure.py` mide la precisión con el caso sintético. No da irregularidad, ancho ni peralte. Los resultados de Medina Azahara están en `tools/stages/datos/`.
+
 ---
 
 ## 9. Lista de comprobación del PC nuevo
