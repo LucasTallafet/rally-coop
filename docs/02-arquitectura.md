@@ -235,6 +235,43 @@ Geometría (`StageAxis::pose(s)`, con s acotada a [0, longitud]; se calcula todo
 - El peralte del archivo va en %; el de la pose, en tanto por uno (dy/dt).
 - `hash()`: FNV-1a de los datos leídos, campo a campo (todo menos `name`), para comprobar que los dos PC tienen el mismo tramo.
 
+**Formato 2 (lote 7): la capa de irregularidad.** `format = 2` admite la sección opcional `[irregularity]`; en un `format = 1` es un error. Sin ella, un formato 2 es el formato 1. `kStageFormatVersion = 2` es el mayor que se lee. `StageAxis::hash()` empieza por el formato del archivo, así que un formato 1 da el hash de siempre; en el formato 2, acaba con la sección. Una línea por palabra, cada componente opcional (sin ella no hay ondas) y como mucho una vez:
+
+```text
+[irregularity]
+seed <entero de 64 bits>      # obligatoria si hay sección
+axis   <A m> <λmin> <λmax>    # d(s): el centro de la calzada se aparta del eje
+width  <A m> <λmin> <λmax>    # ω(s): onda larga de cada semiancho (ancho variable)
+edge   <A m> <λmin> <λmax>    # ε(s): onda corta del borde exterior de cada arcén
+bank   <A %> <λmin> <λmax>    # β(s): peralte añadido
+height <A m> <λmin> <λmax>    # z(s): ondulación vertical
+scale  <s> <factor ≥ 0>       # escala de todas las amplitudes; primera en s = 0, s crecientes
+```
+
+A ≥ 0 y 1 m ≤ λmin ≤ λmax. Hay siete canales (d, ω y ε de cada lado, β y z), cada uno `σ(s)·G(s)·W(s)` (`sim/stage_irregularity.h`):
+- **W:** 4 ondas `a·sin(k·s + φ)` con `Pcg32(seed, canal)`. λ log-uniforme, una por cada cuarto de [log λmin, log λmax]; φ uniforme; a ∝ λ con Σa = A. El pico nunca pasa de A, y las ondas cortas, que son las que curvan, llevan menos (presupuesto de curvatura; no es el espectro de ISO 8608).
+- **σ, la escala:** entre dos puntos, un paso suave (3u² − 2u³), no lineal, para que d', z' y β' no salten en los puntos. Cada tramo entre dos puntos es su propia rampa (una rampa son dos puntos); antes del primero y tras el último, constante.
+- **G, el apagado en curvas** (d, ω y ε): un paso suave de 45 m sobre la distancia en s al conjunto donde \|κ del esqueleto\| > 1/30 m⁻¹. En las curvas de radio menor de 30 m no se desvía el eje, no cambia el ancho y no se rompen los bordes; el peralte y la ondulación no se apagan.
+
+Se calcula al cargar; evaluar no reserva memoria.
+
+El esqueleto no cambia (`s`, `t`, `pose`, `project`, la tablet y las notas). La calzada real va sobre la normal del esqueleto (`StageTrack::road`, `road_edges`):
+- centro en t = d;
+- calzada de d − (w_izq + ω_izq) a d + (w_der + ω_der);
+- arcenes de 1 + ε;
+- plano Y = y0 + (peralte + β)·t, con y0 = y + z − β·d (el centro queda a y + z + peralte·d).
+
+La usan la malla, «en carretera», el microrrelieve, `e(s)`, la salida y la recolocación (en el centro real, con el rumbo de la línea central).
+
+**Validación al cargar.** Cada canal se muestrea a ≤ λmin/16, y lo medido × 1,02 (lo que ese paso puede subestimar) se compara con su límite:
+- \|d''\| ≤ 0,01 m⁻¹;
+- \|z''\| ≤ 0,0033 m⁻¹;
+- \|β'\| ≤ 1,5 %/m.
+
+Además, el eje del esqueleto queda dentro de la calzada y los arcenes miden ≥ 0,5 m. El error dice la s, lo medido, el límite y qué bajar («s = …: la desviación del eje curva 0.0112 m⁻¹ y el límite es 0.0100 m⁻¹: baja 'axis' o alarga su onda»). No se usa la cota analítica, que supone las ondas en fase y es hasta 3 veces lo medido. Las validaciones de siempre usan el núcleo real.
+
+`stage_text_without_irregularity(texto)` da el mismo tramo sin la sección (la tecla de comparar): su suelo es el del esqueleto.
+
 ### 6.2 Analizador de tramos reales (herramienta Python, fuera del juego)
 
 Fuentes:
@@ -302,7 +339,7 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
   - una rampa entre las dos, por la longitud del final en planta: L con la curvatura de la altura del final ≤ 0,25 m⁻¹ (≥ √(24·Δh); la mayor, 19,6 m en `lazadas`), llevando el final enfrentado del borde de su tramo; dos lados enfrentados lo son en el mismo pie, y dos tramos enfrentados a menos de sus dos L se unen. La búsqueda del eje medio llega a 15 m del borde.
   - un lado cuyo eje medio es con un extremo del tramo (no hay banda de enfrente) es libre.
 
-  En el interior de un arco cuyo eje medio es su centro, todas sus secciones acaban en un solo vértice (abanico). K = 87 vértices por sección (`vertices_per_section()`). Cada triángulo lleva su sección y su aspecto (calzada, arcén, cuneta, talud, muro; el muro es de tierra en la física y de roca en el dibujo). Las secciones, como en el lote 4, más las que pide la cuerda del final de la banda (1 cm en planta, 2 mm en alzado; en un muro, planta × pendiente ≤ 2 mm). Con 40 tramos, el ángulo entre caras vecinas de la cuneta queda por debajo del umbral de 5° de Jolt para las aristas activas: la rueda toma la normal de la cara, no la de la arista. Quedan 70 aristas de hasta 5,97° en el abanico de las R 6.
+  En el interior de un arco cuyo eje medio es su centro, todas sus secciones acaban en un solo vértice (abanico). K = 87 vértices por sección (`vertices_per_section()`). Cada triángulo lleva su sección y su aspecto (calzada, arcén, cuneta, talud, muro; el muro es de tierra en la física y de roca en el dibujo). Las secciones, como en el lote 4, más las que pide la cuerda del final de la banda (1 cm en planta, 2 mm en alzado; en un muro, planta × pendiente ≤ 2 mm). Con la irregularidad, las cotas analíticas de sus ondas entran en la cuerda de cada tramo entre marcas. La onda corta del borde exterior del arcén tiene su propia cuerda en planta, 5 cm (`kStageChordEdge`: separa el arcén de la cuneta, fuera de la calzada; es el error de borde que admite el dibujo). Las demás líneas siguen con 1 cm, y el alzado con 2 mm. Con 40 tramos, el ángulo entre caras vecinas de la cuneta queda por debajo del umbral de 5° de Jolt para las aristas activas: la rueda toma la normal de la cara, no la de la arista. Quedan 70 aristas de hasta 5,97° en el abanico de las R 6.
 - **Validación** (`StageTrack::build`, que guarda la banda para `StageGround::build`): «s = …: no cabe el talud entre pasadas» si la cuneta y un talud de 5 cm no caben antes del eje medio o del centro de curvatura, si el muro pasaría de 80° o si algún triángulo de la banda queda invertido o sin área. Dos núcleos necesitan ≥ 3,1 m.
 - **Rejilla:** baldosas de `HeightFieldShape` de 64 × 64 muestras cada 0,75 m que comparten el borde, solo donde pasa la franja (colisión a menos de 60,5 m del eje).
   - Bajo la banda queda 10 cm por debajo de la menor altura de la banda en ±1,1 m, menos su variación a lo largo de s.
@@ -319,7 +356,7 @@ La ceguera se calcula con geometría y el conductor ve el render; las dos cosas 
     En los 30 km es diagnóstico: fuera de los avisos, 697 escalones de más de 40 mm, casi todos de la explanada en espirales cortas (677, hasta 161 mm);
   - por fuera de las curvas, la rejilla junto al final mezcla finales a otra altura (≤ 1,5 mm);
   - el muro dice «tierra» al rozarlo (vibración, sonido y telemetría).
-- **Cifras (i3-8100, Release):** `lazadas.stage` (1150 m), 1199 secciones, 205 902 triángulos, carga de 0,58 s (`StageTrack::build` 0,31 s) y 3,8 MB; muro más empinado, 77,9°. 30 km sintéticos, 11,7 s y 71 MB. Paso: ×0,90 la carretera de la 2.6b en la media y ×1,38 en el p99 en `lazadas` (0,044 / 0,092 ms); 0,066 / 0,210 ms en el de 30 km. Cuantización de la malla con un solo origen: 0,35 mm en `lazadas` y 10,9 mm en 30 km (los trozos con origen propio son de la fase 4).
+- **Cifras (i3-8100, Release):** `lazadas.stage` (1150 m), 1199 secciones, 205 902 triángulos, carga de 0,58 s (`StageTrack::build` 0,31 s) y 3,8 MB; muro más empinado, 77,9°. 30 km sintéticos, 11,7 s y 71 MB. Paso: ×0,90 la carretera de la 2.6b en la media y ×1,38 en el p99 en `lazadas` (0,044 / 0,092 ms); 0,066 / 0,210 ms en el de 30 km. Cuantización de la malla con un solo origen: 0,35 mm en `lazadas` y 10,9 mm en 30 km (los trozos con origen propio son de la fase 4). `lazadas_irregular.stage` (el mismo esqueleto con la irregularidad, apagada entre los brazos de las lazadas): 1565 secciones, 268 858 triángulos, carga de 0,69 s y 4,8 MB; muro más empinado, 77,9°. Paso de 0,047 ms de media y 0,096 ms de p99, frente a 0,045 / 0,099 ms en `lazadas`. Validación: \|d''\| = 0,0043, \|z''\| = 0,0026 m⁻¹ y \|β'\| = 0,12 %/m medidos.
 
 **Dibujo del tramo (lote 5, `platform/stage_draw`; bordes en el lote 7).** `StageDraw` dibuja el tramo con la `StageGround` que calcula con la misma función que la física y comprueba su hash. El terreno (una malla por baldosa) y el núcleo (una malla por tramo de ~64 m de `s`) se dibujan a cualquier distancia, también junto al ojo: el color es el del triángulo (superficie y aspecto: muro, roca; cuneta y talud, tierra x 0,82; el resto, el de su superficie) y los bordes entre superficies están donde están en la geometría, sin costura. El núcleo gana al terreno con desplazamiento de polígonos (el terreno queda 5 mm bajo su borde). Hasta el lote 6 cerca del ojo (30 m) se dibujaba la rejilla en anillo de `ZoneDraw` con un color por celda de 0,25 m y salían dientes en los bordes; `StageDraw` ya no la usa (la zona de pruebas sí). El microrrelieve h de la rueda (rms 2–8 mm) ya no se dibuja en el tramo; las líneas de salida, parciales y meta siguen con h. Solo se dibuja la franja de ±60 m del terreno; trozos a menos de 600 m del ojo. La colisión de las baldosas es por triángulo (tres esquinas con colisión), no por celda con cuatro. El trozo de cada triángulo sale de su `section` y el aspecto (`StageTriangle::look`) decide el color (`platform/stage_look.h`).
 
