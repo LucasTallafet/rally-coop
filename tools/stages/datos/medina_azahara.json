@@ -1,0 +1,276 @@
+{
+  "name": "medina_azahara",
+  "length_m": 3100.0,
+  "input_points": 210,
+  "params": {
+    "step": 5.0,
+    "sigma": 14.0,
+    "k_sigma": 5.0,
+    "k_on": 0.002857142857142857,
+    "k_off": 0.00125,
+    "merge_gap": 40.0,
+    "noise_floor_deg": 12.0,
+    "k_tail": 0.0,
+    "plateau_m": 40.0,
+    "ele_sigma": 100.0
+  },
+  "direction_changes": 24,
+  "direction_changes_per_km": 7.74,
+  "hairpins": 3,
+  "radius_min_m": {
+    "n": 24,
+    "min": 17.128831934213423,
+    "p10": 19.549970762695576,
+    "median": 47.17381175615282,
+    "p90": 140.881521898224,
+    "max": 227.65443174204512,
+    "mean": 74.65001380173359
+  },
+  "angle_deg": {
+    "n": 24,
+    "min": 14.892078621691867,
+    "p10": 21.147335801436213,
+    "median": 82.49586700981745,
+    "p90": 153.8751330122083,
+    "max": 199.3778173472774,
+    "mean": 84.61820599602684
+  },
+  "change_length_m": {
+    "n": 24,
+    "min": 40.0,
+    "p10": 63.0,
+    "median": 112.5,
+    "p90": 178.5,
+    "max": 255.0,
+    "mean": 118.75
+  },
+  "straights_m": {
+    "n": 25,
+    "min": 0.0,
+    "p10": 5.0,
+    "median": 5.0,
+    "p90": 5.0,
+    "max": 140.0,
+    "mean": 10.0
+  },
+  "share_straight": 0.081,
+  "changes": [
+    {
+      "s_start": 0.0,
+      "s_end": 155.0,
+      "angle_deg": -75.0,
+      "direction": "izquierda",
+      "radius_min_m": 45.2,
+      "length_m": 155.0
+    },
+    {
+      "s_start": 160.0,
+      "s_end": 250.0,
+      "angle_deg": 159.8,
+      "direction": "derecha",
+      "radius_min_m": 17.1,
+      "length_m": 90.0
+    },
+    {
+      "s_start": 255.0,
+      "s_end": 375.0,
+      "angle_deg": -66.7,
+      "direction": "izquierda",
+      "radius_min_m": 77.5,
+      "length_m": 120.0
+    },
+    {
+      "s_start": 380.0,
+      "s_end": 510.0,
+      "angle_deg": 139.9,
+      "direction": "derecha",
+      "radius_min_m": 32.0,
+      "length_m": 130.0
+    },
+    {
+      "s_start": 515.0,
+      "s_end": 690.0,
+      "angle_deg": -125.7,
+      "direction": "izquierda",
+      "radius_min_m": 46.2,
+      "length_m": 175.0
+    },
+    {
+      "s_start": 695.0,
+      "s_end": 810.0,
+      "angle_deg": 133.0,
+      "direction": "derecha",
+      "radius_min_m": 24.4,
+      "length_m": 115.0
+    },
+    {
+      "s_start": 815.0,
+      "s_end": 980.0,
+      "angle_deg": -190.6,
+      "direction": "izquierda",
+      "radius_min_m": 17.3,
+      "length_m": 165.0
+    },
+    {
+      "s_start": 985.0,
+      "s_end": 1165.0,
+      "angle_deg": 199.4,
+      "direction": "derecha",
+      "radius_min_m": 18.6,
+      "length_m": 180.0
+    },
+    {
+      "s_start": 1170.0,
+      "s_end": 1355.0,
+      "angle_deg": -90.0,
+      "direction": "izquierda",
+      "radius_min_m": 72.2,
+      "length_m": 185.0
+    },
+    {
+      "s_start": 1360.0,
+      "s_end": 1445.0,
+      "angle_deg": 14.9,
+      "direction": "derecha",
+      "radius_min_m": 227.7,
+      "length_m": 85.0
+    },
+    {
+      "s_start": 1450.0,
+      "s_end": 1535.0,
+      "angle_deg": -94.4,
+      "direction": "izquierda",
+      "radius_min_m": 35.3,
+      "length_m": 85.0
+    },
+    {
+      "s_start": 1540.0,
+      "s_end": 1665.0,
+      "angle_deg": 94.3,
+      "direction": "derecha",
+      "radius_min_m": 41.9,
+      "length_m": 125.0
+    },
+    {
+      "s_start": 1670.0,
+      "s_end": 1725.0,
+      "angle_deg": -20.0,
+      "direction": "izquierda",
+      "radius_min_m": 125.2,
+      "length_m": 55.0
+    },
+    {
+      "s_start": 1730.0,
+      "s_end": 1770.0,
+      "angle_deg": 16.9,
+      "direction": "derecha",
+      "radius_min_m": 107.8,
+      "length_m": 40.0
+    },
+    {
+      "s_start": 1775.0,
+      "s_end": 1865.0,
+      "angle_deg": -96.3,
+      "direction": "izquierda",
+      "radius_min_m": 37.3,
+      "length_m": 90.0
+    },
+    {
+      "s_start": 1870.0,
+      "s_end": 1940.0,
+      "angle_deg": 29.4,
+      "direction": "derecha",
+      "radius_min_m": 114.0,
+      "length_m": 70.0
+    },
+    {
+      "s_start": 1945.0,
+      "s_end": 2070.0,
+      "angle_deg": -55.3,
+      "direction": "izquierda",
+      "radius_min_m": 108.2,
+      "length_m": 125.0
+    },
+    {
+      "s_start": 2075.0,
+      "s_end": 2135.0,
+      "angle_deg": 24.9,
+      "direction": "derecha",
+      "radius_min_m": 95.9,
+      "length_m": 60.0
+    },
+    {
+      "s_start": 2140.0,
+      "s_end": 2395.0,
+      "angle_deg": -48.7,
+      "direction": "izquierda",
+      "radius_min_m": 161.5,
+      "length_m": 255.0
+    },
+    {
+      "s_start": 2400.0,
+      "s_end": 2495.0,
+      "angle_deg": 23.9,
+      "direction": "derecha",
+      "radius_min_m": 146.8,
+      "length_m": 95.0
+    },
+    {
+      "s_start": 2635.0,
+      "s_end": 2810.0,
+      "angle_deg": -53.6,
+      "direction": "izquierda",
+      "radius_min_m": 127.0,
+      "length_m": 175.0
+    },
+    {
+      "s_start": 2815.0,
+      "s_end": 2895.0,
+      "angle_deg": 128.4,
+      "direction": "derecha",
+      "radius_min_m": 21.7,
+      "length_m": 80.0
+    },
+    {
+      "s_start": 2900.0,
+      "s_end": 3010.0,
+      "angle_deg": -93.1,
+      "direction": "izquierda",
+      "radius_min_m": 42.5,
+      "length_m": 110.0
+    },
+    {
+      "s_start": 3015.0,
+      "s_end": 3100.0,
+      "angle_deg": 56.5,
+      "direction": "derecha",
+      "radius_min_m": 48.2,
+      "length_m": 85.0
+    }
+  ],
+  "height": {
+    "slope_percent": {
+      "n": 620,
+      "min": 0.042051560890286055,
+      "p10": 3.446938234843117,
+      "median": 7.4967575069939585,
+      "p90": 10.63662208947244,
+      "max": 15.80323484479095,
+      "mean": 7.362362371001606
+    },
+    "slope_signed_percent": {
+      "n": 620,
+      "min": -2.957752335535133,
+      "p10": 3.446938234843117,
+      "median": 7.4967575069939585,
+      "p90": 10.63662208947244,
+      "max": 15.80323484479095,
+      "mean": 7.161290322580647
+    },
+    "ascent_m": 225.1166167505249,
+    "descent_m": 3.1166167505248836,
+    "height_min_m": 214.99999999999997,
+    "height_max_m": 437.0
+  },
+  "source_file": "medina_azahara.gpx"
+}
