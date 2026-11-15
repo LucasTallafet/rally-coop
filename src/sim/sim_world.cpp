@@ -146,15 +146,28 @@ double stage_cell(StageGroundVariant variant) {
     return variant == StageGroundVariant::DenseMesh ? 0.5 * kStageCell : kStageCell;
 }
 
+// El plano de la calzada real en el centro de s, para on_road_plane: el rumbo de la línea central,
+// la pendiente en t = d y el peralte real (sin irregularidad, la pose del esqueleto).
+StagePose road_plane(const StageTrack& track, double s) {
+    const StageRoadPose r = track.road(s);
+    StagePose p = r.pose;
+    p.heading = r.center_heading;
+    p.grade = r.center_grade;
+    return p;
+}
+
 } // namespace
 
 CarSpawn stage_spawn(const StageTrack& track, double s, float speed) {
-    const StagePose p = track.pose(s);
+    const StageRoadPose r = track.road(s);
+    const StagePose& p = r.pose;
+    // El centro de la calzada, por la normal del esqueleto (derecha N = (cos θ, sin θ)).
+    const double c = r.edges.center;
     CarSpawn spawn;
-    spawn.x = p.x;
-    spawn.y = p.y;
-    spawn.z = p.z;
-    spawn.yaw = static_cast<float>(-p.heading);
+    spawn.x = p.x + c * rmath::cos(p.heading);
+    spawn.y = r.center_y;
+    spawn.z = p.z + c * rmath::sin(p.heading);
+    spawn.yaw = static_cast<float>(-r.center_heading);
     spawn.speed = speed;
     return spawn;
 }
@@ -222,8 +235,8 @@ struct SimWorld::Impl {
     // Recolocar: mueve el coche, pone sus velocidades y el controlador a cero. En el tramo, a
     // stage_spawn(reset_s) con placed(Button).
     void reset_car();
-    // Lleva el coche quieto a stage_spawn(s), apoyado, con el controlador a cero.
-    void place_on_stage(double s);
+    // Lleva el coche quieto a stage_spawn(s), apoyado, con el controlador a cero; devuelve dónde.
+    CarSpawn place_on_stage(double s);
     // Giro de salida del coche: el de CarSpawn y, en el tramo con la salida en carretera,
     // apoyado en la pendiente y el peralte.
     JPH::Quat spawn_rotation(const CarSpawn& spawn) const;
@@ -233,7 +246,7 @@ JPH::Quat SimWorld::Impl::spawn_rotation(const CarSpawn& spawn) const {
     if (stage) {
         const StageProjection p = stage->acquire(spawn.x, spawn.z);
         if (p.on_road) {
-            return on_road_plane(stage->pose(p.s), spawn.yaw);
+            return on_road_plane(road_plane(*stage, p.s), spawn.yaw);
         }
     }
     return JPH::Quat::sRotation(JPH::Vec3::sAxisY(), spawn.yaw);
@@ -529,9 +542,8 @@ void SimWorld::step(const SimInput& input) {
             const JPH::RVec3 at = bodies.GetPosition(w.car);
             const StageRun::Step run = w.stage_run->step(at.GetX(), at.GetZ());
             if (run.shortcut) {
-                w.place_on_stage(run.reset_s);
-                const StagePose p = w.stage->pose(run.reset_s);
-                w.stage_run->placed(StagePlace::Shortcut, run.reset_s, p.x, p.z);
+                const CarSpawn spawn = w.place_on_stage(run.reset_s);
+                w.stage_run->placed(StagePlace::Shortcut, run.reset_s, spawn.x, spawn.z);
                 w.last_impact = 0.0f;
                 moved = true;
             }
@@ -543,25 +555,27 @@ void SimWorld::step(const SimInput& input) {
     }
 }
 
-void SimWorld::Impl::place_on_stage(double s) {
+CarSpawn SimWorld::Impl::place_on_stage(double s) {
     Impl& w = *this;
     JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();
     const CarSpawn spawn = stage_spawn(*w.stage, s);
     body_interface.SetPositionAndRotation(w.car, JPH::RVec3(spawn.x, spawn.y, spawn.z),
-                                          on_road_plane(w.stage->pose(s), spawn.yaw),
+                                          on_road_plane(road_plane(*w.stage, s), spawn.yaw),
                                           JPH::EActivation::Activate);
     body_interface.SetLinearAndAngularVelocity(w.car, JPH::Vec3::sZero(), JPH::Vec3::sZero());
     w.car_controller->reset();
     w.car_constraint->ResetWarmStart();
+    return spawn;
 }
 
 void SimWorld::Impl::reset_car() {
     Impl& w = *this;
     if (w.stage_run) {
         const double s = w.stage_run->state().reset_s;
-        w.place_on_stage(s);
-        const StagePose p = w.stage->pose(s);
-        w.stage_run->placed(StagePlace::Button, s, p.x, p.z);
+        // La pasada sigue desde donde queda el coche: el centro real de la calzada (con la
+        // irregularidad, a t = d del eje; sin ella, el punto del eje con los mismos bits).
+        const CarSpawn spawn = w.place_on_stage(s);
+        w.stage_run->placed(StagePlace::Button, s, spawn.x, spawn.z);
         return;
     }
     JPH::BodyInterface& body_interface = w.system.GetBodyInterfaceNoLock();

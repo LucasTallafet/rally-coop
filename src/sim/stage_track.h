@@ -35,7 +35,45 @@ struct StageProjection {
     double s = 0.0;        // en [s_begin(), s_end()]
     double t = 0.0;        // lateral en planta, + a la derecha del sentido de avance
     double distance = 0.0; // en planta, al punto del eje: |t| salvo más allá de los extremos
-    bool on_road = false;  // pie perpendicular y |t| ≤ semiancho de ese lado + arcén
+    bool on_road = false;  // pie perpendicular y t entre los bordes exteriores reales del núcleo
+};
+
+// Los bordes reales del núcleo en una s (tarea irregularidad): sobre la normal del esqueleto, el
+// centro de la calzada en t = center, la calzada de center − half_left a center + half_right y
+// los arcenes, de shoulder_* de ancho, por fuera. Sin irregularidad: center 0, los semianchos del
+// esqueleto y arcenes de kStageShoulderWidth, con los mismos bits.
+struct StageRoadEdges {
+    double center = 0.0;
+    double half_left = 0.0;
+    double half_right = 0.0;
+    double shoulder_left = 0.0;
+    double shoulder_right = 0.0;
+
+    // |t| del borde exterior del arcén de un lado (−1 izquierda, +1 derecha) desde el eje del
+    // esqueleto.
+    double outer(int side) const {
+        return side > 0 ? (center + half_right) + shoulder_right
+                        : (half_left - center) + shoulder_left;
+    }
+};
+
+// La calzada real en una s (StageTrack::road). `pose` es la del esqueleto (s, x, z, rumbo,
+// curvatura y superficie, sin cambios) salvo:
+// - y, grade y vertical_curvature: los del plano de la calzada en t = 0 (y0 = y + z − β·d; el plano
+//   es Y = y0 + bank·t, con t por la normal del esqueleto), no los del centro;
+// - bank: el peralte real (el del esqueleto + β);
+// - half_width_left/right: la distancia real del eje del esqueleto a cada borde de la calzada
+//   (half_left − center y center + half_right).
+// En las prolongaciones, como pose(): las ondas siguen, la escala es la del extremo y el apagado,
+// el de la distancia a las curvas cerradas.
+struct StageRoadPose {
+    StagePose pose;
+    StageRoadEdges edges;
+    double center_heading = 0.0; // rumbo de la línea central: rumbo + atan2(d', 1 − κ·d)
+    double center_y = 0.0;       // altura del centro de la calzada (y0 + bank·d)
+    double center_grade = 0.0;   // pendiente en t = d a lo largo de s
+    double bank_rate = 0.0;      // β' (solo la parte de la irregularidad)
+    double bank_rate2 = 0.0;     // β''
 };
 
 // StageAxis + prolongaciones + índice espacial + validación; todo al cargar.
@@ -50,8 +88,15 @@ public:
     double s_end() const { return axis_.length() + kStageRunoffLength; }
     // Con prolongaciones; s acotada a [s_begin, s_end] (NaN da s_begin). Sin reservas.
     StagePose pose(double s) const;
-    // Semiancho + arcén; side −1 izquierda, +1 derecha.
+    // |t| del borde exterior real del núcleo (calzada y arcén con la irregularidad); side −1
+    // izquierda, +1 derecha.
     double core_half_width(double s, int side) const;
+    // Los bordes reales del núcleo en la s de `skeleton` (su pose del esqueleto). Sin reservas: es
+    // lo que se lee en el paso.
+    StageRoadEdges road_edges(const StagePose& skeleton) const;
+    // La calzada real en s, con sus derivadas (al cargar y al recolocar). Sin reservas.
+    StageRoadPose road(double s) const;
+    const StageIrregularity& irregularity() const { return irregularity_; }
     // La proyección más cercana de (x, z) con s en [s_lo, s_hi] (acotada al tramo): exacta en
     // rectas y arcos, Newton en clotoides. Sin reservas.
     StageProjection project(double x, double z, double s_lo, double s_hi) const;
@@ -112,8 +157,12 @@ private:
     const Cell* find_cell(double x, double z) const;
     // Tras parse: piezas, muestras, validación e índice. Error «s = …: …» o vacío.
     std::string prepare();
+    // Los límites de la irregularidad (sim/stage_irregularity.h) sobre todo [s_begin, s_end].
+    // Error «s = …: …» o vacío; sin ondas, vacío sin mirar nada.
+    std::string validate_irregularity() const;
 
     StageAxis axis_;
+    StageIrregularity irregularity_;
     std::vector<Piece> pieces_;
     std::vector<double> sample_s_; // muestras de todo [s_begin, s_end] a ≤ 0,5 m
     std::vector<double> sample_x_;

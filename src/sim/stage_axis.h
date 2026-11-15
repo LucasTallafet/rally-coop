@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sim/stage_irregularity.h"
 #include "sim/surface.h"
 
 #include <cstddef>
@@ -10,16 +11,24 @@
 
 namespace rally::sim {
 
-// Eje de un tramo escrito en el formato de tramo 1 (.stage; mensajes/lote-3.md §2.3 y
+// Eje de un tramo escrito en el formato de tramo 1 o 2 (.stage; mensajes/lote-3.md §2.3 y
 // docs/02-arquitectura.md §6.1): planta por primitivas (recta, arco y clotoide), alzado por PIV
 // con curvas verticales parabólicas, peralte y semianchos lineales entre puntos y superficie por
-// tramos. Es el esqueleto del tramo: sin irregularidad, sin Jolt y sin dibujo.
+// tramos. Es el esqueleto del tramo: sin Jolt y sin dibujo. El formato 2 admite además la sección
+// [irregularity] (sim/stage_irregularity.h), que se lee aquí y no cambia pose().
 //
 // Ejes del mundo como en sim/zone_axis.h: x al este, z al sur, y arriba; rumbo 0 hacia −z,
 // positivo a la derecha; curvatura y R positivos a la derecha. Todo se calcula al cargar; pose()
 // solo busca e integra, y no reserva memoria.
 
-inline constexpr int kStageFormatVersion = 1;
+// El mayor formato que se lee (se leen el 1 y el 2).
+inline constexpr int kStageFormatVersion = 2;
+
+// El texto del mismo tramo sin la sección [irregularity] (tarea irregularidad: la tecla que la
+// quita para comparar). Quita sus líneas, de la cabecera a la siguiente sección o al final, con
+// las reglas del parser (comentarios con #, espacios y CR); el resto sale igual, byte a byte. Un
+// texto sin la sección sale igual. Puro: no lee archivos ni valida.
+std::string stage_text_without_irregularity(std::string_view text);
 
 // Punto del eje a una distancia s de la salida.
 struct StagePose {
@@ -70,9 +79,12 @@ public:
     // cambios, s_break es +∞ y las dos son la única superficie. Sin reservas.
     void surface_change_near(double s, double& s_break, Surface& before, Surface& after) const;
     // FNV-1a de los datos leídos, campo a campo (todo menos el nombre): el mismo tramo da el
-    // mismo hash en cualquier PC.
+    // mismo hash en cualquier PC. Empieza por el formato del archivo; en el formato 2 acaba con la
+    // sección [irregularity] (si está y sus datos).
     std::uint64_t hash() const;
     const std::string& name() const { return name_; }
+    int format() const { return format_; }
+    const StageIrregularitySpec& irregularity() const { return irregularity_; }
 
 private:
     // Inicio de cada primitiva y, en las clotoides, sus nodos de posición.
@@ -119,6 +131,8 @@ private:
     void build();
 
     std::string name_;
+    int format_ = 1;
+    StageIrregularitySpec irregularity_;
     double start_x_ = 0.0;
     double start_z_ = 0.0;
     double start_heading_ = 0.0; // rad

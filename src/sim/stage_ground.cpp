@@ -113,7 +113,8 @@ struct Origin {
 };
 
 FanPoint fan_point(const StageTrack& track, double s, const Origin& o) {
-    const StagePose p = track.pose(s);
+    // El plano real de la calzada (y en t = 0 con la irregularidad; la planta, la del esqueleto).
+    const StagePose p = track.road(s).pose;
     FanPoint f;
     f.s = s;
     f.x = p.x - o.x;
@@ -668,23 +669,57 @@ std::vector<double> section_positions(const StageTrack& track, const StageMeshDe
         const double curvature =
             rmath::max(rmath::abs(pa.curvature),
                        rmath::max(rmath::abs(pm.curvature), rmath::abs(pb.curvature)));
+        // La irregularidad en el tramo (cotas analíticas, sim/stage_irregularity.h): lo que mueve
+        // el núcleo (centro y onda larga), el arcén (onda corta), el peralte y la altura. Sin
+        // irregularidad, todo 0: cada término de abajo suma un 0 exacto.
+        const StageIrregularity& irr = track.irregularity();
+        const StageChannelBound bd = irr.bound(StageChannel::Axis, a, b);
+        const StageChannelBound bwl = irr.bound(StageChannel::WidthLeft, a, b);
+        const StageChannelBound bwr = irr.bound(StageChannel::WidthRight, a, b);
+        const StageChannelBound bel = irr.bound(StageChannel::EdgeLeft, a, b);
+        const StageChannelBound ber = irr.bound(StageChannel::EdgeRight, a, b);
+        const StageChannelBound bb = irr.bound(StageChannel::Bank, a, b);
+        const StageChannelBound bz = irr.bound(StageChannel::Height, a, b);
+        // Cotas de |t|, |t'| y |t''| que la irregularidad añade a la línea más exterior (cubre las
+        // de dentro).
+        const double t0 = bd.v + rmath::max(bwl.v + bel.v, bwr.v + ber.v);
+        const double t1 = bd.d1 + rmath::max(bwl.d1 + bel.d1, bwr.d1 + ber.d1);
+        const double t2 = bd.d2 + rmath::max(bwl.d2 + bel.d2, bwr.d2 + ber.d2);
+        // La de las líneas hasta el borde de la calzada (sin la onda corta del arcén).
+        const double t2_road = bd.d2 + rmath::max(bwl.d2, bwr.d2);
+        const double t2_edge = rmath::max(bel.d2, ber.d2);
         const double half = rmath::max(rmath::max(pa.half_width_left, pa.half_width_right),
-                                       rmath::max(pb.half_width_left, pb.half_width_right));
+                                       rmath::max(pb.half_width_left, pb.half_width_right)) +
+                            t0;
         const double edge = half + kStageShoulderWidth + reach;
-        const double bank_rate = rmath::abs(pb.bank - pa.bank) / span;
+        const double bank_rate = rmath::abs(pb.bank - pa.bank) / span + bb.d1;
         const double width_rate =
             rmath::max(rmath::abs(pb.half_width_left - pa.half_width_left),
                        rmath::abs(pb.half_width_right - pa.half_width_right)) /
-            span;
+                span +
+            t1;
         double step = density.max_step;
-        if (curvature > 0.0) {
-            // Sagita de la línea de arcén exterior: Δs²·κ·(1 + κ·e)/8.
-            step = rmath::min(step, rmath::sqrt(8.0 * density.chord_plan /
-                                                (curvature * (1.0 + curvature * edge))));
+        // Curvatura en planta de la línea de arcén exterior: κ·(1 + κ·e) y t'' sin la onda corta
+        // del borde, con la cuerda de la calzada (chord_plan).
+        const double plan_curvature = curvature * (1.0 + curvature * edge) + t2_road;
+        if (plan_curvature > 0.0) {
+            // Sagita: Δs²·(κ·(1 + κ·e) + t'')/8.
+            step = rmath::min(step, rmath::sqrt(8.0 * density.chord_plan / plan_curvature));
         }
-        // y'' de cada línea: y'' + 2·peralte'·semiancho' (peralte y semianchos lineales).
+        // Con la onda corta del borde (ε), la línea exterior del arcén y lo que va más allá (la
+        // banda), con su propia cuerda, chord_edge: separan el arcén de la cuneta, fuera de la
+        // calzada (respuesta del consultor a la parte A de irregularidad, §1.1). Sin ε no actúa.
+        if (t2_edge > 0.0) {
+            step = rmath::min(step,
+                              rmath::sqrt(8.0 * density.chord_edge / (plan_curvature + t2_edge)));
+        }
+        // y'' de cada línea: y'' + 2·peralte'·semiancho' (peralte y semianchos lineales) y, con la
+        // irregularidad, z'' − (β·d)'' + β''·t + 2·β'·t' + peralte·t'' (sus cotas).
+        const double bank_max = rmath::max(rmath::abs(pa.bank), rmath::abs(pb.bank)) + bb.v;
+        const double irregular_height = bz.d2 + bb.d2 * bd.v + 2.0 * bb.d1 * bd.d1 + bb.v * bd.d2 +
+                                        bb.d2 * edge + bank_max * t2;
         const double line_curvature =
-            rmath::abs(pm.vertical_curvature) + 2.0 * bank_rate * width_rate;
+            rmath::abs(pm.vertical_curvature) + 2.0 * bank_rate * width_rate + irregular_height;
         if (line_curvature > 0.0) {
             step = rmath::min(step, rmath::sqrt(8.0 * density.chord_height / line_curvature));
         }
@@ -707,13 +742,16 @@ std::vector<double> section_positions(const StageTrack& track, const StageMeshDe
 //   H_ττ = (y'' + κ'·t·S_s/ρ − ρ·κ·peralte)/ρ²,  H_τn = (peralte' + κ·S_s/ρ)/ρ,  H_nn = 0,
 // con S_s = pendiente + peralte'·t (peralte lineal a trozos: sin peralte''). Solo él deja la
 // cuerda de una celda por encima de S: I(f) − f = ½·Σ λᵢ·(vᵢ − x)ᵀH(vᵢ − x) ≤ ½·R²·máx(0, λ).
-double surface_hessian(const StagePose& p, double curvature_rate, double bank_rate, double t) {
+// Con la irregularidad, el peralte deja de ser lineal: su segunda derivada (β'') suma bank_rate2·t
+// a y'' (0 sin ella: los mismos bits).
+double surface_hessian(const StagePose& p, double curvature_rate, double bank_rate, double t,
+                       double bank_rate2 = 0.0) {
     constexpr double kMinRho = 0.05;
     const double rho = rmath::max(1.0 - p.curvature * t, kMinRho);
     const double along = p.grade + bank_rate * t;
-    const double a =
-        (p.vertical_curvature + curvature_rate * t * along / rho - rho * p.curvature * p.bank) /
-        (rho * rho);
+    const double a = (p.vertical_curvature + bank_rate2 * t + curvature_rate * t * along / rho -
+                      rho * p.curvature * p.bank) /
+                     (rho * rho);
     const double c = (bank_rate + p.curvature * along / rho) / rho;
     return 0.5 * (a + rmath::sqrt(a * a + 4.0 * c * c));
 }
@@ -801,17 +839,23 @@ struct BandSection {
 BandSection band_section(const StageTrack& track, double s) {
     BandSection out;
     out.s = s;
-    const StagePose p = track.pose(s);
+    // La calzada real (sim/stage_track.h): los vértices en la normal del esqueleto, en las t de
+    // sus bordes, y en su plano (y0 + peralte·t). Sin irregularidad, las mismas t y alturas.
+    const StageRoadPose road = track.road(s);
+    const StagePose& p = road.pose;
+    const StageRoadEdges& edges = road.edges;
     out.curvature = p.curvature;
     const double nx = rmath::cos(p.heading);
     const double nz = rmath::sin(p.heading);
-    const double ts[kStageCoreVertices] = {-(p.half_width_left + kStageShoulderWidth),
-                                           -p.half_width_left, 0.0, p.half_width_right,
-                                           p.half_width_right + kStageShoulderWidth};
+    const double road_left = edges.center - edges.half_left;
+    const double road_right = edges.center + edges.half_right;
+    const double ts[kStageCoreVertices] = {road_left - edges.shoulder_left, road_left, edges.center,
+                                           road_right, road_right + edges.shoulder_right};
     for (int j = 0; j < kStageCoreVertices; ++j) {
         out.core[j] = BandPoint{p.x + ts[j] * nx, p.y + p.bank * ts[j], p.z + ts[j] * nz};
     }
-    const BandPoint& axis = out.core[2];
+    // La distancia de E al eje del esqueleto (el vértice central es el centro de la calzada).
+    const BandPoint axis{p.x, p.y, p.z};
     for (int lane = 0; lane < 2; ++lane) {
         const BandPoint& e = out.core[lane == 0 ? 0 : 4];
         const BandPoint& r = out.core[lane == 0 ? 1 : 3];
@@ -1702,7 +1746,8 @@ std::shared_ptr<StageBandCache> solve_band(const StageTrack& track,
 
 bool same_density(const StageMeshDensity& a, const StageMeshDensity& b) {
     return a.max_step == b.max_step && a.chord_plan == b.chord_plan &&
-           a.chord_height == b.chord_height && a.ditch_segments == b.ditch_segments;
+           a.chord_edge == b.chord_edge && a.chord_height == b.chord_height &&
+           a.ditch_segments == b.ditch_segments;
 }
 
 } // namespace
@@ -1742,21 +1787,24 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
     // ½·M·R², con R² = (kStageCell/√2)².
     const double half_r2 = 0.25 * kStageCell * kStageCell;
     constexpr double kProbe = 0.01;
-    const auto side_edge = [offset](const StagePose& p, int side) {
-        return (side > 0 ? p.half_width_right : p.half_width_left) + kStageShoulderWidth + offset;
+    // El borde real del núcleo y el plano real de la calzada (sim/stage_track.h, StageRoadPose):
+    // sin irregularidad, los del esqueleto con los mismos bits.
+    const auto side_edge = [offset](const StageRoadPose& r, int side) {
+        return r.edges.outer(side) + offset;
     };
     for (std::size_t i = 0; i < count; ++i) {
         const double s = rmath::min(s0_ + static_cast<double>(i) * kStageCellErrorStep, s1);
-        const StagePose p = track.pose(s);
+        const StageRoadPose road = track.road(s);
+        const StagePose& p = road.pose;
         const double lo = rmath::max(s - kProbe, s0_);
         const double hi = rmath::min(s + kProbe, s1);
-        const StagePose pl = track.pose(lo);
-        const StagePose ph = track.pose(hi);
+        const StagePose pl = track.road(lo).pose;
+        const StagePose ph = track.road(hi).pose;
         const double bank_rate = (ph.bank - pl.bank) / (hi - lo);
         const double curvature_rate = (ph.curvature - pl.curvature) / (hi - lo);
         for (const int side : {-1, 1}) {
             double m = 0.0;
-            const double edge = side_edge(p, side);
+            const double edge = side_edge(road, side);
             // La banda del lado del núcleo, de edge − d₁ a edge.
             for (int k = 0; k <= 4; ++k) {
                 const double t =
@@ -1767,7 +1815,8 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
                 if (1.0 - p.curvature * t < kMinFreeRho) {
                     continue;
                 }
-                m = rmath::max(m, surface_hessian(p, curvature_rate, bank_rate, t));
+                m = rmath::max(m,
+                               surface_hessian(p, curvature_rate, bank_rate, t, road.bank_rate2));
             }
             raw_[side > 0 ? 1 : 0][i] = half_r2 * m;
         }
@@ -1779,10 +1828,12 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
         if (b - kSide <= s0_ || b + kSide >= s1) {
             continue;
         }
-        const StagePose before = track.pose(b - kJoint);
-        const StagePose after = track.pose(b + kJoint);
-        const double bank_before = (before.bank - track.pose(b - kSide).bank) / (kSide - kJoint);
-        const double bank_after = (track.pose(b + kSide).bank - after.bank) / (kSide - kJoint);
+        const StagePose before = track.road(b - kJoint).pose;
+        const StageRoadPose after_road = track.road(b + kJoint);
+        const StagePose& after = after_road.pose;
+        const double bank_before =
+            (before.bank - track.road(b - kSide).pose.bank) / (kSide - kJoint);
+        const double bank_after = (track.road(b + kSide).pose.bank - after.bank) / (kSide - kJoint);
         const double jump_grade = after.grade - before.grade;
         const double jump_bank = bank_after - bank_before;
         const auto index =
@@ -1790,7 +1841,7 @@ StageCellError::StageCellError(const StageTrack& track, double offset) {
         for (const int side : {-1, 1}) {
             // Solo un quiebro que sube (∂S/∂s crece) deja la cuerda por encima de S: el mayor en
             // la banda de ±d₁ del lado de dentro del final.
-            const double t = static_cast<double>(side) * side_edge(after, side);
+            const double t = static_cast<double>(side) * side_edge(after_road, side);
             const double t_in = t - static_cast<double>(side) * kStageEdgeBand;
             const double jump = rmath::max(
                 0.0, rmath::max(jump_grade + jump_bank * t_in, jump_grade + jump_bank * t));
@@ -2294,14 +2345,15 @@ StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, doub
     double heading = 0.0;
     local_projection(pose, x, z, s, t, heading);
     s = rmath::clamp(s, track.s_begin(), track.s_end());
-    const double edge =
-        (t >= 0.0 ? pose.half_width_right : pose.half_width_left) + kStageShoulderWidth;
-    if (rmath::abs(t) > edge + 0.5 * kStageReliefBlend) {
+    // Los bordes reales del núcleo (con la irregularidad) en la s de la pasada.
+    StageRoadEdges edges = track.road_edges(pose);
+    if (rmath::abs(t) > edges.outer(t >= 0.0 ? 1 : -1) + 0.5 * kStageReliefBlend) {
         // Fuera de este núcleo y de su franja: en la calzada, el arcén o la franja de mezcla de
         // otra pasada, la suya (sin la franja, h saltaría al entrar en el arcén de la otra).
         StageProjection other;
         if (track.on_any_road(x, z, other, 0.5 * kStageReliefBlend)) {
             pose = track.pose(other.s);
+            edges = track.road_edges(pose);
             s = other.s;
             t = other.t;
             heading = pose.heading;
@@ -2312,8 +2364,11 @@ StageReliefFrame stage_relief_frame(const StageTrack& track, double s_hint, doub
     f.t = t;
     f.tx = rmath::sin(heading);
     f.tz = -rmath::cos(heading);
-    f.half_left = pose.half_width_left;
-    f.half_right = pose.half_width_right;
+    f.center = edges.center;
+    f.half_left = edges.half_left;
+    f.half_right = edges.half_right;
+    f.shoulder_left = edges.shoulder_left;
+    f.shoulder_right = edges.shoulder_right;
     track.axis().surface_change_near(s, f.surface_break, f.before, f.after);
     return f;
 }
@@ -2331,9 +2386,12 @@ double stage_relief_height(const StageReliefFrame& f, const TestZone& noise, dou
         }
         return noise.surface_noise(d < 0.0 ? f.before : f.after, x, z);
     };
-    const double a = rmath::abs(t);
-    const double w = t >= 0.0 ? f.half_right : f.half_left;
-    const double e = w + kStageShoulderWidth;
+    // Desde el centro real de la calzada, con el arcén real de ese lado.
+    const double from_center = t - f.center;
+    const double a = rmath::abs(from_center);
+    const bool right = from_center >= 0.0;
+    const double w = right ? f.half_right : f.half_left;
+    const double e = w + (right ? f.shoulder_right : f.shoulder_left);
     if (a < w - kHalf) {
         return road();
     }

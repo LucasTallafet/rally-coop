@@ -13,6 +13,7 @@ add_library(rally_sim STATIC
     sim_world.cpp
     stage_axis.cpp
     stage_ground.cpp
+    stage_irregularity.cpp
     stage_track.cpp
     steer_assist.cpp
     test_road.cpp

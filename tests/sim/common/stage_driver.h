@@ -36,6 +36,58 @@ inline const std::string& lazadas_stage_text() {
     return text;
 }
 
+// data/stages/lazadas_irregular.stage (tarea irregularidad): el tramo del juego con la capa de
+// irregularidad. Solo lo usan los tests de tests/sim (lote-7.md §2.1).
+inline const std::string& lazadas_irregular_stage_text() {
+    static const std::string text = [] {
+        std::string bytes;
+        std::string error;
+        RALLY_CHECK(rally::io::read_file(RALLY_SOURCE_DIR "/data/stages/lazadas_irregular.stage",
+                                         bytes, error),
+                    "tests: no se puede leer data/stages/lazadas_irregular.stage");
+        return bytes;
+    }();
+    return text;
+}
+
+// `text` (un .stage del formato 1) en el formato 2, con la sección [irregularity] de cuerpo `body`
+// al final (sin sección si `body` está vacío).
+inline std::string with_irregularity(const std::string& text, const std::string& body) {
+    std::string out = text;
+    const std::size_t at = out.find("format = 1");
+    RALLY_CHECK(at != std::string::npos, "tests: el tramo no es del formato 1");
+    out.replace(at, 10, "format = 2");
+    if (!body.empty()) {
+        out += "\n[irregularity]\n" + body;
+    }
+    return out;
+}
+
+// `text` (formato 1) en el formato 2 con una sección [irregularity] cuyas cinco componentes tienen
+// amplitud 0 y con dos puntos de escala: todo el camino nuevo activo (premisa P1 de irregularidad
+// y revisión del plan, cambio 1) sin mover nada.
+inline std::string with_zero_irregularity(const std::string& text) {
+    return with_irregularity(text, "seed 20261113\naxis 0 40 120\nwidth 0 40 150\nedge 0 4 8\n"
+                                   "bank 0 30 150\nheight 0 20 60\nscale 0 1\nscale 600 0.5\n");
+}
+
+// `text` (formato 1) en el formato 2 con la sección [irregularity] de lazadas_irregular.stage
+// (para el sintético de 30 km de las premisas P2 y P5).
+inline std::string with_irregularity_of_lazadas(const std::string& text) {
+    std::string out = text;
+    const std::size_t at = out.find("format = 1");
+    RALLY_CHECK(at != std::string::npos, "tests: el tramo no es del formato 1");
+    out.replace(at, 10, "format = 2");
+    const std::string& irregular = lazadas_irregular_stage_text();
+    const std::size_t section = irregular.find("[irregularity]");
+    RALLY_CHECK(section != std::string::npos, "tests: lazadas_irregular sin [irregularity]");
+    // Sin la escala de la recta de meta de lazadas (sus s no son las de otro tramo): las líneas
+    // hasta la primera «scale».
+    const std::size_t scale = irregular.find("scale", section);
+    out += "\n" + irregular.substr(section, scale - section);
+    return out;
+}
+
 inline std::string stage_number(double value) {
     std::array<char, 64> buffer{};
     const std::to_chars_result r =

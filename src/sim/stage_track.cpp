@@ -56,22 +56,27 @@ std::int32_t cell_coord(double v, double size) {
     return static_cast<std::int32_t>(rmath::floor(v / size));
 }
 
-// Número con dos decimales (para los errores «s = …»).
-std::string fixed2(double value) {
+// Número con `digits` decimales (para los errores «s = …»).
+std::string fixed(double value, int digits) {
     std::array<char, 64> buffer{};
     const std::to_chars_result r = std::to_chars(buffer.data(), buffer.data() + buffer.size(),
-                                                 value, std::chars_format::fixed, 2);
+                                                 value, std::chars_format::fixed, digits);
     return std::string(buffer.data(), r.ptr);
+}
+
+std::string fixed2(double value) { return fixed(value, 2); }
+
+// Paso de la validación de un canal de la irregularidad: 0,25 m o λmin/16 si es menor (con 16
+// muestras por onda, el máximo de una sinusoide muestreada queda a ≤ 2 % del real).
+double irregularity_probe(const StageIrregularity& irr, StageChannel channel) {
+    const double lambda = irr.wavelength_min(channel);
+    return lambda > 0.0 ? rmath::min(0.25, lambda / 16.0) : 0.25;
 }
 
 StageParseResult fail_at(double s, const std::string& message) {
     StageParseResult result;
     result.error = "s = " + fixed2(s) + ": " + message;
     return result;
-}
-
-double side_core(const StagePose& p, int side) {
-    return (side > 0 ? p.half_width_right : p.half_width_left) + kStageShoulderWidth;
 }
 
 } // namespace
@@ -101,7 +106,59 @@ StagePose StageTrack::pose(double s) const {
     return p;
 }
 
-double StageTrack::core_half_width(double s, int side) const { return side_core(pose(s), side); }
+double StageTrack::core_half_width(double s, int side) const {
+    return road_edges(pose(s)).outer(side);
+}
+
+StageRoadEdges StageTrack::road_edges(const StagePose& skeleton) const {
+    // Solo los canales de los bordes: es lo que se lee en el paso.
+    const std::array<double, kStageChannelCount> o =
+        irregularity_.values(skeleton.s, kStageEdgeChannelCount);
+    StageRoadEdges e;
+    e.center = o[static_cast<std::size_t>(StageChannel::Axis)];
+    e.half_left = skeleton.half_width_left + o[static_cast<std::size_t>(StageChannel::WidthLeft)];
+    e.half_right =
+        skeleton.half_width_right + o[static_cast<std::size_t>(StageChannel::WidthRight)];
+    e.shoulder_left = kStageShoulderWidth + o[static_cast<std::size_t>(StageChannel::EdgeLeft)];
+    e.shoulder_right = kStageShoulderWidth + o[static_cast<std::size_t>(StageChannel::EdgeRight)];
+    return e;
+}
+
+StageRoadPose StageTrack::road(double s) const {
+    StageRoadPose r;
+    r.pose = pose(s);
+    StagePose& p = r.pose;
+    r.edges = road_edges(p);
+    const StageJet d = irregularity_.jet(StageChannel::Axis, p.s);
+    const StageJet beta = irregularity_.jet(StageChannel::Bank, p.s);
+    const StageJet z = irregularity_.jet(StageChannel::Height, p.s);
+    // El ritmo del peralte del esqueleto (lineal a trozos), solo para la pendiente del centro: va
+    // multiplicado por d.
+    constexpr double kProbe = 0.01;
+    const double skeleton_bank_rate =
+        (pose(p.s + kProbe).bank - pose(p.s - kProbe).bank) / (2.0 * kProbe);
+    // Centro: sobre el plano del esqueleto y con la ondulación; el plano real en t = 0,
+    // y0 = y + z − β·d (el peralte añadido gira alrededor del centro). Sin irregularidad, cada
+    // término nuevo es un 0 exacto: los mismos bits.
+    const double y0 = p.y + z.v - beta.v * d.v;
+    const double y0_1 = p.grade + z.d1 - (beta.d1 * d.v + beta.v * d.d1);
+    const double y0_2 =
+        p.vertical_curvature + z.d2 - (beta.d2 * d.v + 2.0 * beta.d1 * d.d1 + beta.v * d.d2);
+    const double bank = p.bank + beta.v;
+    const double turn = rmath::atan2(d.d1, 1.0 - p.curvature * d.v);
+    r.center_heading = turn != 0.0 ? p.heading + turn : p.heading;
+    r.center_y = y0 + bank * d.v;
+    r.center_grade = y0_1 + (skeleton_bank_rate + beta.d1) * d.v + bank * d.d1;
+    r.bank_rate = beta.d1;
+    r.bank_rate2 = beta.d2;
+    p.y = y0;
+    p.grade = y0_1;
+    p.vertical_curvature = y0_2;
+    p.bank = bank;
+    p.half_width_left = r.edges.half_left - r.edges.center;
+    p.half_width_right = r.edges.center + r.edges.half_right;
+    return r;
+}
 
 StageProjection StageTrack::finish(double x, double z, double s, double margin) const {
     const StagePose p = pose(s);
@@ -116,7 +173,7 @@ StageProjection StageTrack::finish(double x, double z, double s, double margin) 
     out.t = dx * cos_h + dz * sin_h;
     out.distance = rmath::sqrt(dx * dx + dz * dz);
     out.on_road = rmath::abs(along) <= kPerpendicularTolerance &&
-                  rmath::abs(out.t) <= side_core(p, out.t >= 0.0 ? 1 : -1) + margin;
+                  rmath::abs(out.t) <= road_edges(p).outer(out.t >= 0.0 ? 1 : -1) + margin;
     return out;
 }
 
@@ -422,6 +479,7 @@ StageParseResult StageTrack::build(std::string_view text, StageTrack& out) {
     if (!parsed.ok) {
         return parsed;
     }
+    track.irregularity_ = StageIrregularity::build(track.axis_.irregularity(), track.axis_);
     std::string error = track.prepare();
     if (error.empty()) {
         // Validación 3 (formato 2): la banda de entorno cabe entre las pasadas; se guarda para
@@ -439,8 +497,82 @@ StageParseResult StageTrack::build(std::string_view text, StageTrack& out) {
     return result;
 }
 
+std::string StageTrack::validate_irregularity() const {
+    if (!irregularity_.has_waves()) {
+        return {};
+    }
+    // Los límites de curvatura y de ritmo, con las derivadas analíticas, muestreando cada canal a
+    // ≤ λmin/16 (docs/05, 2026-11-12: la desviación del eje y la ondulación se limitan por su
+    // curvatura). Lo medido, × kStageIrregularityProbeMargin (lo que el paso λmin/16 puede
+    // subestimar el máximo de una onda, 1 − cos(π/16) < 2 %), frente al límite; no la cota
+    // analítica, que supone las ondas en fase (respuesta del consultor a la parte A, §1.4). El
+    // error dice la s, lo medido, el límite y qué bajar.
+    struct Limit {
+        StageChannel channel;
+        bool second; // la segunda derivada (si no, la primera)
+        double limit;
+        double unit; // para el mensaje
+        int digits;
+        const char* what;
+        const char* units;
+        const char* fix;
+    };
+    const Limit limits[] = {
+        {StageChannel::Axis, true, kStageAxisOffsetMaxCurvature, 1.0, 4,
+         "la desviación del eje curva", " m⁻¹", "baja 'axis' o alarga su onda"},
+        {StageChannel::Height, true, kStageHeightMaxCurvature, 1.0, 4, "la ondulación curva",
+         " m⁻¹", "baja 'height' o alarga su onda"},
+        {StageChannel::Bank, false, kStageBankMaxRate, 100.0, 2, "el peralte añadido cambia",
+         " %/m", "baja 'bank' o alarga su onda"},
+    };
+    for (const Limit& l : limits) {
+        const double step = irregularity_probe(irregularity_, l.channel);
+        const auto count = static_cast<std::int64_t>(rmath::ceil((s_end() - s_begin()) / step));
+        for (std::int64_t i = 0; i <= count; ++i) {
+            const double s = rmath::min(s_begin() + static_cast<double>(i) * step, s_end());
+            const StageJet j = irregularity_.jet(l.channel, s);
+            const double value = rmath::abs(l.second ? j.d2 : j.d1) * kStageIrregularityProbeMargin;
+            if (value > l.limit) {
+                return fail_at(s, std::string(l.what) + " " + fixed(value * l.unit, l.digits) +
+                                      l.units + " y el límite es " +
+                                      fixed(l.limit * l.unit, l.digits) + l.units + ": " + l.fix)
+                    .error;
+            }
+        }
+    }
+    // El eje del esqueleto dentro de la calzada y los arcenes de ≥ kStageMinShoulderWidth.
+    double step = 0.25;
+    for (const StageChannel c :
+         {StageChannel::Axis, StageChannel::WidthLeft, StageChannel::WidthRight,
+          StageChannel::EdgeLeft, StageChannel::EdgeRight}) {
+        step = rmath::min(step, irregularity_probe(irregularity_, c));
+    }
+    const auto count = static_cast<std::int64_t>(rmath::ceil((s_end() - s_begin()) / step));
+    for (std::int64_t i = 0; i <= count; ++i) {
+        const double s = rmath::min(s_begin() + static_cast<double>(i) * step, s_end());
+        const StageRoadEdges e = road_edges(pose(s));
+        if (!(e.half_left - e.center > 0.0) || !(e.center + e.half_right > 0.0)) {
+            return fail_at(s, "el centro de la calzada se aparta " + fixed2(e.center) +
+                                  " m: el eje del tramo queda fuera de la calzada")
+                .error;
+        }
+        for (const int side : {-1, 1}) {
+            const double shoulder = side > 0 ? e.shoulder_right : e.shoulder_left;
+            if (shoulder < kStageMinShoulderWidth) {
+                return fail_at(s, std::string("el arcén ") + (side > 0 ? "derecho" : "izquierdo") +
+                                      " mide " + fixed2(shoulder) + " m (mínimo 0.50)")
+                    .error;
+            }
+        }
+    }
+    return {};
+}
+
 std::string StageTrack::prepare() {
     const double length = axis_.length();
+    if (std::string error = validate_irregularity(); !error.empty()) {
+        return error;
+    }
 
     // Piezas: entrada, primitivas y frenada.
     {
@@ -508,12 +640,13 @@ std::string StageTrack::prepare() {
     std::vector<double> core_right;
     const auto add_sample = [&](double s) {
         const StagePose p = pose(s);
+        const StageRoadEdges e = road_edges(p);
         sample_s_.push_back(s);
         sample_x_.push_back(p.x);
         sample_z_.push_back(p.z);
         sample_heading.push_back(p.heading);
-        core_left.push_back(side_core(p, -1));
-        core_right.push_back(side_core(p, 1));
+        core_left.push_back(e.outer(-1));
+        core_right.push_back(e.outer(1));
         core_max_ = rmath::max(core_max_, rmath::max(core_left.back(), core_right.back()));
     };
     for (Piece& piece : pieces_) {

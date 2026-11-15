@@ -102,9 +102,10 @@ struct WorldDesc {
     bool stage_micro_relief = true;
 };
 
-// Salida en el eje del tramo en `s`, apoyada (el origen del coche en la calzada) y mirando en el
-// sentido de la marcha, a `speed` m/s. En un mundo con tramo, build() y la recolocación giran
-// además el coche con la pendiente y el peralte del tramo en ese punto.
+// Salida en el centro de la calzada real del tramo en `s` (StageTrack::road: a t = d(s) del eje,
+// en el eje sin irregularidad), apoyada (el origen del coche en la calzada) y mirando por su línea
+// central en el sentido de la marcha, a `speed` m/s. En un mundo con tramo, build() y la
+// recolocación giran además el coche con la pendiente y el peralte reales en ese punto.
 CarSpawn stage_spawn(const StageTrack& track, double s, float speed = 0.0f);
 
 // Lo que hay bajo (x, z) en el suelo de la zona, según Jolt (un rayo vertical).

@@ -656,6 +656,190 @@ TEST_CASE("stage_world: the stage micro relief changes the state hash of the rep
     CHECK(without != with.hash);
 }
 
+// --- Irregularidad (lote 7): criterios 1–4 sobre el mundo ----------------------------------------
+
+namespace {
+
+// state_hash() de la pasada de reproducibilidad (la de record_run) por lazadas_irregular.stage
+// (irregularidad, criterio 2): el mismo en Debug y en Release. Solo lo copian los tests de
+// tests/sim (lote-7.md §2.1).
+constexpr std::uint64_t kExpectedIrregularStateHash = 0x3f7f'a54f'b79f'a258ull;
+
+// La pasada de record_run (1500 pasos del conductor a 70 km/h, botón de recolocar en el 900) en el
+// tramo `text`, con las entradas calculadas en la propia pasada.
+std::uint64_t driver_state_hash(const std::string& text) {
+    const StageTrack track = load(text);
+    SimWorld world;
+    world.build(stage_desc(text, spawn_at(track, 0.0, 0.0, 0.0f)));
+    world.seal();
+    rally::tests::StageDriver driver(track, 70.0 / 3.6);
+    for (int i = 0; i < 1500; ++i) {
+        SimInput in = driver.input(world.car_pose(), world.car_velocity());
+        if (i == 900) {
+            in.buttons = rally::sim::kButtonReset;
+        }
+        world.step(in);
+    }
+    return world.state_hash();
+}
+
+std::string hex_of(std::uint64_t v) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "0x%016llx", static_cast<unsigned long long>(v));
+    return text;
+}
+
+} // namespace
+
+TEST_CASE("stage_world: lazadas in format 2 with the irregularity at zero runs the same") {
+    // Irregularidad, criterio 1 (premisa P1): la pasada de reproducibilidad por lazadas con
+    // format = 2 y la sección a cero (las cinco componentes a 0 y dos puntos de escala) da
+    // kExpectedStageStateHash.
+    const rally::sim::JoltRuntime runtime;
+    const std::uint64_t hash =
+        driver_state_hash(rally::tests::with_zero_irregularity(rally::tests::lazadas_stage_text()));
+    MESSAGE("state_hash con la sección a cero: ", hex_of(hash));
+    CHECK(hash == kExpectedStageStateHash);
+}
+
+TEST_CASE("stage_world: the driver pass on lazadas_irregular gives the same state hash twice") {
+    // Irregularidad, criterio 2.
+    const rally::sim::JoltRuntime runtime;
+    const std::uint64_t first = driver_state_hash(rally::tests::lazadas_irregular_stage_text());
+    const std::uint64_t second = driver_state_hash(rally::tests::lazadas_irregular_stage_text());
+    MESSAGE("state_hash en lazadas_irregular: ", hex_of(first), " (kExpectedIrregularStateHash)");
+    CHECK(first == second);
+    CHECK(first == kExpectedIrregularStateHash);
+    CHECK(first != kExpectedStageStateHash);
+}
+
+namespace {
+
+// Criterio 3 de irregularidad: una pasada por una recta a `kmh` (acelerador para esa velocidad,
+// sin freno, dirección del conductor de test) desde stage_spawn(spawn_s), y lo medido mientras el
+// coche está en [from, to] y en la carretera: pasos-rueda sin contacto (%) y el p99 del salto de
+// carga entre pasos (N). Lo mismo que el modo «irr» de rally_stage_measure.
+struct StraightCell {
+    int wheel_steps = 0;
+    int unloaded = 0;
+    std::vector<double> jumps;
+    double percent() const {
+        return wheel_steps > 0 ? 100.0 * unloaded / static_cast<double>(wheel_steps) : 0.0;
+    }
+    double p99() {
+        if (jumps.empty()) {
+            return 0.0;
+        }
+        std::sort(jumps.begin(), jumps.end());
+        return jumps[jumps.size() * 99 / 100];
+    }
+};
+
+StraightCell straight_cell(const std::string& text, const StageTrack& track, double spawn_s,
+                           double from, double to, double kmh) {
+    const double speed = kmh / 3.6;
+    SimWorld world;
+    world.build(
+        stage_desc(text, rally::sim::stage_spawn(track, spawn_s, static_cast<float>(speed))));
+    world.seal();
+    world.set_telemetry(true);
+    rally::tests::StageDriver driver(track, speed, 100.0);
+    StraightCell out;
+    float previous[rally::sim::kWheelCount] = {};
+    bool have_previous = false;
+    for (int i = 0; i < 60 * kSteps; ++i) {
+        SimInput in = driver.input(world.car_pose(), world.car_velocity());
+        in.throttle = hold_speed(world.car_velocity(), speed).throttle;
+        in.brake = 0;
+        world.step(in);
+        const double s = world.stage_run()->s;
+        if (s > to) {
+            break;
+        }
+        const bool inside = s >= from && world.stage_run()->on_road;
+        for (int w = 0; w < rally::sim::kWheelCount; ++w) {
+            const auto& wheel = world.telemetry().wheels[static_cast<std::size_t>(w)];
+            if (inside) {
+                ++out.wheel_steps;
+                out.unloaded += wheel.contact == 0 || wheel.load <= 0.0f ? 1 : 0;
+                if (have_previous) {
+                    out.jumps.push_back(std::abs(static_cast<double>(wheel.load - previous[w])));
+                }
+            }
+            previous[w] = wheel.load;
+        }
+        have_previous = inside;
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("stage_world: the irregular road does not make the car jump on the straights") {
+    // Irregularidad, criterio 3 (respuesta del consultor a la parte A, §2): en cada una de las 12
+    // celdas (60, 90 y 120 km/h en los cuatro tramos de recta), lazadas y lazadas_irregular en la
+    // misma ejecución: pasos-rueda sin contacto ≤ los de lazadas + 2,5 puntos y p99 del salto de
+    // carga ≤ 1,30 × el de lazadas. En Debug, la primera celda (versión corta).
+    const rally::sim::JoltRuntime runtime;
+    const std::string& plain = rally::tests::lazadas_stage_text();
+    const std::string& irregular = rally::tests::lazadas_irregular_stage_text();
+    const StageTrack& flat = lazadas();
+    const StageTrack bumpy = load(irregular);
+    struct Straight {
+        const char* name;
+        double spawn, from, to;
+    };
+    const Straight straights[] = {
+        {"salida (s 0–100)", -19.0, 0.0, 100.0},
+        {"antes de la cresta (s 260–290)", 250.0, 260.0, 290.0},
+        {"cresta (s 290–350)", 250.0, 290.0, 350.0},
+        {"recta de meta, mal estado (s 1040–1400)", 1000.0, 1040.0, 1400.0},
+    };
+#ifdef NDEBUG
+    const double speeds[] = {60.0, 90.0, 120.0};
+    constexpr std::size_t kStraights = 4;
+#else
+    const double speeds[] = {60.0};
+    constexpr std::size_t kStraights = 1;
+#endif
+    for (const double kmh : speeds) {
+        for (std::size_t k = 0; k < kStraights; ++k) {
+            const Straight& st = straights[k];
+            StraightCell a = straight_cell(plain, flat, st.spawn, st.from, st.to, kmh);
+            StraightCell b = straight_cell(irregular, bumpy, st.spawn, st.from, st.to, kmh);
+            const double pa = a.p99();
+            const double pb = b.p99();
+            MESSAGE(kmh, " km/h, ", std::string(st.name), ": sin contacto ", a.percent(), " % | ",
+                    b.percent(), " %; p99 del salto de carga ", pa, " | ", pb, " N (",
+                    a.wheel_steps, " / ", b.wheel_steps, " pasos-rueda)");
+            CHECK(a.wheel_steps > 400);
+            CHECK(b.wheel_steps > 400);
+            CHECK(b.percent() <= a.percent() + 2.5);
+            CHECK(pb <= 1.30 * pa);
+        }
+    }
+}
+
+#ifdef NDEBUG
+TEST_CASE("stage_world: the test driver completes lazadas_irregular without extra resets") {
+    // Irregularidad, criterio 4: el conductor de test completa lazadas_irregular sin recolocaciones
+    // ni atajos que no tenga en lazadas.
+    const rally::sim::JoltRuntime runtime;
+    const Drive plain = drive_stage(rally::tests::lazadas_stage_text(), 60.0 / 3.6, 2.5, 200);
+    const Drive bumpy =
+        drive_stage(rally::tests::lazadas_irregular_stage_text(), 60.0 / 3.6, 2.5, 200);
+    MESSAGE("lazadas_irregular: meta en ",
+            (bumpy.run.finish_step - bumpy.run.start_step) / static_cast<double>(kSteps),
+            " s (lazadas: ",
+            (plain.run.finish_step - plain.run.start_step) / static_cast<double>(kSteps),
+            " s); recolocaciones ", bumpy.run.resets, ", atajos ", bumpy.run.shortcuts);
+    CHECK(bumpy.run.finish_step > bumpy.run.start_step);
+    CHECK(bumpy.run.resets <= plain.run.resets);
+    CHECK(bumpy.run.shortcuts <= plain.run.shortcuts);
+    CHECK(bumpy.always_on_road);
+}
+#endif
+
 TEST_CASE("stage_world: each field of the run state changes its hash") {
     // Un estado con todos los campos distintos de cero.
     StageRunState base;
@@ -756,12 +940,14 @@ TEST_CASE("stage_world: state_hash includes the run state that restore_state doe
 // --- Criterios 7 y 8: reservas y coste
 // ---------------------------------------------------------------
 
-TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt as in the zone") {
+namespace {
+
+// 2000 pasos del conductor a 20 m/s desde s = 100: ninguna reserva nuestra y las de Jolt, 0 o 1
+// por paso, como en la zona.
+void check_step_allocations(const std::string& text, const StageTrack& track, const char* name) {
     const rally::sim::JoltRuntime runtime;
-    const StageTrack& track = lazadas();
     SimWorld world;
-    world.build(stage_desc(rally::tests::lazadas_stage_text(),
-                           spawn_at(track, 100.0, 0.0, static_cast<float>(20.0))));
+    world.build(stage_desc(text, spawn_at(track, 100.0, 0.0, static_cast<float>(20.0))));
     world.seal();
     rally::tests::StageDriver driver(track, 20.0);
     // Las entradas, antes: el conductor reserva (pose del tramo no, pero sí el vector).
@@ -794,8 +980,8 @@ TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt a
         mean += m;
     }
     mean /= kCount;
-    MESSAGE("en el tramo: reservas de Jolt en ", kCount, " pasos: ", jolt.count(), "; paso medio ",
-            mean, " ms");
+    MESSAGE(std::string(name), ": reservas de Jolt en ", kCount, " pasos: ", jolt.count(),
+            "; nuestras: ", ours, "; paso medio ", mean, " ms");
     CHECK(ours == 0);
     CHECK(steps_other == 0);
     CHECK(jolt.count() <= kCount);
@@ -803,6 +989,20 @@ TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt a
     // Holgado: las cifras de verdad las da rally_stage_measure (presupuesto 0,06 ms).
     CHECK(mean <= 0.5);
 #endif
+}
+
+} // namespace
+
+TEST_CASE("stage_world: a step on the stage allocates nothing of ours and Jolt as in the zone") {
+    check_step_allocations(rally::tests::lazadas_stage_text(), lazadas(), "lazadas");
+}
+
+TEST_CASE("stage_world: a step on the irregular stage allocates nothing of ours") {
+    // Irregularidad, premisa P6: los bordes reales (StageTrack::road_edges, en carretera y el
+    // microrrelieve de las ruedas) no reservan en el paso.
+    const StageTrack track = load(rally::tests::lazadas_irregular_stage_text());
+    check_step_allocations(rally::tests::lazadas_irregular_stage_text(), track,
+                           "lazadas_irregular");
 }
 
 // --- Regímenes
