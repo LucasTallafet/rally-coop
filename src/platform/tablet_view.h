@@ -16,6 +16,8 @@ namespace rally::platform {
 // velocidad: un derrape o un trompo no la mueven). B: por la dirección del coche al punto del eje
 // kAheadDistance por delante (en las horquillas el mapa no da media vuelta).
 enum class MapOrientation : std::uint8_t { Axis, Ahead };
+// Con la que arranca la ventana del copiloto: «hacia delante» (docs/05, 2026-11-11). O alterna.
+inline constexpr MapOrientation kDefaultMapOrientation = MapOrientation::Ahead;
 
 inline constexpr double kAheadDistance = 40.0; // m (docs/01 §4: 30–50 m)
 

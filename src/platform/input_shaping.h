@@ -86,6 +86,14 @@ struct PadReading {
     bool reset = false;
     bool dpad_up = false; // cruceta arriba (el cursor de la tablet del copiloto)
     bool dpad_down = false;
+    // Los diales del copiloto (lote 7): los hombros, la cruceta izquierda y derecha, el botón de la
+    // izquierda de la cara (borrar) y Back. El stick izquierdo es left_x y left_y.
+    bool shoulder_left = false;
+    bool shoulder_right = false;
+    bool dpad_left = false;
+    bool dpad_right = false;
+    bool face_west = false;
+    bool back = false;
     bool any_button = false; // cualquier botón pulsado
 };
 
@@ -104,6 +112,16 @@ struct PadState {
     bool reset = false;
     bool dpad_up = false; // cruceta arriba y abajo: el cursor de la tablet del copiloto
     bool dpad_down = false;
+    // Los diales del copiloto: el stick izquierdo crudo (x derecha, y arriba), sin zona muerta
+    // (la rueda tiene la suya), los hombros, la cruceta y los botones de borrar y Back.
+    float pick_x = 0.0f;
+    float pick_y = 0.0f;
+    bool shoulder_left = false;
+    bool shoulder_right = false;
+    bool dpad_left = false;
+    bool dpad_right = false;
+    bool face_west = false;
+    bool back = false;
 };
 
 // Mando activo = el último que ha movido un eje (también el stick derecho) por encima de su zona

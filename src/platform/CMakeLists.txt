@@ -23,6 +23,10 @@ add_library(rally_loop STATIC
     car_synth.cpp
     cockpit.cpp
     copilot_args.cpp
+    copilot_dial_input.cpp
+    copilot_dials.cpp
+    copilot_dials_layout.cpp
+    copilot_wheel.cpp
     copilot_keys.cpp
     copilot_view.cpp
     copilot_world.cpp
@@ -45,6 +49,7 @@ add_library(rally_loop STATIC
     key_tables.cpp
     keys.cpp
     mouse_steer.cpp
+    notes_host.cpp
     perf_stats.cpp
     recording_header.cpp
     player_settings.cpp
@@ -102,6 +107,7 @@ add_library(rally_platform STATIC
     input.cpp
     keys_raylib.cpp
     debug_panel.cpp
+    dials_draw.cpp
     overlay.cpp
     perf_counter.cpp
     process_memory.cpp

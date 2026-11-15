@@ -1,5 +1,6 @@
 #include "platform/demo_world.h"
 
+#include "game/direction_changes.h"
 #include "net/protocol.h"
 #include "platform/camera_space.h"
 #include "platform/demo_actions_keys.h"
@@ -167,6 +168,7 @@ DemoWorld::DemoWorld(DemoContext& ctx, const io::Recording& recording) : ctx_(ct
 }
 
 DemoWorld::~DemoWorld() {
+    notes_.close();
     if (ctx_.settings_saver.dirty()) {
         save_settings(ctx_);
     }
@@ -265,6 +267,20 @@ void DemoWorld::reset(DemoContext& ctx) {
     if (ctx.golden == nullptr) {
         recording_.start(ctx.desc, *ctx.world, car_text_, recording_settings_text(ctx.settings),
                          actions_.text());
+    }
+    // Las notas del copiloto empiezan con el mundo; su registro (junto a las grabaciones, con el
+    // nombre de la de la partida) se abre con la primera orden.
+    if (ctx.world->stage() != nullptr) {
+        std::string stem = recording_.name();
+        if (stem.size() > 5 && stem.compare(stem.size() - 5, 5, ".rrec") == 0) {
+            stem.resize(stem.size() - 5);
+        }
+        notes_.start_stage(ctx.world->stage()->axis().length(),
+                           game::direction_changes(ctx.world->stage()->axis()), ctx.stage.name,
+                           std::string(GetApplicationDirectory()) + "grabaciones/" +
+                               (stem.empty() ? std::string("partida") : stem) + "-notas.csv");
+    } else {
+        notes_.start_without_stage();
     }
     ctx.shift_up_presses = 0;
     ctx.shift_down_presses = 0;
@@ -510,6 +526,17 @@ void DemoWorld::update_network(DemoContext& ctx) {
     NetworkInfo& info = ctx.network;
     const std::int64_t begin = now_ns();
     host_->service();
+    // Las órdenes de notas del copiloto: se aplican a la cola, se registran y se publica su estado.
+    // Fuera del paso de simulación; solo se lee la `s` del coche.
+    {
+        const sim::StageRunState* run = ctx.world->stage_run();
+        notes_.pump(*host_, static_cast<std::uint64_t>(ctx.world->telemetry().step),
+                    run != nullptr ? run->s : 0.0);
+        const std::string error = notes_.take_error();
+        if (!error.empty()) {
+            ctx.overlay.set_message(Overlay::Message::Network, error, kError, kSettingsMessageNs);
+        }
+    }
     const std::int64_t serviced = now_ns();
     const bool connected = host_->copilot_connected();
     if (connected != copilot_connected_) {

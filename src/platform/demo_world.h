@@ -4,6 +4,7 @@
 #include "net/host.h"
 #include "platform/action_driver.h"
 #include "platform/demo_part.h"
+#include "platform/notes_host.h"
 #include "platform/recording_session.h"
 #include "platform/stage_hud.h"
 #include "platform/stage_scene.h"
@@ -85,6 +86,7 @@ private:
     RecordingSession recording_;
     ActionDriver actions_;            // máquina de acciones (teclas 7, 8 y 9)
     std::unique_ptr<net::Host> host_; // null sin red (--golden, --bench-*, puerto ocupado)
+    NotesSession notes_;              // la cola de notas del copiloto y su registro (lote 7)
     bool copilot_connected_ = false;
     int reset_presses_seen_ = 0;
     std::int64_t net_published_ns_ = 0;

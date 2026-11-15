@@ -112,6 +112,12 @@ enum class PadControl : std::uint8_t {
     LeftShoulder,
     RightShoulder,
     DPadVertical, // la cruceta, arriba y abajo (el cursor de la tablet del copiloto)
+    // Los diales del copiloto (lote 7): solo para la tabla y su texto, el copiloto los lee con
+    // platform/copilot_dial_input.
+    Shoulders,      // los dos hombros: el lado del dial principal
+    DPadHorizontal, // la cruceta, izquierda y derecha: [−] y [+] del contador
+    FaceWest, // el de la izquierda de la cara derecha: X Xbox, Cuadrado PlayStation, Y Nintendo
+    Back,     // Back, Select, Compartir
 };
 
 // Una tecla de una tabla, sin Alt o con él.
