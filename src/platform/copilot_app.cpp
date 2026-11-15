@@ -5,6 +5,9 @@
 #include "net/copilot.h"
 #include "platform/camera_space.h"
 #include "platform/cockpit_draw.h"
+#include "platform/copilot_dial_input.h"
+#include "platform/copilot_dials.h"
+#include "platform/copilot_dials_layout.h"
 #include "platform/copilot_keys.h"
 #include "platform/copilot_view.h"
 #include "platform/copilot_world.h"
@@ -15,6 +18,7 @@
 #include "platform/demo_common.h"
 #include "platform/demo_part.h"
 #include "platform/demo_screen_keys.h"
+#include "platform/dials_draw.h"
 #include "platform/fixed_step_clock.h"
 #include "platform/frame_pacer.h"
 #include "platform/gamepad.h"
@@ -125,7 +129,8 @@ private:
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
             debug_.press();
         }
-        if (action_pressed(action(ScreenAction::Help), kCopilotKeyContext)) {
+        // Con el lado de un dial mantenido, H es la horquilla: no abre la ayuda.
+        if (!dial_keys_held_ && action_pressed(action(ScreenAction::Help), kCopilotKeyContext)) {
             const int pages = ctx_.overlay.layout().help.pages;
             help_page_ = help_page_ + 1 < pages ? help_page_ + 1 : -1;
         }
@@ -154,7 +159,9 @@ private:
         pointer_ = pointer_frame(
             focused && action_down(action(CopilotAction::Pointer), kCopilotKeyContext),
             mouse_use(false, true, focused) != MouseUse::None);
-        ctx_.head_look.set_frozen(pointer_.frozen);
+        // Los diales (lote 7); con uno abierto la cabeza se congela, como con el puntero.
+        update_dials(now_s, focused, pad);
+        ctx_.head_look.set_frozen(pointer_.frozen || dials_.open());
         HeadLookInput look;
         look.dt_s = std::max(0.0, now_s - last_look_s_);
         last_look_s_ = now_s;
@@ -171,6 +178,76 @@ private:
         }
         look.recenter = cursor_.captured() && IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE);
         ctx_.head_look.update(look);
+    }
+
+    // Lee las tres entradas de los diales, aplica la lógica y manda las órdenes que salgan.
+    void update_dials(double now_s, bool focused, const PadState& pad) {
+        const double dt = std::max(0.0, now_s - last_dials_s_);
+        last_dials_s_ = now_s;
+        if (help_page_ >= 0 || !stage_present_) {
+            // Con la ayuda abierta los diales no se ven ni se abren; sin tramo no hay a qué cantar.
+            dials_.cancel();
+            dial_keys_held_ = false;
+            return;
+        }
+        const DistanceForm form = dials_.form();
+        KeyDialReading keys;
+        const auto down = [focused](CopilotAction a) {
+            return focused && action_down(action(a), kCopilotKeyContext);
+        };
+        const auto pressed = [focused](CopilotAction a) {
+            return focused && action_pressed(action(a), kCopilotKeyContext);
+        };
+        keys.left = down(CopilotAction::DialLeft);
+        keys.right = down(CopilotAction::DialRight);
+        keys.secondary = down(CopilotAction::DialSecondary);
+        keys.distance = down(CopilotAction::DialDistance);
+        for (int i = 0; i < 8; ++i) {
+            keys.number_pressed[static_cast<std::size_t>(i)] =
+                pressed(static_cast<CopilotAction>(static_cast<int>(CopilotAction::Pick1) + i));
+        }
+        keys.hairpin_pressed = pressed(CopilotAction::PickHairpin);
+        keys.erase_down = down(CopilotAction::Erase);
+        keys.form_pressed = pressed(CopilotAction::DistanceForm);
+        dial_keys_held_ = keys.left || keys.right || keys.secondary || keys.distance;
+        MouseDialReading mouse;
+        mouse.enabled = focused && pointer_.clicks;
+        mouse.left_down = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+        mouse.left_pressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+        mouse.right_down = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+        mouse.right_pressed = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+        mouse.x = static_cast<double>(GetMouseX());
+        mouse.y = static_cast<double>(GetMouseY());
+        const ScreenLayout& layout = ctx_.overlay.layout();
+        dials_geometry_ =
+            dials_geometry(layout.rect(Layer::DialsLeft), layout.rect(Layer::DialsRight), layout.m);
+        const DialsInput in =
+            merge_dials(merge_dials(pad_dials_.map(focused ? pad : PadState{}, form),
+                                    dials_from_keys(keys, form)),
+                        mouse_dials_.map(mouse, dials_geometry_, form));
+        const bool cursor_valid = tablet_cursor_.valid();
+        // Un peligro va a la última nota si existe y el cursor no se ha movido a mano desde que se
+        // envió (el salto automático al siguiente cambio no cuenta).
+        const bool attach = net_.notes().has_last && !tablet_cursor_.manual();
+        const DialsOutput out = dials_.update(in, dt, tablet_cursor_.s(), cursor_valid, attach);
+        if (out.no_anchor) {
+            ctx_.overlay.set_message(Overlay::Message::Action,
+                                     "sin cursor: no hay dónde poner la nota", kError,
+                                     kShortMessageNs);
+        }
+        for (int i = 0; i < out.count; ++i) {
+            const game::NoteOrder& order = out.orders[static_cast<std::size_t>(i)];
+            if (!net_.send_note_order(order)) {
+                ctx_.overlay.set_message(Overlay::Message::Action,
+                                         "la orden no se ha enviado (sin conexión o sin mundo)",
+                                         kError, kShortMessageNs);
+                continue;
+            }
+            if (order.kind == game::NoteOrderKind::Corner ||
+                order.kind == game::NoteOrderKind::Hazard) {
+                tablet_cursor_.note_sent(order.s, net_.notes().revision);
+            }
+        }
     }
 
     // La orientación del mapa (O), el cursor (↑ y ↓ o la cruceta) y el clic del puntero.
@@ -318,7 +395,8 @@ private:
         tablet_view_.update(track, extra_.s, extra_.t, now_s, orientation_);
         const double dt = std::max(0.0, now_s - last_tablet_s_);
         last_tablet_s_ = now_s;
-        tablet_cursor_.update(changes_, extra_.s, track.axis().length(), held_dir_, dt);
+        tablet_cursor_.update(changes_, extra_.s, track.axis().length(), held_dir_, dt,
+                              &net_.notes());
         // Un clic del puntero coloca el cursor en el eje más cercano, en lo que se ve.
         // Solo cuenta si la tablet se dibujó en el último fotograma (con la ayuda abierta no).
         if (pointer_click_ && tablet_drawn_) {
@@ -408,6 +486,12 @@ private:
                     tablet_cost_.publish(now);
                     last_tablet_publish_ns_ = now;
                 }
+            }
+            if (stage_present_ && have_sample_ && tablet_view_.initialized()) {
+                // Los diales, junto a la tablet; su coste entra en «CPU tablet».
+                dials_draw_.draw(overlay, dials_geometry_, dials_.view(), net_.notes(), extra_.s);
+                const std::int64_t now = now_ns();
+                tablet_cost_.add(now, dials_draw_.last_draw_ns());
             }
             perf.set_tablet(&tablet_cost_);
             if (debug_.visible()) {
@@ -516,7 +600,14 @@ private:
     TabletCursor tablet_cursor_;
     TabletDraw tablet_draw_;
     std::vector<game::DirectionChange> changes_;
-    MapOrientation orientation_ = MapOrientation::Axis;
+    MapOrientation orientation_ = kDefaultMapOrientation;
+    CopilotDials dials_;
+    PadDialMapper pad_dials_;
+    MouseDialMapper mouse_dials_;
+    DialsGeometry dials_geometry_;
+    DialsDraw dials_draw_;
+    double last_dials_s_ = 0.0;
+    bool dial_keys_held_ = false;
     PerfChannel tablet_cost_;
     std::int64_t last_tablet_publish_ns_ = 0;
     double last_tablet_s_ = 0.0;

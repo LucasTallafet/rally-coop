@@ -20,6 +20,23 @@ enum class CopilotAction : std::uint8_t {
     Pointer,        // Espacio mantenido: el ratón deja de mirar y sirve para pulsar en el mapa
     CursorNext,     // ↑ o la cruceta arriba: el cambio de dirección siguiente; mantenido, desliza
     CursorPrevious, // ↓ o la cruceta abajo: el anterior
+    // Los diales (lote 7): ← y → mantenidas abren el principal por su lado; S, el secundario; D, la
+    // distancia; 1–8 y H eligen; Retroceso borra; F cambia la forma de la distancia.
+    DialLeft,
+    DialRight,
+    DialSecondary,
+    DialDistance,
+    Pick1,
+    Pick2,
+    Pick3,
+    Pick4,
+    Pick5,
+    Pick6,
+    Pick7,
+    Pick8,
+    PickHairpin,
+    Erase,
+    DistanceForm,
     Count,
 };
 

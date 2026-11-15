@@ -196,6 +196,15 @@ std::string_view pad_text_doc(PadControl pad) {
         return "hombro derecho (RB, R1, R)";
     case PadControl::DPadVertical:
         return "cruceta arriba / abajo";
+    case PadControl::Shoulders:
+        return "hombros izquierdo y derecho (LB / RB, L1 / R1, L / R)";
+    case PadControl::DPadHorizontal:
+        return "cruceta izquierda / derecha";
+    case PadControl::FaceWest:
+        return "botón de la izquierda de la cara derecha (X Xbox, Cuadrado PlayStation, Y "
+               "Nintendo)";
+    case PadControl::Back:
+        return "Back (Xbox), Share (PlayStation), - (Nintendo)";
     case PadControl::None:
         break;
     }
@@ -222,6 +231,14 @@ std::string_view pad_text_short(PadControl pad) {
         return "hombro der.";
     case PadControl::DPadVertical:
         return "cruceta";
+    case PadControl::Shoulders:
+        return "hombros";
+    case PadControl::DPadHorizontal:
+        return "cruceta izq./der.";
+    case PadControl::FaceWest:
+        return "izquierda (X/Cuadrado/Y)";
+    case PadControl::Back:
+        return "Back";
     case PadControl::None:
         break;
     }

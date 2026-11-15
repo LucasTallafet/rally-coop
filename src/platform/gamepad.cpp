@@ -104,6 +104,12 @@ PadState Gamepads::read(int steer_sensitivity_pct) {
         reading.shift_up = button(pad, kDriverPad.shift_up);
         reading.dpad_up = button(pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
         reading.dpad_down = button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        reading.dpad_left = button(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        reading.dpad_right = button(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        reading.shoulder_left = button(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+        reading.shoulder_right = button(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+        reading.face_west = button(pad, SDL_GAMEPAD_BUTTON_WEST);
+        reading.back = button(pad, SDL_GAMEPAD_BUTTON_BACK);
         for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT && !reading.any_button; ++b) {
             reading.any_button = SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
         }

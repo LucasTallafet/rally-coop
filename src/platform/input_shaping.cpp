@@ -130,6 +130,15 @@ PadState PadTracker::update(const PadReading* pads, int count, int steer_sensiti
     state.reset = pad.reset;
     state.dpad_up = pad.dpad_up;
     state.dpad_down = pad.dpad_down;
+    state.pick_x = std::clamp(pad.left_x, -1.0f, 1.0f);
+    state.pick_y =
+        std::clamp(-pad.left_y, -1.0f, 1.0f); // SDL da el stick hacia abajo como positivo
+    state.shoulder_left = pad.shoulder_left;
+    state.shoulder_right = pad.shoulder_right;
+    state.dpad_left = pad.dpad_left;
+    state.dpad_right = pad.dpad_right;
+    state.face_west = pad.face_west;
+    state.back = pad.back;
     return state;
 }
 

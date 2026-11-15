@@ -70,8 +70,8 @@ TEST_CASE("screen_layout: with every layer visible no two rectangles overlap") {
             const UiRect& ra = layout.rects[static_cast<std::size_t>(a)];
             INFO(res.width, "×", res.height, " ",
                  std::string(rally::platform::layer_name(Layer(a))), " ", describe(ra));
-            if (Layer(a) == Layer::Tablet) {
-                CHECK(ra.w == 0); // la tablet no existe en la pantalla del juego
+            if (rally::platform::layer_copilot_only(Layer(a))) {
+                CHECK(ra.w == 0); // la tablet y los diales no existen en la pantalla del juego
                 continue;
             }
             CHECK(ra.w > 0);
@@ -94,7 +94,7 @@ TEST_CASE("screen_layout: each layer's worst case text fits in its rectangle") {
         const ScreenLayout layout = layout_screen(res.width, res.height);
         for (int a = 0; a < kLayerCount; ++a) {
             const Layer layer = static_cast<Layer>(a);
-            if (layer == Layer::Tablet) {
+            if (rally::platform::layer_copilot_only(layer)) {
                 continue;
             }
             const UiRect content = inner(layout.rect(layer), padding_of(layer, layout));

@@ -62,6 +62,8 @@ enum class Layer : std::uint8_t {
     Graphs,     // T
     ActionRing, // anillo de progreso de la acción en curso (teclas 7, 8 y 9), sin fondo
     Tablet,     // la tablet del copiloto (lote 6): solo en ScreenKind::Copilot, abajo y centrada
+    DialsLeft, // los diales del copiloto (lote 7): a la izquierda de la tablet (principal y borrar)
+    DialsRight, // y a su derecha (secundario y distancia); solo en ScreenKind::Copilot
     Count,
 };
 inline constexpr int kLayerCount = static_cast<int>(Layer::Count);
@@ -75,6 +77,8 @@ bool layers_exclusive(Layer a, Layer b);
 // Con cualquier otra capa, ni el anillo ni la tablet se solapan (la tablet es exclusiva de la
 // ayuda: mientras está abierta no se dibuja).
 bool layers_overdraw(Layer a, Layer b);
+// Las capas que solo existen en la ventana del copiloto (rect vacío en la pantalla del juego).
+bool layer_copilot_only(Layer layer);
 // Exclusivas o una dibujada encima de la otra: las únicas parejas que pueden compartir sitio.
 bool layers_may_overlap(Layer a, Layer b);
 

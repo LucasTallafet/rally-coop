@@ -176,7 +176,8 @@ UiMetrics ui_metrics(int screen_height) {
 
 bool layers_exclusive(Layer a, Layer b) {
     const auto top_panel = [](Layer l) {
-        return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs || l == Layer::Tablet;
+        return l == Layer::Debug || l == Layer::Perf || l == Layer::Graphs || l == Layer::Tablet ||
+               l == Layer::DialsLeft || l == Layer::DialsRight;
     };
     return (a == Layer::Help && top_panel(b)) || (b == Layer::Help && top_panel(a));
 }
@@ -184,7 +185,13 @@ bool layers_exclusive(Layer a, Layer b) {
 bool layers_overdraw(Layer a, Layer b) {
     return (a == Layer::Help && b == Layer::ActionRing) ||
            (b == Layer::Help && a == Layer::ActionRing) ||
-           (a == Layer::Tablet && b == Layer::Perf) || (b == Layer::Tablet && a == Layer::Perf);
+           (a == Layer::Tablet && b == Layer::Perf) || (b == Layer::Tablet && a == Layer::Perf) ||
+           (a == Layer::DialsRight && b == Layer::Perf) ||
+           (b == Layer::DialsRight && a == Layer::Perf);
+}
+
+bool layer_copilot_only(Layer layer) {
+    return layer == Layer::Tablet || layer == Layer::DialsLeft || layer == Layer::DialsRight;
 }
 
 bool layers_may_overlap(Layer a, Layer b) {
@@ -211,6 +218,10 @@ std::string_view layer_name(Layer layer) {
         return "anillo de la acción";
     case Layer::Tablet:
         return "tablet";
+    case Layer::DialsLeft:
+        return "diales de la izquierda";
+    case Layer::DialsRight:
+        return "diales de la derecha";
     case Layer::Count:
         break;
     }
@@ -516,6 +527,17 @@ ScreenLayout layout_screen(int width, int height, ScreenKind kind) {
         tablet.h = height * 55 / 100;
         tablet.x = (width - tablet.w) / 2;
         tablet.y = debug_bottom - tablet.h;
+        // Los diales, en las columnas de los lados de la tablet, de su alto.
+        UiRect& left = at(Layer::DialsLeft);
+        left.x = m.margin;
+        left.y = tablet.y;
+        left.w = tablet.x - m.gap - left.x;
+        left.h = tablet.h;
+        UiRect& right = at(Layer::DialsRight);
+        right.x = tablet.right() + m.gap;
+        right.y = tablet.y;
+        right.w = width - m.margin - right.x;
+        right.h = tablet.h;
         debug_bottom = std::min(debug_bottom, tablet.y - m.gap);
         debug.h = debug_bottom - debug.y; // sin anillo de acciones
         return layout;
@@ -557,6 +579,8 @@ std::span<const std::string_view> layer_samples(Layer layer, ScreenKind kind) {
     case Layer::Help:
     case Layer::Graphs:
     case Layer::Tablet:
+    case Layer::DialsLeft:
+    case Layer::DialsRight:
     case Layer::Count:
         break;
     }
@@ -569,7 +593,7 @@ int layer_content_width(Layer layer, const ScreenLayout& layout) {
     if (copilot && (layer == Layer::Graphs || layer == Layer::ActionRing)) {
         return 0; // no existen en esta pantalla
     }
-    if (layer == Layer::Tablet) {
+    if (layer == Layer::Tablet || layer == Layer::DialsLeft || layer == Layer::DialsRight) {
         return 0; // sin texto de peor caso: dibuja en su rectángulo (platform/tablet_geometry)
     }
     switch (layer) {
@@ -601,6 +625,8 @@ int layer_content_width(Layer layer, const ScreenLayout& layout) {
     }
     case Layer::Messages:
     case Layer::Tablet:
+    case Layer::DialsLeft:
+    case Layer::DialsRight:
     case Layer::Count:
         break;
     }
