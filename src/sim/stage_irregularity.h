@@ -35,6 +35,9 @@ inline constexpr double kStageIrregularityGateLength = 45.0;
 inline constexpr double kStageAxisOffsetMaxCurvature = 0.01; // |d''| (m⁻¹): como un radio de 100 m
 inline constexpr double kStageHeightMaxCurvature = 0.0033;   // |z''| (m⁻¹): 0,3 g a 30 m/s
 inline constexpr double kStageBankMaxRate = 0.015;           // |β'| (1/m): 1,5 %/m
+// La validación muestrea cada canal a λmin/16 y multiplica lo medido por esto antes de compararlo
+// con el límite: es lo que ese paso puede subestimar el máximo de una onda (1 − cos(π/16) = 1,9 %).
+inline constexpr double kStageIrregularityProbeMargin = 1.02;
 inline constexpr double kStageIrregularityMinWavelength = 1.0; // λmin del archivo (m)
 inline constexpr double kStageMinShoulderWidth = 0.5;          // arcén real, como poco (m)
 

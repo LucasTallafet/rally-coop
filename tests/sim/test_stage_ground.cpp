@@ -801,9 +801,18 @@ GridMargins grid_margins(const std::string& text, int random, int edge, std::uin
     terrain.seal();
     const StageCellError error(track);
     GridMargins out;
+    // El final de la banda desde el eje: el borde real del núcleo (con la irregularidad; sin ella,
+    // semiancho + arcén, los mismos bits) más end_u. Donde actúa la onda corta del borde, la malla
+    // entre dos secciones se aparta del final analítico hasta kStageChordEdge (respuesta del
+    // consultor a la parte A de irregularidad, §1.1): «dentro del final» es dentro de la malla.
+    const rally::sim::StageIrregularity& irr = track.irregularity();
     const auto end_of = [&](double s, double side) {
         const StageBandSide& b = band_side_at(g, s, side);
-        return half_width(track.pose(s), side) + kStageShoulderWidth + b.end_u;
+        const rally::sim::StageChannel edge_channel =
+            side > 0.0 ? rally::sim::StageChannel::EdgeRight : rally::sim::StageChannel::EdgeLeft;
+        const double chord =
+            irr.bound(edge_channel, s - 2.0, s + 2.0).d2 > 0.0 ? rally::sim::kStageChordEdge : 0.0;
+        return track.core_half_width(s, side > 0.0 ? 1 : -1) + b.end_u - chord;
     };
     // Un punto a menos de 2·d₁ del final de un lado en un caso aviso (el hueco de su celda).
     const auto warned = [&](double s, double t) {
@@ -917,6 +926,9 @@ TEST_CASE("stage_ground: the grid never shows above the band or the core") {
          kFull ? Cap{60, 0, 4.882812} : Cap{4, 0, 5.493164}},
         {"peralte 10 %", max_bank_text(), kFull ? 4'000 : 400, kFull ? 1'000 : 100,
          kFull ? Cap{34, 0, 4.272461} : Cap{3, 0, 5.615234}},
+        // Irregularidad (diagnóstico 6): medidos el 2026-11-14.
+        {"lazadas_irregular", rally::tests::lazadas_irregular_stage_text(), kFull ? 10'000 : 1'000,
+         kFull ? 2'000 : 200, kFull ? Cap{94, 2, 0.0} : Cap{8, 0, 5.004883}},
     };
     if constexpr (kFull) {
         cases.push_back(
@@ -964,6 +976,10 @@ std::vector<SeamCase> seam_cases() {
         {"lazadas", rally::tests::lazadas_stage_text(), true, 154, 523.071289, 0.0},
         {"hairpin_flat", hairpin_text(), true, 23, 68.176270, 5.004883},
         {"peralte 10 %", max_bank_text(), true, 4, 5.493164, 5.126953},
+        // Irregularidad, diagnóstico 6 (P9; respuesta del consultor a la parte A, §1.8): sus casos
+        // aviso, con tope, medidos el 2026-11-14.
+        {"lazadas_irregular", rally::tests::lazadas_irregular_stage_text(), true, 160, 449.096680,
+         0.0},
     };
     if constexpr (kFull) {
         cases.push_back({"sintético 30 km", rally::tests::synthetic_stage_30km(), false});
@@ -1221,6 +1237,32 @@ TEST_CASE("stage_ground: the collision geometry hash is the same twice and the e
                 text);
     }
     CHECK(lazadas_ground().hash() == kExpectedStageGroundHash);
+}
+
+TEST_CASE("stage_ground: lazadas in format 2 with the irregularity at zero is the same ground") {
+    // Irregularidad, criterio 1 (premisa P1): lazadas con format = 2 y la sección [irregularity]
+    // con las cinco componentes a amplitud 0 y dos puntos de escala (todo el camino nuevo activo)
+    // da el suelo de lazadas.stage bit a bit, y el mundo, el mismo stage_ground_hash.
+    const rally::sim::JoltRuntime runtime;
+    const std::string zero =
+        rally::tests::with_zero_irregularity(rally::tests::lazadas_stage_text());
+    const StageTrack track = load(zero);
+    REQUIRE(track.axis().irregularity().present);
+    CHECK(StageGround::build(track).hash() == kExpectedStageGroundHash);
+    rally::sim::SimWorld world;
+    world.build(stage_only(zero));
+    world.seal();
+    CHECK(world.stage_ground_hash() == kExpectedStageGroundHash);
+}
+
+TEST_CASE("stage_ground: lazadas_irregular without its irregularity is the ground of lazadas") {
+    // Irregularidad, criterio 5: el texto que da stage_text_without_irregularity (la tecla de
+    // comparar) da el StageGround::hash() de lazadas.stage.
+    const std::string without =
+        rally::sim::stage_text_without_irregularity(rally::tests::lazadas_irregular_stage_text());
+    CHECK(StageGround::build(load(without)).hash() == kExpectedStageGroundHash);
+    CHECK(StageGround::build(load(rally::tests::lazadas_irregular_stage_text())).hash() !=
+          kExpectedStageGroundHash);
 }
 
 TEST_CASE(

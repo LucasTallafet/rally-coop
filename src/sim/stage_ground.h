@@ -54,7 +54,11 @@ inline constexpr double kStageEdgeBlend = 4.0;
 inline constexpr double kStageMeshMaxStep = 2.0;   // paso máximo entre secciones (m)
 inline constexpr double kStageChordPlan = 0.01;    // error de cuerda en planta (m)
 inline constexpr double kStageChordHeight = 0.002; // error de cuerda y alabeo en alzado (m)
-inline constexpr double kStageFanStep = 0.5;       // segmento máximo de los abanicos (m)
+// Error de cuerda en planta de la onda corta del borde exterior del arcén (irregularidad, m): la
+// línea separa el arcén de la cuneta, fuera de la calzada; 5 cm es el error de borde que ya admite
+// el dibujo (bordes-dibujo, criterio 1). Respuesta del consultor a la parte A, §1.1.
+inline constexpr double kStageChordEdge = 0.05;
+inline constexpr double kStageFanStep = 0.5; // segmento máximo de los abanicos (m)
 // Los abanicos llegan hasta kStageFanReach del eje y ψ cae de 1 a 0 en los últimos kStageFanFade.
 // Llegan 3,5 m más allá de la colisión (kStageStripCollision): el peso relativo de dos pies que se
 // desvanecen a la vez cambia como 1/(kStageFanReach − distancia), y así no hay taludes casi
@@ -123,8 +127,9 @@ struct StageMeshDensity {
     double chord_plan = kStageChordPlan;
     double chord_height = kStageChordHeight;
     int ditch_segments = kStageDitchSegments;
+    double chord_edge = kStageChordEdge;
 };
-inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005, 72};
+inline constexpr StageMeshDensity kStageDenseMesh{0.5, 0.0025, 0.0005, 72, 0.25 * kStageChordEdge};
 
 // Un solo generador de suelo (formato 2): queda el nombre que usa el dibujo
 // (platform/stage_checked).

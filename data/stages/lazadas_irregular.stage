@@ -105,6 +105,12 @@ edge 0.12 4 8
 bank 1.5 30 150
 height 0.06 20 60
 scale 0 1
+# Sin irregularidad entre los brazos de las lazadas (s 640–960): allí la banda acaba en el eje
+# medio con la otra pasada, que se movería con los bordes de las dos, y la costura banda con banda
+# pediría ×4 secciones (respuesta del consultor a la parte A, §1.1).
+scale 600 1
+scale 640 0
+scale 960 0
 # Recta de meta en mal estado.
 scale 1000 1
 scale 1040 1.5

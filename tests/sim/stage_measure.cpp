@@ -353,6 +353,8 @@ struct StraightStats {
     int unloaded = 0;
     std::vector<double> jumps;
     double max_jump = 0.0;
+    double max_jump_s = 0.0; // s del origen del coche en el mayor salto
+    int max_jump_wheel = -1;
     double p99() {
         if (jumps.empty()) {
             return 0.0;
@@ -397,7 +399,11 @@ StraightStats straight_pass(const std::string& text, const rally::sim::StageTrac
                 if (have_previous) {
                     const double jump = std::abs(static_cast<double>(wheel.load - previous[w]));
                     out.jumps.push_back(jump);
-                    out.max_jump = std::max(out.max_jump, jump);
+                    if (jump > out.max_jump) {
+                        out.max_jump = jump;
+                        out.max_jump_s = s;
+                        out.max_jump_wheel = w;
+                    }
                 }
             }
             previous[w] = wheel.load;
@@ -704,10 +710,11 @@ void straights_report(const std::string& plain, const rally::sim::StageTrack& la
         for (const Straight& st : straights) {
             StraightStats a = straight_pass(plain, lazadas, st.spawn, st.from, st.to, kmh);
             StraightStats b = straight_pass(irregular, bumpy, st.spawn, st.from, st.to, kmh);
-            std::printf("  %5.0f km/h %-46s %6.3f %% | %6.3f %%   p99 %6.1f (%6.1f) | %6.1f "
-                        "(%6.1f)   (%d / %d pasos-rueda)\n",
-                        kmh, st.name, a.percent(), b.percent(), a.p99(), a.max_jump, b.p99(),
-                        b.max_jump, a.wheel_steps, b.wheel_steps);
+            std::printf("  %5.0f km/h %-46s %6.3f %% | %6.3f %%   p99 %6.1f (%6.1f en s %.1f, "
+                        "rueda %d) | %6.1f (%6.1f en s %.1f)   (%d / %d pasos-rueda)\n",
+                        kmh, st.name, a.percent(), b.percent(), a.p99(), a.max_jump, a.max_jump_s,
+                        a.max_jump_wheel, b.p99(), b.max_jump, b.max_jump_s, a.wheel_steps,
+                        b.wheel_steps);
         }
     }
 }
@@ -825,6 +832,39 @@ int main(int argc, char** argv) {
                 std::printf(" [d %.3f B %.4f]", tr.zone_d[k], tr.zone_band[k]);
             }
             std::printf("\n");
+        }
+        return 0;
+    }
+    if (mode == "irrsec") {
+        // Irregularidad, parte B (premortem del §4 de la respuesta del consultor): las secciones de
+        // lazadas, de lazadas_irregular y de su variante con el borde de 6–10 m, por 100 m de s, y
+        // los lados de la banda por tipo.
+        const std::string irregular = rally::tests::lazadas_irregular_stage_text();
+        std::string wide = irregular;
+        wide.replace(wide.find("edge 0.12 4 8"), 13, "edge 0.12 6 10");
+        for (const auto& [name, text] : {std::pair<const char*, const std::string*>{
+                                             "lazadas", &rally::tests::lazadas_stage_text()},
+                                         {"lazadas_irregular", &irregular},
+                                         {"lazadas_irregular, borde 6-10 m", &wide}}) {
+            rally::sim::StageTrack track = must_build(*text, name);
+            const rally::sim::StageGround g = rally::sim::StageGround::build(track);
+            std::printf("%s: %zu secciones, %zu triángulos\n", name, g.sections().size(),
+                        g.triangles().size());
+            int bins[15] = {};
+            for (const double s : g.sections()) {
+                bins[std::clamp(static_cast<int>((s + 20.0) / 100.0), 0, 14)]++;
+            }
+            std::printf("   por 100 m desde s −20:");
+            for (const int b : bins) {
+                std::printf(" %d", b);
+            }
+            int kinds[5] = {};
+            for (const rally::sim::StageBandSide& b : g.band_sides()) {
+                kinds[static_cast<int>(b.kind)]++;
+            }
+            std::printf(
+                "\n   lados: libres %d, enfrentados %d, rampa %d, abanico %d, recortados %d\n",
+                kinds[0], kinds[1], kinds[2], kinds[3], kinds[4]);
         }
         return 0;
     }

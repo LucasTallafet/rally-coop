@@ -50,17 +50,25 @@ inline const std::string& lazadas_irregular_stage_text() {
     return text;
 }
 
-// `text` (un .stage del formato 1) en el formato 2 con una sección [irregularity] cuyas cinco
-// componentes tienen amplitud 0 y con dos puntos de escala: todo el camino nuevo activo (premisa
-// P1 de irregularidad y revisión del plan, cambio 1) sin mover nada.
-inline std::string with_zero_irregularity(const std::string& text) {
+// `text` (un .stage del formato 1) en el formato 2, con la sección [irregularity] de cuerpo `body`
+// al final (sin sección si `body` está vacío).
+inline std::string with_irregularity(const std::string& text, const std::string& body) {
     std::string out = text;
     const std::size_t at = out.find("format = 1");
     RALLY_CHECK(at != std::string::npos, "tests: el tramo no es del formato 1");
     out.replace(at, 10, "format = 2");
-    out += "\n[irregularity]\nseed 20261113\naxis 0 40 120\nwidth 0 40 150\nedge 0 4 8\n"
-           "bank 0 30 150\nheight 0 20 60\nscale 0 1\nscale 600 0.5\n";
+    if (!body.empty()) {
+        out += "\n[irregularity]\n" + body;
+    }
     return out;
+}
+
+// `text` (formato 1) en el formato 2 con una sección [irregularity] cuyas cinco componentes tienen
+// amplitud 0 y con dos puntos de escala: todo el camino nuevo activo (premisa P1 de irregularidad
+// y revisión del plan, cambio 1) sin mover nada.
+inline std::string with_zero_irregularity(const std::string& text) {
+    return with_irregularity(text, "seed 20261113\naxis 0 40 120\nwidth 0 40 150\nedge 0 4 8\n"
+                                   "bank 0 30 150\nheight 0 20 60\nscale 0 1\nscale 600 0.5\n");
 }
 
 // `text` (formato 1) en el formato 2 con la sección [irregularity] de lazadas_irregular.stage

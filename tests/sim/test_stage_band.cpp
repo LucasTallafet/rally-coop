@@ -59,6 +59,9 @@ void check_faces(const char* name, const std::string& text) {
 
 TEST_CASE("stage_band: no band face is inverted, flat or steeper than 80 degrees") {
     check_faces("lazadas", rally::tests::lazadas_stage_text());
+    // Irregularidad (premortem del §4 de la respuesta del consultor a la parte A): la banda con el
+    // borde real y la cuerda de 5 cm del borde exterior del arcén.
+    check_faces("lazadas_irregular", rally::tests::lazadas_irregular_stage_text());
     check_faces("hairpin_flat", rally::tests::stage_file("hairpin_flat.stage"));
     check_faces("curva de R 6", rally::tests::tight_corner_stage());
     check_faces("peralte 10 %", rally::tests::max_bank_stage());
@@ -93,14 +96,19 @@ TEST_CASE("stage_band: the ditch starts at the shoulder edge vertex of the core"
 }
 
 TEST_CASE("stage_band: no band face is above the road or the shoulder") {
-    // Criterio 3 (P3): 10 000 rayos verticales en los núcleos, ninguna cara de la banda encima.
-    for (const bool hairpin : {false, true}) {
-        const StageTrack track = load(hairpin ? rally::tests::stage_file("hairpin_flat.stage")
-                                              : rally::tests::lazadas_stage_text());
+    // Criterio 3 (P3): 10 000 rayos verticales en los núcleos, ninguna cara de la banda encima. Y
+    // en lazadas_irregular, con los núcleos reales (irregularidad).
+    for (const int which : {0, 1, 2}) {
+        const char* name = which == 0   ? "lazadas"
+                           : which == 1 ? "hairpin_flat"
+                                        : "lazadas_irregular";
+        const StageTrack track = load(which == 0   ? rally::tests::lazadas_stage_text()
+                                      : which == 1 ? rally::tests::stage_file("hairpin_flat.stage")
+                                                   : rally::tests::lazadas_irregular_stage_text());
         const StageGround g = band(track);
         double above = 0.0;
         const int wrong = rally::tests::core_rays_wrong(g, track, kFull ? 10000 : 1000, above);
-        MESSAGE(std::string(hairpin ? "hairpin_flat" : "lazadas"), ": ", wrong,
+        MESSAGE(std::string(name), ": ", wrong,
                 " rayos con la banda encima del núcleo; lo más alto, ",
                 1000.0 * std::max(above, -1.0),
                 " mm (−1000 si ninguna cara de la banda cubre los puntos)");

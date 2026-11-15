@@ -28,6 +28,10 @@ std::vector<StageWave> make_waves(const StageIrregularityComponent& c, std::uint
                                   int channel) {
     Pcg32 rng(seed, static_cast<std::uint64_t>(channel));
     std::vector<StageWave> waves;
+    // Una componente que no está en el archivo (sin λ): sin ondas (log 0 daría NaN).
+    if (!(c.wavelength_min > 0.0)) {
+        return waves;
+    }
     const double lo = rmath::log(c.wavelength_min);
     const double span = rmath::log(c.wavelength_max) - lo;
     double sum = 0.0;

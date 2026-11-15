@@ -685,6 +685,9 @@ std::vector<double> section_positions(const StageTrack& track, const StageMeshDe
         const double t0 = bd.v + rmath::max(bwl.v + bel.v, bwr.v + ber.v);
         const double t1 = bd.d1 + rmath::max(bwl.d1 + bel.d1, bwr.d1 + ber.d1);
         const double t2 = bd.d2 + rmath::max(bwl.d2 + bel.d2, bwr.d2 + ber.d2);
+        // La de las líneas hasta el borde de la calzada (sin la onda corta del arcén).
+        const double t2_road = bd.d2 + rmath::max(bwl.d2, bwr.d2);
+        const double t2_edge = rmath::max(bel.d2, ber.d2);
         const double half = rmath::max(rmath::max(pa.half_width_left, pa.half_width_right),
                                        rmath::max(pb.half_width_left, pb.half_width_right)) +
                             t0;
@@ -696,11 +699,19 @@ std::vector<double> section_positions(const StageTrack& track, const StageMeshDe
                 span +
             t1;
         double step = density.max_step;
-        // Curvatura en planta de la línea de arcén exterior: κ·(1 + κ·e) y t''.
-        const double plan_curvature = curvature * (1.0 + curvature * edge) + t2;
+        // Curvatura en planta de la línea de arcén exterior: κ·(1 + κ·e) y t'' sin la onda corta
+        // del borde, con la cuerda de la calzada (chord_plan).
+        const double plan_curvature = curvature * (1.0 + curvature * edge) + t2_road;
         if (plan_curvature > 0.0) {
             // Sagita: Δs²·(κ·(1 + κ·e) + t'')/8.
             step = rmath::min(step, rmath::sqrt(8.0 * density.chord_plan / plan_curvature));
+        }
+        // Con la onda corta del borde (ε), la línea exterior del arcén y lo que va más allá (la
+        // banda), con su propia cuerda, chord_edge: separan el arcén de la cuneta, fuera de la
+        // calzada (respuesta del consultor a la parte A de irregularidad, §1.1). Sin ε no actúa.
+        if (t2_edge > 0.0) {
+            step = rmath::min(step,
+                              rmath::sqrt(8.0 * density.chord_edge / (plan_curvature + t2_edge)));
         }
         // y'' de cada línea: y'' + 2·peralte'·semiancho' (peralte y semianchos lineales) y, con la
         // irregularidad, z'' − (β·d)'' + β''·t + 2·β'·t' + peralte·t'' (sus cotas).
@@ -1735,7 +1746,8 @@ std::shared_ptr<StageBandCache> solve_band(const StageTrack& track,
 
 bool same_density(const StageMeshDensity& a, const StageMeshDensity& b) {
     return a.max_step == b.max_step && a.chord_plan == b.chord_plan &&
-           a.chord_height == b.chord_height && a.ditch_segments == b.ditch_segments;
+           a.chord_edge == b.chord_edge && a.chord_height == b.chord_height &&
+           a.ditch_segments == b.ditch_segments;
 }
 
 } // namespace

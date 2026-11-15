@@ -503,7 +503,10 @@ std::string StageTrack::validate_irregularity() const {
     }
     // Los límites de curvatura y de ritmo, con las derivadas analíticas, muestreando cada canal a
     // ≤ λmin/16 (docs/05, 2026-11-12: la desviación del eje y la ondulación se limitan por su
-    // curvatura).
+    // curvatura). Lo medido, × kStageIrregularityProbeMargin (lo que el paso λmin/16 puede
+    // subestimar el máximo de una onda, 1 − cos(π/16) < 2 %), frente al límite; no la cota
+    // analítica, que supone las ondas en fase (respuesta del consultor a la parte A, §1.4). El
+    // error dice la s, lo medido, el límite y qué bajar.
     struct Limit {
         StageChannel channel;
         bool second; // la segunda derivada (si no, la primera)
@@ -512,14 +515,15 @@ std::string StageTrack::validate_irregularity() const {
         int digits;
         const char* what;
         const char* units;
+        const char* fix;
     };
     const Limit limits[] = {
         {StageChannel::Axis, true, kStageAxisOffsetMaxCurvature, 1.0, 4,
-         "la desviación del eje curva", " m⁻¹"},
+         "la desviación del eje curva", " m⁻¹", "baja 'axis' o alarga su onda"},
         {StageChannel::Height, true, kStageHeightMaxCurvature, 1.0, 4, "la ondulación curva",
-         " m⁻¹"},
+         " m⁻¹", "baja 'height' o alarga su onda"},
         {StageChannel::Bank, false, kStageBankMaxRate, 100.0, 2, "el peralte añadido cambia",
-         " %/m"},
+         " %/m", "baja 'bank' o alarga su onda"},
     };
     for (const Limit& l : limits) {
         const double step = irregularity_probe(irregularity_, l.channel);
@@ -527,11 +531,11 @@ std::string StageTrack::validate_irregularity() const {
         for (std::int64_t i = 0; i <= count; ++i) {
             const double s = rmath::min(s_begin() + static_cast<double>(i) * step, s_end());
             const StageJet j = irregularity_.jet(l.channel, s);
-            const double value = rmath::abs(l.second ? j.d2 : j.d1);
+            const double value = rmath::abs(l.second ? j.d2 : j.d1) * kStageIrregularityProbeMargin;
             if (value > l.limit) {
                 return fail_at(s, std::string(l.what) + " " + fixed(value * l.unit, l.digits) +
-                                      l.units + " (máximo " + fixed(l.limit * l.unit, l.digits) +
-                                      l.units + ")")
+                                      l.units + " y el límite es " +
+                                      fixed(l.limit * l.unit, l.digits) + l.units + ": " + l.fix)
                     .error;
             }
         }
