@@ -80,8 +80,21 @@ constexpr KeyBinding kRows[] = {
      KeyBlock::General,
      70,
      "Zona de pruebas / tramo / recinto",
-     "recorre los tres; el tramo es data/stages/lazadas.stage o el de --tramo; el recinto es el de "
-     "la fase 1; reconstruye el mundo y empieza otra grabación"},
+     "recorre los tres; el tramo es data/stages/lazadas_irregular.stage (o lazadas.stage si no "
+     "está) o el de --tramo; el recinto es el de la fase 1; reconstruye el mundo y empieza otra "
+     "grabación"},
+    {a(ZoneModeAction::StageIrregularity),
+     {chord(Key::U), {}},
+     kNoAction,
+     {},
+     PadControl::None,
+     kContextStage,
+     KeyBlock::Zone,
+     60,
+     "Tramo: irregularidad con / sin",
+     "juega el mismo tramo sin su irregularidad y, otra pulsación, con ella; el coche vuelve a la "
+     "salida y empieza otra grabación con el texto del tramo usado; el indicador del tramo dice "
+     "cuál es; en un tramo sin irregularidad no hay nada que quitar"},
 };
 
 } // namespace

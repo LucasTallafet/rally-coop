@@ -202,7 +202,10 @@ void build_stage_lines(const sim::StageTrack& track, const StageSurface& surface
         const sim::StagePose pose = track.pose(s);
         const double sh = std::sin(pose.heading);
         const double ch = std::cos(pose.heading);
-        const double width = pose.half_width_left + pose.half_width_right;
+        // De borde a borde de la calzada REAL (con la irregularidad no son los del esqueleto).
+        const sim::StageRoadPose road = track.road(s);
+        const double half_left = road.pose.half_width_left;
+        const double width = half_left + road.pose.half_width_right;
         const int steps = std::max(1, static_cast<int>(std::ceil(width / kStageLineStep)));
         // Dos filas de vértices (detrás y delante de la línea), steps + 1 columnas, de izquierda
         // a derecha. +t es la derecha: (cos, sin); el avance, (sin, −cos).
@@ -210,7 +213,7 @@ void build_stage_lines(const sim::StageTrack& track, const StageSurface& surface
         for (int row = 0; row < 2; ++row) {
             const double a = row == 0 ? -0.5 * kStageLineWidth : 0.5 * kStageLineWidth;
             for (int n = 0; n <= steps; ++n) {
-                const double t = -pose.half_width_left + width * n / steps;
+                const double t = -half_left + width * n / steps;
                 const double x = pose.x + t * ch + a * sh;
                 const double z = pose.z + t * sh - a * ch;
                 const StageHit hit = surface.query(x, z);

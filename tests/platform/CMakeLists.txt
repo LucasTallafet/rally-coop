@@ -23,11 +23,15 @@ rally_add_test_executable(rally_tests_platform
     test_interpolation.cpp
     test_keys.cpp
     test_mouse_steer.cpp
+    test_note_beeps.cpp
+    test_note_panel.cpp
+    test_panel_geometry.cpp
     test_perf_stats.cpp
     test_player_settings.cpp
     test_screen_layout.cpp
     test_stage_draw.cpp
     test_stage_edges.cpp
+    test_stage_flat.cpp
     test_stage_mode.cpp
     test_seat.cpp
     test_surface_feel.cpp

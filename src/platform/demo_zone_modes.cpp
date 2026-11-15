@@ -18,8 +18,16 @@ bool DemoZoneModes::advance(DemoContext& ctx) {
     const WorldKind current = mode.kind();
     StageFile file;
     if (cycle_world_kind(current, true) == WorldKind::Stage) {
-        file.path =
-            ctx.stage.path.empty() ? find_data_file("data/stages/lazadas.stage") : ctx.stage.path;
+        if (ctx.stage.path.empty()) {
+            // El de por defecto: lazadas_irregular si existe (lote 7: para comparar con la tecla
+            // U), y si no, lazadas. `--tramo` manda: ya trae su ruta.
+            file.path = find_data_file("data/stages/lazadas_irregular.stage");
+            if (file.path.empty()) {
+                file.path = find_data_file("data/stages/lazadas.stage");
+            }
+        } else {
+            file.path = ctx.stage.path;
+        }
         std::string bytes;
         if (!file.path.empty()) {
             if (io::read_file(file.path, bytes, file.error)) {
@@ -46,6 +54,17 @@ void DemoZoneModes::handle_keys(DemoContext& ctx, FramePacer& /*pacer*/, PerfCou
     WorldMode& mode = ctx.mode;
     if (action_pressed(action(ZoneModeAction::ToggleArena), context)) {
         advance(ctx);
+    }
+    if (action_pressed(action(ZoneModeAction::StageIrregularity), context) && mode.stage) {
+        // La irregularidad con / sin (lote 7): el mundo se reconstruye con el otro texto y el coche
+        // vuelve a la salida, como al cambiar de modo con K.
+        const IrregularityToggle toggled = toggle_irregularity(ctx.stage);
+        ctx.overlay.set_message(Overlay::Message::Stage, toggled.message,
+                                toggled.changed ? kText : kError,
+                                toggled.changed ? kShortMessageNs : kSettingsMessageNs);
+        if (toggled.changed) {
+            ctx.rebuild = Rebuild::Describe;
+        }
     }
     if (action_pressed(action(ZoneModeAction::BlindMode), context)) {
         // Al entrar empieza la serie desde la primera prueba; al salir, la pista vuelve a

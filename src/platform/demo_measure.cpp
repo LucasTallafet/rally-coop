@@ -121,7 +121,9 @@ void DemoMeasure::start_stage_bench(DemoContext& ctx) {
     };
     std::string text;
     std::string error;
-    if (!io::read_file(find_data_file("data/stages/lazadas.stage"), text, error)) {
+    stage_bench_file_ =
+        stage_bench_path_.empty() ? find_data_file("data/stages/lazadas.stage") : stage_bench_path_;
+    if (!io::read_file(stage_bench_file_, text, error)) {
         fail(error);
         return;
     }
@@ -491,9 +493,10 @@ void DemoMeasure::write_stage_bench_report(const DemoContext& ctx) const {
                  ctx.target.id != 0 ? ctx.target.texture.height : GetScreenHeight(),
                  IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE) ? "completa sin bordes" : "ventana");
     std::fprintf(file,
-                 "- Tramo: data/stages/lazadas.stage, %.0f m; cámara por el eje de s = %.0f m a "
+                 "- Tramo: %s, %.0f m; cámara por el eje de s = %.0f m a "
                  "la meta a %.0f km/h, ojo a %.1f m (sin simular el coche)\n",
-                 stage_length_, kStageBenchStartS, stage_bench_speed_ * 3.6, kZoneBenchEyeHeight);
+                 stage_bench_file_.c_str(), stage_length_, kStageBenchStartS,
+                 stage_bench_speed_ * 3.6, kZoneBenchEyeHeight);
     std::fprintf(file,
                  "- Referencia: la carretera de prueba de la 2.6b (como --bench-road, a %.0f "
                  "km/h), en la misma ejecución\n",
@@ -515,8 +518,7 @@ void DemoMeasure::write_stage_bench_report(const DemoContext& ctx) const {
         const char* name;
         const StageBenchData* data;
     };
-    const Row rows[2] = {{"Tramo (lazadas)", &stage_data_},
-                         {"Carretera de prueba (2.6b)", &road_data_}};
+    const Row rows[2] = {{"Tramo", &stage_data_}, {"Carretera de prueba (2.6b)", &road_data_}};
     for (const Row& row : rows) {
         const StageBenchData& d = *row.data;
         std::vector<double> frame_ms;

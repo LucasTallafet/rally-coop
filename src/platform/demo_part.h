@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/notes.h"
 #include "platform/camera_space.h"
 #include "platform/forest_scene.h"
 #include "platform/head_look.h"
@@ -143,7 +144,10 @@ struct DemoContext {
     StageSelection stage;
     const StageScene* stage_scene = nullptr;      // el dibujo del tramo (F3 lee su CPU)
     const sim::StageTrack* stage_track = nullptr; // el del mundo actual (null fuera del tramo)
-    std::optional<StageOverview> stage_overview;  // calculada con stage_overview_aspect
+    // La cola de notas del copiloto del mundo actual (lote 7; la aloja demo_world, null fuera del
+    // tramo): la lee el panel del salpicadero.
+    const game::NoteQueue* note_queue = nullptr;
+    std::optional<StageOverview> stage_overview; // calculada con stage_overview_aspect
     double stage_overview_aspect = 0.0;
     ScenePoses poses;
     // Pulsaciones vistas por la simulación desde el último reinicio (para comprobar botones).

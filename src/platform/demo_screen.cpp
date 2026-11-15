@@ -198,9 +198,10 @@ void DemoScreen::draw_indicator(DemoContext& ctx, const DemoFrame& frame) {
     int used = std::snprintf(text, sizeof(text), "%s", base.c_str());
     if (ctx.mode.stage && ctx.world->stage_run() != nullptr) {
         // Tramo: el reloj de la pasada (pasos de la simulación) y, tras la meta, sus cuentas.
-        used +=
-            std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used), "   %s",
-                          stage_indicator_text(ctx.stage.name, *ctx.world->stage_run()).c_str());
+        used += std::snprintf(text + used, sizeof(text) - static_cast<std::size_t>(used), "   %s",
+                              (stage_indicator_text(ctx.stage.name, *ctx.world->stage_run()) +
+                               irregularity_suffix(ctx.stage))
+                                  .c_str());
     }
     if (ctx.mode.zone) {
         const sim::LapState& lap = *ctx.world->lap();

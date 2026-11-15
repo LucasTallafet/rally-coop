@@ -73,6 +73,9 @@ std::optional<Rumble> RumbleMixer::update(const Rumble& continuous, float frame_
     sent_ = target;
     sent_ns_ = now_ns;
     any_sent_ = true;
+    // La ganancia va solo en lo que sale: la cadencia de envío sigue siendo la de siempre.
+    target.low *= gain_;
+    target.high *= gain_;
     return target;
 }
 

@@ -49,7 +49,10 @@ add_library(rally_loop STATIC
     key_tables.cpp
     keys.cpp
     mouse_steer.cpp
+    note_beeps.cpp
+    note_panel.cpp
     notes_host.cpp
+    panel_geometry.cpp
     perf_stats.cpp
     recording_header.cpp
     player_settings.cpp

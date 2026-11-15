@@ -118,3 +118,40 @@ TEST_CASE("surface_feel: the mixer sends on change or every 100 ms and the impac
     CHECK(sent->high == 0.0f);
     CHECK_FALSE(mixer.update(c, 0.0f, 500 * ms, true).has_value());
 }
+
+TEST_CASE("surface_feel: the rumble gain scales the output and nothing else") {
+    // Las entradas del test del mezclador de siempre, con la ganancia de partida y sin ella: la
+    // salida es la de antes por la ganancia, y se manda en los mismos fotogramas.
+    constexpr std::int64_t ms = 1'000'000;
+    RumbleMixer plain;
+    RumbleMixer gained(rally::platform::kRumbleGain);
+    CHECK(rally::platform::kRumbleGain == 0.6f);
+    struct Step {
+        float low;
+        float high;
+        float impact;
+        std::int64_t at;
+        bool silent;
+    };
+    const Step steps[] = {{0.3f, 0.1f, 0.0f, 0, false},    {0.31f, 0.1f, 0.0f, 16, false},
+                          {0.31f, 0.1f, 0.0f, 100, false}, {0.31f, 0.1f, 6.0f, 116, false},
+                          {0.31f, 0.1f, 0.0f, 200, false}, {0.31f, 0.1f, 0.0f, 267, false},
+                          {0.8f, 0.6f, 2.5f, 300, false},  {0.31f, 0.1f, 0.0f, 383, true},
+                          {0.31f, 0.1f, 0.0f, 600, true}};
+    int sent = 0;
+    for (const Step& st : steps) {
+        Rumble c;
+        c.low = st.low;
+        c.high = st.high;
+        const auto a = plain.update(c, st.impact, st.at * ms, st.silent);
+        const auto b = gained.update(c, st.impact, st.at * ms, st.silent);
+        REQUIRE(a.has_value() == b.has_value());
+        if (a.has_value()) {
+            ++sent;
+            CHECK(b->low == a->low * rally::platform::kRumbleGain);
+            CHECK(b->high == a->high * rally::platform::kRumbleGain);
+            CHECK(b->duration_ms == a->duration_ms);
+        }
+    }
+    CHECK(sent >= 5);
+}

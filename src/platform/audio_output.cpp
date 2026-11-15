@@ -1,10 +1,12 @@
 #include "platform/audio_output.h"
 
 #include "platform/car_synth.h"
+#include "platform/note_beeps.h"
 
 #include <raylib.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 
@@ -14,6 +16,9 @@ namespace {
 
 // Estado del callback: estático porque raylib no le pasa un puntero de usuario.
 CarSynth g_synth;
+NoteBeeps g_beeps;
+constexpr unsigned int kMonoChunk = 1024;
+std::array<float, kMonoChunk> g_mono{};
 TripleBuffer<AudioSnapshot> g_snapshots;
 AudioStream g_stream{};
 
@@ -51,7 +56,23 @@ void audio_callback(void* buffer, unsigned int frames) {
             g_gaps.fetch_add(1, std::memory_order_relaxed);
         }
     }
-    g_synth.render(static_cast<float*>(buffer), static_cast<int>(frames), g_snapshots.read());
+    // Estéreo entrelazado: el coche (mono) a los dos canales y encima los pitidos de las notas,
+    // cada uno por su lado (lote 7). El motor se sintetiza por trozos en un búfer fijo.
+    const AudioSnapshot& snapshot = g_snapshots.read();
+    auto* out = static_cast<float*>(buffer);
+    for (unsigned int done = 0; done < frames; done += kMonoChunk) {
+        const int n = static_cast<int>(std::min<unsigned int>(kMonoChunk, frames - done));
+        g_synth.render(g_mono.data(), n, snapshot);
+        float* chunk = out + 2 * done;
+        for (int i = 0; i < n; ++i) {
+            chunk[2 * i] = g_mono[static_cast<std::size_t>(i)];
+            chunk[2 * i + 1] = g_mono[static_cast<std::size_t>(i)];
+        }
+        g_beeps.render_add(chunk, n, snapshot, g_synth.volume());
+        for (int i = 0; i < 2 * n; ++i) {
+            chunk[i] = std::clamp(chunk[i], -1.0f, 1.0f); // los pitidos se suman tras el recorte
+        }
+    }
     const std::int64_t spent = now_ns() - begin;
     g_busy_ns.fetch_add(spent, std::memory_order_relaxed);
     store_max(g_max_call_ns, spent);
@@ -67,8 +88,9 @@ AudioOutput::AudioOutput() {
         return;
     }
     g_synth.reset();
+    g_beeps.reset();
     g_snapshots.publish(AudioSnapshot{});
-    g_stream = LoadAudioStream(kAudioSampleRate, 32, 1);
+    g_stream = LoadAudioStream(kAudioSampleRate, 32, 2);
     if (!IsAudioStreamValid(g_stream)) {
         CloseAudioDevice();
         return;

@@ -282,6 +282,7 @@ void DemoWorld::reset(DemoContext& ctx) {
     } else {
         notes_.start_without_stage();
     }
+    ctx.note_queue = ctx.world->stage() != nullptr ? &notes_.queue() : nullptr;
     ctx.shift_up_presses = 0;
     ctx.shift_down_presses = 0;
     ctx.reset_presses = 0;

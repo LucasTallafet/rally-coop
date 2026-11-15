@@ -8,6 +8,7 @@
 #include "platform/gamepad.h"
 #include "platform/input_shaping.h"
 #include "platform/keys_raylib.h"
+#include "platform/panel_geometry.h"
 
 #include <optional>
 #include <string>
@@ -56,6 +57,7 @@ void DemoDriverFeel::on_world_rebuilt(DemoContext& ctx) {
     cockpit_ = build_cockpit(ctx.car);
     previous_steer_ = 0.0f;
     current_steer_ = 0.0f;
+    panel_.reset(); // los contadores de pitidos vuelven a 0 con la generación nueva del audio
     ++audio_generation_;
     rebuilt_ = true;
 }
@@ -77,9 +79,18 @@ void DemoDriverFeel::after_steps(DemoContext& ctx, Gamepads& pads, float frame_i
             rumble_mixer_.update(continuous, frame_impact, frame_ns, ctx.paused || rebuilt_)) {
         pads.rumble(*rumble);
     }
+    // El panel de notas (solo lee la cola del host y la `s` del coche): qué se ve y qué suena.
+    const sim::StageRunState* run = ctx.world->stage_run();
+    if (ctx.note_queue != nullptr && run != nullptr) {
+        panel_.update(*ctx.note_queue, run->s, frame_ns);
+    }
     if (audio_ && audio_->ready()) {
         AudioSnapshot snapshot;
         feedback_.fill(snapshot);
+        snapshot.note_beeps_left = panel_.sounds().beeps_left;
+        snapshot.note_beeps_right = panel_.sounds().beeps_right;
+        snapshot.note_hazard_beeps = panel_.sounds().hazard_beeps;
+        snapshot.note_erase_beeps = panel_.sounds().erase_beeps;
         snapshot.generation = audio_generation_;
         snapshot.paused = ctx.paused;
         snapshot.blind = ctx.mode.blind;
@@ -119,6 +130,10 @@ void DemoDriverFeel::draw_3d(DemoContext& ctx, const DemoFrame& frame) {
     display.turbo = car.boost_max > 0.0f;
     display.boost_fraction = display.turbo ? t.boost / car.boost_max : 0.0f;
     append_display(cockpit_frame_, car, display);
+    // Panel de notas, a la izquierda del volante: solo en el tramo (donde hay cola de notas).
+    if (ctx.mode.stage && ctx.note_queue != nullptr) {
+        append_note_panel(cockpit_frame_, car, panel_.view());
+    }
     draw_cockpit(cockpit_frame_, ctx.poses.drawn_car, ctx.frame_camera.origin);
 }
 
