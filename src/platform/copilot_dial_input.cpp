@@ -64,12 +64,62 @@ DialsInput dials_from_keys(const KeyDialReading& keys, DistanceForm form) {
             in.direct = i; // 1..8 = posición 0..7
         } else if (i < 6) {
             in.direct = 5 - i; // 1 → «1» (posición 5) … 6 → «6» (posición 0)
+        } else if (i == 6) {
+            in.direct = kMainHairpinIndex; // el 7 es la horquilla (el 8 no hace nada)
         }
     }
-    if (keys.hairpin_pressed && !keys.distance && !keys.secondary) {
-        in.direct = kMainHairpinIndex;
-    }
     return in;
+}
+
+void KeyDialFilter::step(Arrow& a, bool down, bool other) {
+    if (!down) {
+        a = Arrow{};
+    } else if (!a.taken) {
+        if (other && !a.active) {
+            a.taken = true;
+        } else if (!other) {
+            a.active = true;
+        }
+    }
+}
+
+KeyDialReading KeyDialFilter::apply(const KeyDialReading& keys, bool other_open) {
+    const bool other = keys.secondary || keys.distance || other_open;
+    step(left_, keys.left, other);
+    step(right_, keys.right, other);
+    KeyDialReading out = keys;
+    if (!keys.secondary && !keys.distance) {
+        out.left = keys.left && !left_.taken;
+        out.right = keys.right && !right_.taken;
+    }
+    return out;
+}
+
+void KeyDialFilter::block(const KeyDialReading& keys) {
+    for (Arrow* a : {&left_, &right_}) {
+        *a = Arrow{};
+    }
+    left_.taken = keys.left;
+    right_.taken = keys.right;
+}
+
+int CursorHoldGate::update(bool up, bool down, bool dial_open) {
+    const int raw = up == down ? 0 : (up ? 1 : -1);
+    if (dial_open) {
+        taken_ = raw;
+        return 0;
+    }
+    if (raw != taken_) {
+        taken_ = 0;
+    }
+    return taken_ != 0 ? 0 : raw;
+}
+
+int next_help_page(int page, int pages, bool pressed, bool dial_open) {
+    if (!pressed || dial_open) {
+        return page;
+    }
+    return page + 1 < pages ? page + 1 : -1;
 }
 
 DialsInput MouseDialMapper::map(const MouseDialReading& mouse, const DialsGeometry& g,

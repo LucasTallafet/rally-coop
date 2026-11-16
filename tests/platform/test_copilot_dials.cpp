@@ -502,15 +502,15 @@ TEST_CASE("dials input: the same orders come out with pad, mouse and keyboard") 
         CHECK(same(r.mouse_o[0], want));
         CHECK(same(r.key_o[0], want));
     }
-    // Horquilla a la izquierda, con la tecla H.
+    // Horquilla a la izquierda, con la tecla 7.
     {
         Rig r;
         KeyDialReading k;
         k.left = true;
         r.keys(k);
-        k.hairpin_pressed = true;
+        k.number_pressed[6] = true;
         r.keys(k);
-        k.hairpin_pressed = false;
+        k.number_pressed[6] = false;
         r.keys(k);
         r.keys(KeyDialReading{});
         REQUIRE(r.key_o.size() == 1);
@@ -647,8 +647,7 @@ TEST_CASE("dials input: a click on the road is not a click on a dial") {
     CHECK_FALSE(overlaps(tablet, layout.rect(Layer::DialsRight)));
 }
 
-TEST_CASE(
-    "dials keys: no dial key repeats a key the copilot window reads, except H for the hairpin") {
+TEST_CASE("dials keys: no dial key repeats a key the copilot window reads") {
     const auto help = copilot_help_table();
     const auto is_dial = [](const KeyBinding& b) {
         return b.table == &kCopilotKeys &&
@@ -676,7 +675,7 @@ TEST_CASE(
                         for (const KeyChord& kb : *b) {
                             if (ka.key != Key::None && ka.key == kb.key && ka.alt == kb.alt) {
                                 INFO("tecla ", std::string(key_label(ka.key)));
-                                CHECK(ka.key == Key::H); // la única, con su propio manejo
+                                CHECK(false); // ninguna, sin excepciones
                             }
                         }
                     }
@@ -684,8 +683,8 @@ TEST_CASE(
             }
         }
     }
-    CHECK(dial_rows >= 9);
-    CHECK(help_has_h); // la ayuda sigue en H: con un lado mantenido, H es la horquilla
+    CHECK(dial_rows == 9);
+    CHECK(help_has_h); // la ayuda sigue en H, solo ayuda
     CHECK(count_key_conflicts(key_table()) == 0);
 }
 

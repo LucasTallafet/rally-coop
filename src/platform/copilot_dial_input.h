@@ -38,20 +38,58 @@ private:
 DialsInput merge_dials(const DialsInput& a, const DialsInput& b);
 
 // --- Teclado ---
-// ← o → mantenida abre el principal por su lado y 1–6 o H eligen la nota; S mantenida, el
-// secundario con 1–8; D mantenida, la distancia (rueda: 1–8; contador: ← y → son [−] y [+]);
-// Retroceso borra; F cambia la forma. Prioridad: D, S, flechas.
+// ← o → mantenida abre el principal por su lado y 1–6 o 7 (la horquilla) eligen la nota; S
+// mantenida, el secundario con 1–8; D mantenida, la distancia (rueda: 1–8; contador: ← y → son [−]
+// y [+]); Retroceso borra; F cambia la forma. Prioridad: D, S, flechas.
 struct KeyDialReading {
     bool left = false;
     bool right = false;
     bool secondary = false;
     bool distance = false;
     std::array<bool, 8> number_pressed{}; // 1..8, pulsadas en este fotograma
-    bool hairpin_pressed = false;         // H
     bool erase_down = false;
     bool form_pressed = false;
 };
 DialsInput dials_from_keys(const KeyDialReading& keys, DistanceForm form);
+
+// Una flecha que ya estaba pulsada cuando se cerró otro dial no abre el principal hasta soltarla y
+// volver a pulsarla (P9). Una flecha que ya tenía el principal abierto no se toma. Con S o D
+// mantenidas las flechas pasan tal cual (el contador las usa como [−] y [+]). Sin raylib.
+// (ButtonLatch junta pulsaciones hasta el siguiente paso, y left_first_/right_first_ del mando son
+// privados y de los hombros: ninguno retiene una tecla hasta soltarla.)
+class KeyDialFilter {
+public:
+    // `other_open`: hay abierto un dial que no es el principal (el del fotograma anterior, con
+    // cualquier entrada).
+    KeyDialReading apply(const KeyDialReading& keys, bool other_open);
+    // Fotograma con los diales bloqueados (ayuda abierta o sin tramo): las flechas pulsadas se
+    // toman.
+    void block(const KeyDialReading& keys);
+
+private:
+    struct Arrow {
+        bool taken = false;
+        bool active = false;
+    };
+    static void step(Arrow& a, bool down, bool other);
+    Arrow left_;
+    Arrow right_;
+};
+
+// Dirección del cursor con ↑/↓ o la cruceta (P5): 0 con cualquier dial abierto, y una dirección que
+// se mantenía con un dial abierto vale 0 hasta soltarla (si no, al cerrar el dial el cursor
+// saltaría y contaría como movido a mano).
+class CursorHoldGate {
+public:
+    int update(bool up, bool down, bool dial_open);
+
+private:
+    int taken_ = 0;
+};
+
+// La página de la ayuda tras un fotograma: H pasa de página, salvo con un dial abierto; tras la
+// última se oculta (-1).
+int next_help_page(int page, int pages, bool pressed, bool dial_open);
 
 // --- Ratón ---
 // Con el puntero fuera (Espacio mantenido). Botón izquierdo mantenido sobre la rueda principal

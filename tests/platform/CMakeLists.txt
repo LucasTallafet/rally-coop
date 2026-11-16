@@ -12,6 +12,7 @@ rally_add_test_executable(rally_tests_platform
     test_cockpit.cpp
     test_copilot.cpp
     test_copilot_dials.cpp
+    test_dial_keys.cpp
     test_copilot_seat.cpp
     test_debug_lines.cpp
     test_fixed_step_clock.cpp
