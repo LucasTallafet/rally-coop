@@ -72,10 +72,10 @@ constexpr KeyBinding kRows[] = {
      "Dial principal: mantener el lado y elegir la nota",
      "solo en la ventana del copiloto: la curva a la izquierda (Izquierda o L1) o a la derecha "
      "(Derecha o R1); "
-     "con el teclado se elige con 1-6 o H (la última pulsada), con el mando con el stick izquierdo "
+     "con el teclado se elige con 1-6 o 7 para la horquilla (la última pulsada), con el mando con "
+     "el stick izquierdo "
      "(6 arriba, H abajo; el centro cancela) y con el ratón manteniendo el botón sobre la rueda; "
-     "al soltar se canta la nota en el cursor. Mientras se mantiene el lado, H elige la horquilla "
-     "y no abre la ayuda"},
+     "al soltar se canta la nota en el cursor"},
     {a(CopilotAction::DialSecondary),
      {chord(Key::S), {}},
      kNoAction,
@@ -168,19 +168,10 @@ constexpr KeyBinding kRows[] = {
      KeyBlock::Tablet,
      53,
      "Elegir 7 / 8",
-     "solo en la ventana del copiloto, con el secundario o la rueda de distancias mantenidos: la "
-     "opción 7 u 8 (el dial principal no tiene notas 7 y 8)"},
-    {a(CopilotAction::PickHairpin),
-     {chord(Key::H), {}},
-     kNoAction,
-     {},
-     PadControl::None,
-     kContextCopilot,
-     KeyBlock::Tablet,
-     54,
-     "Elegir la horquilla (H)",
-     "solo en la ventana del copiloto, con el lado del dial principal mantenido: la nota H; sin "
-     "lado mantenido, H abre la ayuda como siempre"},
+     "solo en la ventana del copiloto: con el secundario o la rueda de distancias mantenidos, la "
+     "opción 7 u 8; con el lado del dial principal mantenido, el 7 elige la horquilla (H) y el 8 "
+     "no "
+     "hace nada"},
 };
 
 bool same_action(const KeyBinding& b, ActionRef ref) {
@@ -207,8 +198,7 @@ std::vector<KeyBinding> make_help_table() {
                                 action(CopilotAction::Pick1),
                                 action(CopilotAction::Pick3),
                                 action(CopilotAction::Pick5),
-                                action(CopilotAction::Pick7),
-                                action(CopilotAction::PickHairpin)};
+                                action(CopilotAction::Pick7)};
     std::vector<KeyBinding> rows;
     for (const KeyBinding& b : key_table()) {
         for (const ActionRef& ref : wanted) {

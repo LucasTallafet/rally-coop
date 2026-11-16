@@ -129,11 +129,10 @@ private:
         if (action_pressed(action(ScreenAction::DebugPanel), kCopilotKeyContext)) {
             debug_.press();
         }
-        // Con el lado de un dial mantenido, H es la horquilla: no abre la ayuda.
-        if (!dial_keys_held_ && action_pressed(action(ScreenAction::Help), kCopilotKeyContext)) {
-            const int pages = ctx_.overlay.layout().help.pages;
-            help_page_ = help_page_ + 1 < pages ? help_page_ + 1 : -1;
-        }
+        // Con un dial abierto (con cualquier entrada) H no hace nada: no lo cancela.
+        help_page_ = next_help_page(help_page_, ctx_.overlay.layout().help.pages,
+                                    action_pressed(action(ScreenAction::Help), kCopilotKeyContext),
+                                    dials_.open());
         if (action_pressed(action(ScreenAction::Perf), kCopilotKeyContext)) {
             perf.set_visible(!perf.visible());
         }
@@ -187,7 +186,12 @@ private:
         if (help_page_ >= 0 || !stage_present_) {
             // Con la ayuda abierta los diales no se ven ni se abren; sin tramo no hay a qué cantar.
             dials_.cancel();
-            dial_keys_held_ = false;
+            KeyDialReading blocked;
+            blocked.left =
+                focused && action_down(action(CopilotAction::DialLeft), kCopilotKeyContext);
+            blocked.right =
+                focused && action_down(action(CopilotAction::DialRight), kCopilotKeyContext);
+            key_filter_.block(blocked);
             return;
         }
         const DistanceForm form = dials_.form();
@@ -206,10 +210,11 @@ private:
             keys.number_pressed[static_cast<std::size_t>(i)] =
                 pressed(static_cast<CopilotAction>(static_cast<int>(CopilotAction::Pick1) + i));
         }
-        keys.hairpin_pressed = pressed(CopilotAction::PickHairpin);
         keys.erase_down = down(CopilotAction::Erase);
         keys.form_pressed = pressed(CopilotAction::DistanceForm);
-        dial_keys_held_ = keys.left || keys.right || keys.secondary || keys.distance;
+        const DialKind open_before = dials_.view().open;
+        keys =
+            key_filter_.apply(keys, open_before != DialKind::None && open_before != DialKind::Main);
         MouseDialReading mouse;
         mouse.enabled = focused && pointer_.clicks;
         mouse.left_down = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
@@ -269,7 +274,7 @@ private:
         const bool down =
             focused && (action_down(action(CopilotAction::CursorPrevious), kCopilotKeyContext) ||
                         pad_dpad_down_);
-        held_dir_ = up == down ? 0 : (up ? 1 : -1);
+        held_dir_ = cursor_gate_.update(up, down, dials_.open());
         pointer_click_ = pointer_.clicks && IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
         pointer_x_ = static_cast<double>(GetMouseX());
         pointer_y_ = static_cast<double>(GetMouseY());
@@ -607,7 +612,8 @@ private:
     DialsGeometry dials_geometry_;
     DialsDraw dials_draw_;
     double last_dials_s_ = 0.0;
-    bool dial_keys_held_ = false;
+    KeyDialFilter key_filter_;
+    CursorHoldGate cursor_gate_;
     PerfChannel tablet_cost_;
     std::int64_t last_tablet_publish_ns_ = 0;
     double last_tablet_s_ = 0.0;

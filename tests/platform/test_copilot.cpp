@@ -181,7 +181,7 @@ TEST_CASE("copilot keys: Z is free in every context and only fires in the copilo
 
 TEST_CASE("copilot keys: the copilot help shows only its rows, with Look and no B") {
     const std::span<const KeyBinding> table = copilot_help_table();
-    REQUIRE(table.size() == 21); // las once de siempre y las diez de los diales (lote 7)
+    REQUIRE(table.size() == 20); // las once de siempre y las nueve de los diales (lote 7)
     std::vector<Key> keys;
     for (const KeyBinding& b : table) {
         keys.push_back(b.keys[0].key);
@@ -192,8 +192,8 @@ TEST_CASE("copilot keys: the copilot help shows only its rows, with Look and no 
     for (const Key key : {Key::Z, Key::Tab, Key::F1, Key::F3, Key::F11, Key::Escape}) {
         CHECK(std::count(keys.begin(), keys.end(), key) == 1);
     }
-    // H abre la ayuda y, con el lado de un dial mantenido, es la horquilla (lote 7).
-    CHECK(std::count(keys.begin(), keys.end(), Key::H) == 2);
+    // H solo abre la ayuda: la horquilla es el 7 (lote 7).
+    CHECK(std::count(keys.begin(), keys.end(), Key::H) == 1);
     CHECK(std::count(keys.begin(), keys.end(), Key::B) == 0);
     CHECK(std::count(keys.begin(), keys.end(), Key::None) == 1); // la fila de mirar, sin tecla
 }

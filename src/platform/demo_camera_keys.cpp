@@ -14,7 +14,7 @@ constexpr KeyBinding kRows[] = {
      kNoAction,
      {},
      PadControl::None,
-     kContextAll,
+     kContextAll | kContextCopilot,
      KeyBlock::CameraSeat,
      10,
      "Cámara",

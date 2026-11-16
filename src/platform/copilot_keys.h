@@ -21,7 +21,8 @@ enum class CopilotAction : std::uint8_t {
     CursorNext,     // ↑ o la cruceta arriba: el cambio de dirección siguiente; mantenido, desliza
     CursorPrevious, // ↓ o la cruceta abajo: el anterior
     // Los diales (lote 7): ← y → mantenidas abren el principal por su lado; S, el secundario; D, la
-    // distancia; 1–8 y H eligen; Retroceso borra; F cambia la forma de la distancia.
+    // distancia; 1–8 eligen (el 7 es la H con el principal abierto); Retroceso borra; F cambia la
+    // forma de la distancia.
     DialLeft,
     DialRight,
     DialSecondary,
@@ -34,7 +35,6 @@ enum class CopilotAction : std::uint8_t {
     Pick6,
     Pick7,
     Pick8,
-    PickHairpin,
     Erase,
     DistanceForm,
     Count,
@@ -47,8 +47,8 @@ constexpr ActionRef action(CopilotAction a) {
 }
 
 // Contexto con el que la ventana del copiloto lee las teclas: las propias y las del juego que
-// valen en ella (Tab, F1, F3, H, F11 y Esc; las demás no se leen).
-inline constexpr std::uint8_t kCopilotKeyContext = kContextZone | kContextCopilot;
+// valen en ella (Tab, F1, F3, H, F11 y Esc, que llevan kContextCopilot; las demás no se leen).
+inline constexpr std::uint8_t kCopilotKeyContext = kContextCopilot;
 
 // Las filas que enseña la ayuda (H) del copiloto: sus ocho filas de siempre (Tab y Mirar con texto
 // propio y Z) y las tres de la tablet.
