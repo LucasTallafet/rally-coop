@@ -106,8 +106,8 @@ bank 1.5 30 150
 height 0.06 20 60
 scale 0 1
 # Sin irregularidad entre los brazos de las lazadas (s 640–960): allí la banda acaba en el eje
-# medio con la otra pasada, que se movería con los bordes de las dos, y la costura banda con banda
-# pediría ×4 secciones (respuesta del consultor a la parte A, §1.1).
+# medio con la otra pasada, que se movería con los bordes de las dos. Encendida también ahí, la
+# costura banda con banda pide 2734 secciones (×2,28 frente a lazadas) en vez de 1565 (×1,31).
 scale 600 1
 scale 640 0
 scale 960 0
