@@ -55,7 +55,7 @@ Una sesión son **dos pasadas del mismo tramo**:
 | Perfil de altura (franja inferior) | Corte lateral de la carretera que viene | Crestas, badenes y saltos |
 | Cinta de ruta (franja lateral) | Los próximos 400–600 m en recta, con una marca de sentido en cada cambio de dirección de más de unos 5°, sin su forma | Lo que viene después de lo que cabe en el mapa |
 
-- **Giro del mapa:** sigue la tangente de la carretera en el punto del trazado donde está el coche, suavizada. No depende del morro ni de la velocidad, así que no da bandazos en un derrape ni en un trompo. **A probar en la fase 3:** orientarlo por un punto 30–50 m por delante, para que no dé media vuelta en las horquillas justo cuando el copiloto lee lo que viene.
+- **Giro del mapa:** por defecto, hacia delante: sigue la dirección hacia un punto del eje 40 m por delante del coche, suavizada, para que no dé media vuelta en las horquillas justo cuando el copiloto lee lo que viene. La alternativa, la tangente en el punto del coche, se elige con O (Este en el mando) hasta que la prueba a dos decida. Ninguna depende del morro ni de la velocidad, así que no da bandazos en un derrape ni en un trompo.
 - **Colores de superficie:** asfalto gris, grava beige, tierra marrón claro, arena amarillo pálido, barro marrón [post-1.0], nieve blanca. Como el color nunca va solo, la línea lleva además un trazo distinto por superficie (continuo, discontinuo, punteado).
 - **La cinta y el mapa no opinan.** Marcan los cambios de dirección con un criterio solo geométrico. No indican cuáles merecen nota.
 - **Las notas cantadas no se dibujan en la tablet.** Solo aparecen en la pantalla del salpicadero. En el mapa solo está el cursor, que marca dónde se anclará la siguiente nota.
@@ -89,27 +89,28 @@ Las notas se definen por velocidad de paso en unas condiciones de referencia, gr
 **Dial principal (14 posiciones).** Mitad izquierda para curvas a la izquierda y mitad derecha para las de la derecha, del 6 arriba a la H abajo. El centro cancela.
 
 - **Mando:** mantener R1 abre las curvas a la derecha y L1 las de la izquierda, con el lado en grande: una rueda de 7 notas en el stick izquierdo, con el 6 arriba y la H abajo, la misma para los dos lados. Soltar el hombro confirma la nota a la que apunta el stick; con el stick en el centro, cancela. Sin hombro, el stick nunca elige nota.
-- **Ratón:** mantener el botón, apuntar a la flecha y soltar.
+- **Ratón:** con el puntero fuera (§2), mantener el botón sobre la rueda; el lado lo da la mitad donde se pulsa. Se elige apuntando y se confirma al soltar.
 
-**Dial secundario (8 posiciones).** Añade información a la última nota o coloca un peligro solo. **Mando:** mantener el gatillo derecho abre su rueda en el stick izquierdo; soltar el gatillo confirma, como las distancias con el izquierdo. Con ratón, se decide en la fase 3.
+**Dial secundario.** Añade un modificador a la última nota. **Mando:** mantener el gatillo derecho abre su rueda en el stick izquierdo; soltar el gatillo confirma, como las distancias con el izquierdo. Con ratón, con el puntero fuera, mantener el botón izquierdo sobre la rueda secundaria y soltar.
 
 | Tipo | Opciones |
 | --- | --- |
-| Peligros | Cresta, salto, cuidado |
-| Modificadores | Se cierra, se abre, no cortes, larga, y (enlaza con la siguiente) |
+| Modificadores | Se cierra, se abre, larga |
 
 "Larga" une la nota con la siguiente curva del mismo sentido, que queda cubierta por ella.
 
-**Dial de distancias (8 valores).** y, 30, 50, 80, 100, 150, 200, 300+. La distancia se pega a la última nota, como el "100" de "3 izquierda 100 4 derecha".
+**Dial de peligros (8 posiciones).** Añade un peligro a la nota del cambio de dirección al que cae, o lo coloca solo: cresta, salto, cuidado, no cortes, baches, piedras, se estrecha y contraperalte. En el panel, cada peligro sale con su icono plano. Con mando, ratón y teclado, como los demás diales; los botones los fija el lote 8.
 
-- **Mando:** mantener el gatillo izquierdo abre la rueda en el stick izquierdo, con la "y" arriba y las distancias crecientes en el sentido de las agujas del reloj; soltar el gatillo confirma. Los gatillos están libres porque el copiloto no acelera.
-- **Ratón:** mantener el botón derecho abre la rueda; soltar confirma.
+**Distancia (contador).** Metros de 10 en 10, de 0 a 990, desde 50 m, con [−], [cantar] y [+]; 0 canta «y» (enlaza con la siguiente). Soltar sin tocar [−] ni [+] canta 50 m. La distancia se pega a la última nota, como el "100" de "3 izquierda 100 4 derecha".
+
+- **Mando:** mantener el gatillo izquierdo y contar con la cruceta izquierda y derecha; soltar el gatillo canta. Los gatillos están libres porque el copiloto no acelera.
+- **Ratón:** los botones [−], [cantar] y [+].
 - El copiloto estima los metros con las marcas cada 50 m del mapa y con la cinta. Estimar bien es parte de su habilidad.
 
 **Borrar.** Un botón con dos gestos:
 
 - **Pulsación:** borra la última nota enviada, con su distancia.
-- **Mantener 1 s:** vacía todas las notas pendientes.
+- **Mantener 1 s:** vacía todas las notas, también las ya pasadas.
 - Una nota borrada no desaparece en silencio: se tacha medio segundo en el panel y suena un aviso de anulado.
 
 ### 5.4 Qué ve y oye el conductor
@@ -122,7 +123,7 @@ La pantalla del salpicadero muestra una fila de tres huecos, con la forma de una
 | Central | Metros hasta la curva siguiente, o "y" si enlaza; vacío si el copiloto no puso distancia |
 | Derecho | La nota de después |
 
-- Cuando el coche pasa el punto de la nota izquierda, la fila corre. Las notas que no caben esperan ocultas.
+- Cuando el coche pasa el punto de la nota izquierda, la fila corre. Las notas que no caben esperan ocultas. La cola guarda 256 notas; si se llena, se va la que llegó primero.
 - Un peligro sin curva ocupa un hueco de nota, con su icono.
 - Cada nota suena por su lado en los auriculares al entrar en el hueco izquierdo.
 - **El juego nunca modifica una nota:** no corrige el número, no ajusta los metros, no descarta notas absurdas, no las une ni las separa, y no añade ninguna barra de distancia automática. El ancla solo sirve para ordenarlas, saber cuándo se ha pasado una y hacerla reaparecer si el coche se recoloca por detrás.
@@ -206,25 +207,25 @@ El manejo es realista: física de simulación estándar, sin atajos arcade. El p
 
 - La ayuda actúa a partir de unos 30 km/h. Entre 15 y 30 km/h se mezcla de forma suave con el giro completo. Por debajo de 15 km/h, parado y marcha atrás, el stick a fondo da el giro completo. Umbrales provisionales hasta la fase 2.
 
-**Mando del conductor:** stick izquierdo = dirección; gatillos = acelerador y freno; un botón = freno de mano; hombros = subir y bajar marcha; un botón = recolocar; stick derecho = mirar (§2). Vibración según superficie y deslizamiento. Todo reasignable. **Teclado:** el giro crece poco a poco mientras se mantiene la tecla y vuelve solo al centro.
+**Mando del conductor:** stick izquierdo = dirección; gatillos = acelerador y freno; un botón = freno de mano; hombros = subir y bajar marcha; un botón mantenido = recolocar (para no recolocar sin querer); stick derecho = mirar (§2); Start = pausa; Back = cámara. Vibración según superficie y deslizamiento. Todo reasignable. **Teclado:** el giro crece poco a poco mientras se mantiene la tecla y vuelve solo al centro.
 
 ### 7.2 Cambio de marchas
 
 Automático o secuencial manual, sin embrague ni calado. El automático cambia por umbrales de revoluciones con histéresis; en derrape retrasa el cambio como mucho 0,5–1 s y nunca contra el limitador. La ventaja del manual sale de reducir antes de la curva y sostener la marcha en un derrape, no de empeorar el automático a propósito. Al reducir, el motor iguala las revoluciones de la marcha nueva (punta-tacón automático), en los dos modos. Al levantar el pie, el automático conserva la marcha (no sube por debajo de unas 6500 rpm con el acelerador cerrado), para no salir de la curva en una marcha larga por debajo del turbo. El embrague automático muerde desde poco por encima del ralentí: el coche arranca en cuanto se pisa.
 
-- **Punto muerto y marcha atrás:** la caja va R – N – 1ª – … – 5ª, en automático y en secuencial. Bajar de 1ª pasa a punto muerto (N); bajar de N con el coche parado (menos de 2 km/h) engrana la marcha atrás (R); subir recorre el camino contrario. En N el motor gira libre y no empuja. En R, el acelerador empuja hacia atrás y el freno frena. En automático, los botones de marcha solo sirven para elegir R, N o marcha adelante (desde 1ª, el automático hace el resto), y bajar a N solo se puede parado. Al construir el mundo o recolocar, el coche sale en 1ª.
+- **Punto muerto y marcha atrás:** la caja va R – N – 1ª – … – 5ª, en automático y en secuencial. Bajar de 1ª pasa a punto muerto (N); bajar de N con el coche casi parado (por debajo de 6 km/h, hacia delante o hacia atrás) engrana la marcha atrás (R); subir recorre el camino contrario. En N el motor gira libre y no empuja. En R, el acelerador empuja hacia atrás y el freno frena. En automático, los botones de marcha solo sirven para elegir R, N o marcha adelante (desde 1ª, el automático hace el resto), y bajar a N solo se puede por debajo de 6 km/h. Al construir el mundo o recolocar, el coche sale en 1ª.
 - **Freno de mano:** bloquea las ruedas traseras. En los coches 4×4, mientras se tira, se desacoplan el diferencial central y el embrague, como en los coches de rally reales: así las delanteras no luchan contra las traseras bloqueadas.
 
 ### 7.3 Superficies y relieve
 
 - Asfalto, grava, tierra, nieve y arena en la 1.0 (barro [post-1.0]). Cada una con su agarre, su resistencia a la rodadura, su color, su ruido procedural y su sonido. La arena tiene mucha resistencia a la rodadura y poco agarre lateral: frena el coche y castiga perder las vueltas. En la montaña de la 1.0 aparece en tramos sueltos (lechos de río, zonas arenosas). La vibración del mando cambia con la superficie y con el deslizamiento.
 - **Relieve:** forma de la carretera en la malla (trazado, peralte, crestas, badenes, saltos), una capa de irregularidad de escala media más un microrrelieve `h(s, t)` que nota la rueda. En la 1.0, una banda de ruido sencilla; el espectro ISO 8608 en dos bandas (física y fina) llega después.
-- **Irregularidad:** una carretera de rally no es una sucesión de rectas y arcos perfectos. Sobre el trazado de primitivas, cada tramo lleva desviaciones deterministas del eje (de centímetros a algo más de un metro, en longitudes de 15–150 m), ancho variable, peralte y bombeo que cambian, ondulación vertical de decímetros en 10–60 m y bordes irregulares. Las curvas se cierran y se abren: su curvatura no es constante ni simétrica.
-- Lo que se ve coincide con lo que se pisa: el render desplaza la carretera cerca de la cámara con la misma función que usa la rueda.
+- **Irregularidad:** una carretera de rally no es una sucesión de rectas y arcos perfectos. Sobre el trazado de primitivas, cada tramo lleva desviaciones deterministas del eje (de centímetros a algo más de un metro, en longitudes de 15–150 m), ancho variable, peralte y bombeo que cambian, ondulación vertical en 20–60 m, bordes del arcén rotos, y baches sueltos, roderas con caballón y tabla de lavar en las frenadas de tierra. La ondulación y los baches se limitan por la aceleración vertical que dan a la velocidad de referencia del tramo; en curvas de radio menor de 30 m no se mueven el eje, el ancho ni el borde. Las curvas se cierran y se abren: su curvatura no es constante ni simétrica.
+- Lo que se ve coincide con lo que se pisa a la escala que el ojo distingue: la malla del tramo lleva el trazado, la irregularidad y los baches. El microrrelieve (milímetros) solo lo nota la rueda: dibujado, cambiaba el color como mucho un nivel (lote 7).
 
 ### 7.4 Sensación de velocidad
 
-En primera persona la velocidad se percibe por el detalle que pasa junto al coche. Se refuerza con ruido procedural en el suelo, objetos frecuentes en el borde (postes, piedras, árboles), vibración de cámara según la superficie y un ligero desenfoque en los bordes. El campo de visión no cambia con la velocidad.
+En primera persona la velocidad se percibe por el detalle que pasa junto al coche. Se refuerza con ruido procedural en el suelo, objetos frecuentes en el borde (postes, piedras, árboles), vibración de cámara según la superficie y la aceleración vertical de la carrocería, exagerada respecto a la física (el ojo se movería milímetros) y solo en el dibujo y un ligero desenfoque en los bordes. El campo de visión no cambia con la velocidad.
 
 ### 7.5 Señales
 
